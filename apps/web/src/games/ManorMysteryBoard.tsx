@@ -28,13 +28,14 @@ interface MMView {
     weapon: string;
     room: string;
     refutedBy: string | null;
+    nonRefuters: string[];
   }[];
   winner: string | null;
   you: {
     id: string;
     hand: string[];
     eliminated: string[];
-    revelations: { card: string; from: string }[];
+    revelations: { card: string; from: string; at: number }[];
     reachableCells: [number, number][];
     reachableRooms: string[];
     mustRefute: { suspect: string; weapon: string; room: string; options: string[] } | null;
@@ -77,6 +78,27 @@ export function ManorMysteryBoard({
   const moving = view.phase === 'awaiting_move' && view.roll !== null;
   const targets = reachableCells.size + reachableRooms.size;
 
+  /*
+   * Suggestions, refutations and accusations used to exist only as lines in
+   * the chat panel — which on a phone is a different tab entirely, so the one
+   * thing a detective game is made of happened off screen. The public result
+   * now sits under the board, and the private card you are shown gets the
+   * middle of the screen, because nobody else will ever see it.
+   */
+  const revelations = view.you?.revelations ?? [];
+  const latest = revelations[revelations.length - 1] ?? null;
+  const [seenRevelation, setSeenRevelation] = React.useState<number | null>(null);
+  const [showCard, setShowCard] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!latest) return;
+    if (seenRevelation === latest.at) return;
+    setSeenRevelation(latest.at);
+    setShowCard(true);
+  }, [latest, seenRevelation]);
+
+  const lastSuggestion = view.history[view.history.length - 1] ?? null;
+
   return (
     <div className="flex flex-col gap-4 xl:flex-row">
       {/* ------------------------------ board ------------------------------ */}
@@ -89,6 +111,10 @@ export function ManorMysteryBoard({
         turnEndsAt={turnEndsAt ?? null}
         targets={targets}
       />
+
+      {lastSuggestion && (
+        <LastSuggestion record={lastSuggestion} nameOf={nameOf} youId={youId} />
+      )}
       <div
         className="relative w-full max-w-[min(94vw,680px)] aspect-square border-2 border-pa-ink bg-pa-bg"
         style={{
@@ -251,6 +277,8 @@ export function ManorMysteryBoard({
           </ul>
         </PixelCard>
 
+        <EvidencePanel revelations={revelations} nameOf={nameOf} />
+
         <PixelCard className="p-3">
           <h3 className="font-display text-[10px] uppercase text-pa-ink-dim mb-2">Players</h3>
           <ul className="flex flex-col gap-1">
@@ -363,6 +391,16 @@ export function ManorMysteryBoard({
         </div>
       </PixelDialog>
 
+      {/* --------------- the card someone just showed you --------------- */}
+      {showCard && latest && (
+        <RevelationOverlay
+          card={latest.card}
+          from={latest.from}
+          nameOf={nameOf}
+          onDismiss={() => setShowCard(false)}
+        />
+      )}
+
       {/* ------------------- private refutation prompt ------------------- */}
       <PixelDialog
         open={Boolean(view.you?.mustRefute)}
@@ -390,6 +428,150 @@ export function ManorMysteryBoard({
         )}
       </PixelDialog>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Suggestion result                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The public half of a suggestion: who asked what, who refuted, and — the part
+ * that actually wins games — who could not.
+ */
+function LastSuggestion({
+  record,
+  nameOf,
+  youId,
+}: {
+  record: MMView['history'][number];
+  nameOf: (id: string) => string;
+  youId: string | null;
+}): React.ReactElement {
+  const who = record.suggester === youId ? 'You' : nameOf(record.suggester);
+  const passed = record.nonRefuters ?? [];
+
+  return (
+    <div className="border-2 border-pa-border bg-pa-surface px-3 py-2">
+      <p className="font-display text-[10px] uppercase text-pa-ink-dim">Last suggestion</p>
+      <p className="mt-1 text-[13px]">
+        {who} said <strong className="text-pa-ink">{record.suspect}</strong> in the{' '}
+        <strong className="text-pa-ink">{record.room}</strong> with the{' '}
+        <strong className="text-pa-ink">{record.weapon}</strong>.
+      </p>
+      <p className="mt-1 text-[12px]">
+        {record.refutedBy === null ? (
+          <span className="text-pa-amber">Nobody could refute it.</span>
+        ) : (
+          <span className="text-pa-ink-dim">
+            {record.refutedBy === youId ? 'You' : nameOf(record.refutedBy)} refuted it.
+          </span>
+        )}
+        {passed.length > 0 && (
+          <span className="text-pa-ink-dim">
+            {' '}
+            {passed.map((id) => (id === youId ? 'You' : nameOf(id))).join(', ')} could not.
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Private revelation                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The card someone showed you. This is the single most valuable piece of
+ * information in the game and it was being delivered to nobody: the engine
+ * recorded it on `you.revelations`, and the client never rendered it.
+ */
+function RevelationOverlay({
+  card,
+  from,
+  nameOf,
+  onDismiss,
+}: {
+  card: string;
+  from: string;
+  nameOf: (id: string) => string;
+  onDismiss: () => void;
+}): React.ReactElement {
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') onDismiss();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onDismiss]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-pa-shadow/75 p-4"
+      role="alertdialog"
+      aria-label={`${nameOf(from)} showed you ${card}`}
+      onClick={onDismiss}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-[min(94vw,420px)] border-4 border-pa-lime bg-pa-surface pa-shadow"
+      >
+        <header className="bg-pa-lime px-4 py-2 text-[#05060d]">
+          <span className="font-display text-[12px] uppercase tracking-wider">Shown to you</span>
+        </header>
+        <div className="flex flex-col gap-4 p-5">
+          <p className="text-[13px] text-pa-ink-dim">
+            {nameOf(from)} disproved your suggestion by showing you:
+          </p>
+          <p className="border-2 border-pa-lime px-3 py-4 text-center font-display text-[14px]">
+            {card}
+          </p>
+          <p className="text-[12px] text-pa-ink-dim">
+            Only you saw this — everyone else knows only that {nameOf(from)} refuted. It is already
+            crossed off your notepad.
+          </p>
+          <PixelButton size="sm" onClick={onDismiss} autoFocus>
+            Got it
+          </PixelButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Every card anyone has ever shown you, so it can be reviewed at any time. */
+function EvidencePanel({
+  revelations,
+  nameOf,
+}: {
+  revelations: { card: string; from: string; at: number }[];
+  nameOf: (id: string) => string;
+}): React.ReactElement {
+  return (
+    <PixelCard className="p-3">
+      <h3 className="mb-2 font-display text-[10px] uppercase text-pa-ink-dim">
+        Shown to you ({revelations.length})
+      </h3>
+      {revelations.length === 0 ? (
+        <p className="text-[12px] text-pa-ink-dim">
+          Nothing yet. Make a suggestion — whoever can disprove it must show you a card, and only
+          you will see which.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {[...revelations].reverse().map((r) => (
+            <li
+              key={`${r.card}-${r.at}`}
+              className="flex items-center justify-between gap-2 border border-pa-border px-2 py-1"
+            >
+              <span className="truncate text-[12px] text-pa-lime">{r.card}</span>
+              <span className="shrink-0 text-[11px] text-pa-ink-dim">from {nameOf(r.from)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </PixelCard>
   );
 }
 
