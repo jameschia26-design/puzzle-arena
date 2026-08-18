@@ -11,7 +11,11 @@ COPY packages/puzzles/package.json packages/puzzles/
 COPY packages/games/package.json packages/games/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
-RUN npm ci
+# --include=dev is load-bearing: the build needs typescript and vite, and some
+# platforms (Zeabur among them) inject the service's NODE_ENV=production into
+# the build stage, which would otherwise make `npm ci` omit devDependencies and
+# fail with "tsc: not found".
+RUN npm ci --include=dev
 
 COPY . .
 # tsc -b builds the packages and the server; then Vite builds the SPA.
