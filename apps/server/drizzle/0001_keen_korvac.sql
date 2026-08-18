@@ -1,0 +1,1 @@
+ALTER TABLE "ai_providers" ALTER COLUMN "timeout_ms" SET DEFAULT 30000;

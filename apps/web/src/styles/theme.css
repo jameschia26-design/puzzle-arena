@@ -1,0 +1,173 @@
+@import 'tailwindcss';
+
+@import '@fontsource/press-start-2p/400.css';
+@import '@fontsource-variable/space-grotesk';
+
+/**
+ * The whole app commits to one visual language: 8-bit arcade. Dark base, hard
+ * shadows with zero blur, square corners, chunky 2px borders, a pixel display
+ * font used sparingly, and stepped rather than smooth motion.
+ */
+@theme {
+  --color-pa-bg: #0b0d17;
+  --color-pa-surface: #161a2e;
+  --color-pa-surface-2: #1f2440;
+  --color-pa-ink: #e8ecff;
+  --color-pa-ink-dim: #8b93bf;
+  --color-pa-border: #2f3660;
+  --color-pa-shadow: #05060d;
+  --color-pa-magenta: #ff3f8e;
+  --color-pa-cyan: #22e0ff;
+  --color-pa-lime: #9dff3c;
+  --color-pa-amber: #ffb020;
+  --color-pa-violet: #8b5cf6;
+  --color-pa-danger: #ff4d4d;
+  --color-pa-success: #2ee66b;
+
+  --font-display: 'Press Start 2P', monospace;
+  --font-body: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --radius-pa: 0px;
+}
+
+@layer base {
+  * {
+    border-radius: 0 !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-pa-bg);
+    /* A static pixel lattice: a 1px grid line every 8px at 4% opacity. */
+    background-image:
+      repeating-linear-gradient(
+        to right,
+        rgba(232, 236, 255, 0.04) 0 1px,
+        transparent 1px 8px
+      ),
+      repeating-linear-gradient(
+        to bottom,
+        rgba(232, 236, 255, 0.04) 0 1px,
+        transparent 1px 8px
+      );
+    color: var(--color-pa-ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Focus is never removed. */
+  :focus-visible {
+    outline: 3px solid var(--color-pa-cyan);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-pa-magenta);
+    color: var(--color-pa-bg);
+  }
+
+  img,
+  canvas {
+    image-rendering: pixelated;
+  }
+
+  /* Flatten lucide's anti-aliasing enough to sit with the pixel type. */
+  svg.lucide {
+    shape-rendering: crispEdges;
+  }
+
+  /* Chunky square scrollbars. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-pa-bg);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-pa-border);
+    border: 2px solid var(--color-pa-bg);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: 0.05em;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Depth is a hard offset shadow, never a blur. */
+  .pa-shadow {
+    box-shadow: 4px 4px 0 var(--color-pa-shadow);
+  }
+  .pa-shadow-sm {
+    box-shadow: 2px 2px 0 var(--color-pa-shadow);
+  }
+
+  /* Buttons physically press. */
+  .pa-press {
+    transition:
+      transform 60ms linear,
+      box-shadow 60ms linear;
+  }
+  .pa-press:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 var(--color-pa-shadow);
+  }
+  .pa-press:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 var(--color-pa-shadow);
+  }
+  .pa-press:disabled {
+    opacity: 0.45;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+}
+
+/**
+ * CRT scanline overlay. Sits above the app in a fixed, pointer-events:none
+ * layer so it can never intercept a click. Toggleable, default on, persisted
+ * to localStorage under pa:crt.
+ */
+.pa-crt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 2px,
+    rgba(0, 0, 0, 0.18) 2px 3px
+  );
+}
+
+/* An invalid room code shakes the input: 3 linear steps, 120ms total. */
+@keyframes pa-shake {
+  0% { transform: translateX(0); }
+  33% { transform: translateX(-4px); }
+  66% { transform: translateX(4px); }
+  100% { transform: translateX(0); }
+}
+.pa-shake {
+  animation: pa-shake 120ms steps(1, end) 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

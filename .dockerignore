@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.env
+.env.local
+# Incremental build state from the host makes `tsc -b` believe the tree is
+# already built, so it emits nothing and the image ends up with no dist/.
+*.tsbuildinfo
+**/*.tsbuildinfo
+coverage
+**/coverage

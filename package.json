@@ -1,0 +1,30 @@
+{
+  "name": "puzzle-arena",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/server & npm run dev --workspace=apps/web",
+    "build": "tsc -b && npm run build --workspace=apps/web",
+    "test": "vitest run",
+    "typecheck": "tsc -b",
+    "db:generate": "drizzle-kit generate --config apps/server/drizzle.config.ts",
+    "db:migrate": "drizzle-kit migrate --config apps/server/drizzle.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "dotenv": "17.4.2",
+    "drizzle-kit": "0.31.10",
+    "socket.io-client": "^4.8.3",
+    "tsx": "4.23.12",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

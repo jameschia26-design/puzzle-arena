@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Secrets. `.env` holds real API keys and auth secrets; only the template
+# `.env.example` is ever committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Logs and local scratch
+*.log
+npm-debug.log*
+.cache/
+tmp/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
