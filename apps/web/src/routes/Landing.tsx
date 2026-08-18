@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
+import { GAME_IDS, GAME_REGISTRY } from '@puzzle-arena/shared';
 import { PixelButton, PixelCard } from '../ui/primitives.js';
 import { CodeInput } from '../ui/game-bits.js';
 import { api, ensureGuest } from '../net/socket.js';
@@ -49,8 +50,10 @@ export default function Landing(): React.ReactElement {
           <br />
           ARENA
         </h1>
-        <p className="mt-4 text-pa-ink-dim max-w-md">
-          Six games, one passcode. Race the clock — partial progress still scores.
+        {/* The six games themselves, straight from the registry so this can
+            never drift from what the host dashboard actually offers. */}
+        <p className="mt-4 max-w-md text-pa-ink-dim">
+          {GAME_IDS.map((id) => GAME_REGISTRY[id].title).join(' · ')}
         </p>
       </header>
 

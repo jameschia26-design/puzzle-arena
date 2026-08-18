@@ -5,6 +5,7 @@ import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard, PixelDialog } from '../ui/primitives.js';
+import { Minus, Plus } from 'lucide-react';
 import { inkOn, monogram, seatColor } from '../ui/seat.js';
 import { DICE_FRAME_MS, snapIn, useReducedMotion } from '../ui/motion.js';
 
@@ -186,6 +187,37 @@ export function PropertyTycoonBoard({
   const state = asState(view);
   const walking = useWalkingPositions(view.players, reduced);
 
+  /*
+   * The board is an 11x11 ring, so on a 390px phone every square is ~32px and
+   * a name like "Lantern Square" cannot be drawn at all — it was being clipped
+   * mid-word. Rather than shrink the type further, the board is measured and
+   * made zoomable: at fit-width the squares carry only what reads at that size
+   * (colour band, price or rent, owner, tokens), and zooming in brings the
+   * names back inside a pannable viewport.
+   */
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  const [fitPx, setFitPx] = React.useState(0);
+  const [zoom, setZoom] = React.useState(1);
+
+  React.useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const measure = (): void => setFitPx(element.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const boardPx = Math.max(280, Math.round(fitPx * zoom));
+  const cellPx = boardPx / 11;
+  /* Below this a name is unreadable, so it is not drawn rather than clipped. */
+  const showNames = cellPx >= 42;
+  const nameSize = Math.max(7, Math.min(11, Math.round(cellPx * 0.17)));
+  const metaSize = Math.max(7, Math.min(11, Math.round(cellPx * 0.15)));
+  const canZoomOut = zoom > 1.01;
+  const canZoomIn = zoom < 2.99;
+
   /* The square the current decision is about, so the board can point at it. */
   const focus =
     view.pendingPurchase !== null
@@ -255,9 +287,28 @@ export function PropertyTycoonBoard({
           turnEndsAt={turnEndsAt ?? null}
         />
 
+        {!showNames && (
+          <p className="text-[11px] text-pa-ink-dim xl:hidden">
+            Squares are too small for names at this size — zoom in to read them, or tap any square
+            for its title deed.
+          </p>
+        )}
+
         <div
-          className="grid w-full max-w-[min(94vw,760px)] aspect-square border-2 border-pa-ink bg-pa-bg"
-          style={{ gridTemplateColumns: 'repeat(11, 1fr)', gridTemplateRows: 'repeat(11, 1fr)' }}
+          ref={viewportRef}
+          /* Panning happens inside this box, so the page itself never scrolls
+             sideways however far the board is zoomed. */
+          className="w-full max-w-[min(94vw,760px)] overflow-auto overscroll-contain"
+          style={{ maxHeight: fitPx || undefined }}
+        >
+        <div
+          className="grid border-2 border-pa-ink bg-pa-bg"
+          style={{
+            width: boardPx,
+            height: boardPx,
+            gridTemplateColumns: 'repeat(11, 1fr)',
+            gridTemplateRows: 'repeat(11, 1fr)',
+          }}
         >
           {BOARD.map((sq) => {
             const { col, row } = cellFor(sq.index);
@@ -292,22 +343,27 @@ export function PropertyTycoonBoard({
                   />
                 )}
 
-                <span
-                  className={cn(
-                    'px-[3px] pt-[7px] text-[7px] leading-[1.15] line-clamp-3',
-                    isMine ? 'text-pa-ink' : 'text-pa-ink-dim',
-                    sq.index > 10 && sq.index <= 20 && 'pr-[8px] pt-[3px]',
-                    sq.index > 20 && sq.index <= 30 && 'pt-[3px]',
-                    sq.index > 30 && 'pl-[8px] pt-[3px]',
-                  )}
-                >
-                  {sq.name}
-                </span>
+                {showNames ? (
+                  <span
+                    className={cn(
+                      'px-[3px] pt-[7px] leading-[1.15] line-clamp-3 break-words hyphens-auto',
+                      isMine ? 'text-pa-ink' : 'text-pa-ink-dim',
+                      sq.index > 10 && sq.index <= 20 && 'pr-[8px] pt-[3px]',
+                      sq.index > 20 && sq.index <= 30 && 'pt-[3px]',
+                      sq.index > 30 && 'pl-[8px] pt-[3px]',
+                    )}
+                    style={{ fontSize: nameSize }}
+                  >
+                    {sq.name}
+                  </span>
+                ) : (
+                  <span />
+                )}
 
                 <span className="flex items-end justify-between gap-[1px] px-[3px] pb-[3px]">
                   {/* Unowned squares advertise the asking price; owned ones the
                       rent you would pay, which is the number that matters. */}
-                  <span className="text-[7px] tabular text-pa-ink-dim">
+                  <span className="tabular text-pa-ink-dim" style={{ fontSize: metaSize }}>
                     {prop?.owner
                       ? prop.mortgaged
                         ? 'MTG'
@@ -317,7 +373,7 @@ export function PropertyTycoonBoard({
                         : ''}
                   </span>
                   {prop?.houses ? (
-                    <span className="text-[7px] tabular text-pa-success">
+                    <span className="tabular text-pa-success" style={{ fontSize: metaSize }}>
                       {prop.houses === 5 ? 'HTL' : `${prop.houses}H`}
                     </span>
                   ) : null}
@@ -388,6 +444,37 @@ export function PropertyTycoonBoard({
               Tap any square to read its title deed — the board stays live while you decide.
             </span>
           </div>
+        </div>
+        </div>
+
+        {/* Zoom lives under the board so it is reachable with a thumb. */}
+        <div className="flex items-center gap-2 xl:hidden">
+          <PixelButton
+            size="sm"
+            variant="ghost"
+            disabled={!canZoomOut}
+            aria-label="Zoom out"
+            onClick={() => setZoom((z) => Math.max(1, Math.round((z - 0.5) * 10) / 10))}
+          >
+            <Minus size={14} strokeWidth={3} className="lucide" />
+          </PixelButton>
+          <PixelButton
+            size="sm"
+            variant="ghost"
+            disabled={!canZoomIn}
+            aria-label="Zoom in"
+            onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.5) * 10) / 10))}
+          >
+            <Plus size={14} strokeWidth={3} className="lucide" />
+          </PixelButton>
+          <span className="font-display text-[10px] tabular text-pa-ink-dim">
+            {Math.round(zoom * 100)}%
+          </span>
+          {zoom > 1 && (
+            <PixelButton size="sm" variant="ghost" onClick={() => setZoom(1)}>
+              Fit
+            </PixelButton>
+          )}
         </div>
       </div>
 

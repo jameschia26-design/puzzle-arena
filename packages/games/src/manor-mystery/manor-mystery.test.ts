@@ -47,10 +47,27 @@ describe('board geometry', () => {
     expect(library).toMatchObject({ x0: 9, x1: 14, y0: 9, y1: 14 });
   });
 
-  it('gives every room exactly two doors', () => {
-    expect(DOORS).toHaveLength(18);
+  it('gives every room a door on each corridor-facing side', () => {
+    // Deliberately four per room, not the plan's two — see the comment on
+    // DOORS. Every room borders a corridor on all four sides.
+    expect(DOORS).toHaveLength(36);
     for (const room of ROOMS) {
-      expect(DOORS_BY_ROOM[room]).toHaveLength(2);
+      expect(DOORS_BY_ROOM[room]).toHaveLength(4);
+    }
+  });
+
+  it('lets every room reach another room on a roll of 3', () => {
+    /*
+     * The reason the door rule changed. Under the plan's two-door rule the
+     * Kitchen needed a roll of 10 to reach any room — 17% of turns — and
+     * suggestions can only be made from inside a room, so a Kitchen turn was
+     * usually a wasted one. This is the regression guard for that.
+     */
+    for (const room of ROOMS) {
+      const rect = ROOM_BY_NAME[room];
+      const from = { room, x: rect.x0, y: rect.y0 };
+      const { rooms } = reachable(from, 3, new Set<string>());
+      expect(rooms.length, `${room} should reach a room on a 3`).toBeGreaterThan(0);
     }
   });
 

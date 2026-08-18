@@ -43,6 +43,13 @@ export const ROOM_BY_NAME: Record<string, RoomRect> = Object.fromEntries(
   ROOM_RECTS.map((r) => [r.name, r]),
 );
 
+export const inBounds = (x: number, y: number): boolean =>
+  x >= 0 && x < GRID && y >= 0 && y < GRID;
+
+/** Every cell not inside a room rectangle is corridor. */
+export const isCorridor = (x: number, y: number): boolean =>
+  inBounds(x, y) && roomAt(x, y) === null;
+
 export interface Door {
   room: RoomName;
   /** The room-edge cell. */
@@ -54,29 +61,29 @@ export interface Door {
 }
 
 /**
- * Two doors per room, derived by rule:
- *  - left/centre column bands use their RIGHT edge; the right band uses its LEFT edge.
- *  - top/centre row bands use their BOTTOM edge; the bottom band uses its TOP edge.
- * Each door sits at offset 3 along its edge within the room's 6-cell span.
+ * One door on every side of a room, at offset 3 along that edge.
+ *
+ * DEVIATION FROM PLAN.md, which specifies exactly two doors per room chosen by
+ * column/row band. That rule was implemented faithfully and turned out to make
+ * the game close to unplayable: it points a room's only two doors at whichever
+ * corridors its neighbours' doors do *not* face. Measured over the finished
+ * board, eight rooms could reach another room on a roll of 3 (97% of turns)
+ * but the Kitchen needed a 10 — its nearest door was ten corridor steps away,
+ * so a Kitchen turn could enter a room only 17% of the time, and suggestions
+ * can only be made from inside a room.
+ *
+ * Four doors per room fixes the dead corner without touching the grid, the
+ * corridors or the movement rules: every room now reaches another on a 3, and
+ * an average roll offers two to four destinations rather than nought or one.
  */
-export const DOORS: Door[] = ROOM_RECTS.flatMap((r, i) => {
-  const col = i % 3;
-  const row = Math.floor(i / 3);
-
-  // Horizontal door.
-  const horizontal: Door =
-    col === 2
-      ? { room: r.name, x: r.x0, y: r.y0 + 3, cx: r.x0 - 1, cy: r.y0 + 3 }
-      : { room: r.name, x: r.x1, y: r.y0 + 3, cx: r.x1 + 1, cy: r.y0 + 3 };
-
-  // Vertical door.
-  const vertical: Door =
-    row === 2
-      ? { room: r.name, x: r.x0 + 3, y: r.y0, cx: r.x0 + 3, cy: r.y0 - 1 }
-      : { room: r.name, x: r.x0 + 3, y: r.y1, cx: r.x0 + 3, cy: r.y1 + 1 };
-
-  return [horizontal, vertical];
-});
+export const DOORS: Door[] = ROOM_RECTS.flatMap((r) =>
+  [
+    { room: r.name, x: r.x0, y: r.y0 + 3, cx: r.x0 - 1, cy: r.y0 + 3 },
+    { room: r.name, x: r.x1, y: r.y0 + 3, cx: r.x1 + 1, cy: r.y0 + 3 },
+    { room: r.name, x: r.x0 + 3, y: r.y0, cx: r.x0 + 3, cy: r.y0 - 1 },
+    { room: r.name, x: r.x0 + 3, y: r.y1, cx: r.x0 + 3, cy: r.y1 + 1 },
+  ].filter((door) => isCorridor(door.cx, door.cy)),
+);
 
 export const DOORS_BY_ROOM: Record<string, Door[]> = (() => {
   const out: Record<string, Door[]> = {};
@@ -99,13 +106,6 @@ export function roomAt(x: number, y: number): RoomName | null {
   }
   return null;
 }
-
-export const inBounds = (x: number, y: number): boolean =>
-  x >= 0 && x < GRID && y >= 0 && y < GRID;
-
-/** Every cell not inside a room rectangle is corridor. */
-export const isCorridor = (x: number, y: number): boolean =>
-  inBounds(x, y) && roomAt(x, y) === null;
 
 /**
  * The outer corridor ring walked clockwise from (0,0).

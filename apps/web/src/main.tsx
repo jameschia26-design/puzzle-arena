@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import './styles/theme.css';
 import { Toaster } from './ui/primitives.js';
 import { CrtLayer } from './ui/crt.js';
+import { InstallPrompt } from './ui/install-prompt.js';
 import Landing from './routes/Landing.js';
 import AdminLogin from './routes/AdminLogin.js';
 import AdminSignup from './routes/AdminSignup.js';
@@ -18,6 +19,7 @@ function App() {
     <BrowserRouter>
       <CrtLayer />
       <Toaster />
+      <InstallPrompt />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/admin/login" element={<AdminLogin />} />
@@ -32,6 +34,17 @@ function App() {
       </Routes>
     </BrowserRouter>
   );
+}
+
+/*
+ * The service worker is what makes the app installable, and it is registered
+ * after load so it never competes with the first paint. Dev is excluded: a
+ * worker caching a hot-reloading bundle is nothing but confusion.
+ */
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  });
 }
 
 createRoot(document.getElementById('root') as HTMLElement).render(

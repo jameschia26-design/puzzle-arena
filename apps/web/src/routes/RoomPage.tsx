@@ -575,6 +575,7 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
       youId={store.you?.playerId ?? null}
       roomId={store.room?.id ?? ''}
       legalActions={store.legalActions}
+      turnEndsAt={store.turnEndsAt}
       onAction={(a) => void gameAction(a)}
     />
   );
