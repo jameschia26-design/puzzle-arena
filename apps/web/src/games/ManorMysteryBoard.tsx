@@ -16,6 +16,7 @@ interface MMView {
     suspect: string;
     handSize: number;
     position: { room: string | null; x: number; y: number };
+    wrongAccusations: number;
     lockedOut: boolean;
   }[];
   suspectPositions: Record<string, { room: string | null; x: number; y: number }>;
@@ -31,6 +32,7 @@ interface MMView {
     nonRefuters: string[];
   }[];
   winner: string | null;
+  winReason: 'accusation' | 'last-standing' | null;
   you: {
     id: string;
     hand: string[];
@@ -636,7 +638,11 @@ function MMTurnBanner({
       detail = yours ? 'Nothing left to do — end your turn.' : `${who} is finishing their turn.`;
       break;
     case 'game_over':
-      detail = view.winner ? `${nameOf(view.winner)} solved it.` : 'Game over.';
+      detail = view.winner
+        ? view.winReason === 'last-standing'
+          ? `${nameOf(view.winner)} is the last player standing.`
+          : `${nameOf(view.winner)} solved it.`
+        : 'Game over.';
       break;
     default:
       detail = view.phase;

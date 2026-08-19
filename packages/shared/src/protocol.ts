@@ -158,6 +158,8 @@ export const leaderboardEntrySchema = z.object({
   completedAtMs: z.number().nullable(),
   penalties: z.number().int(),
   score: z.number().int().nullable(),
+  /** Manor Mystery only — how many times this player accused wrongly. */
+  wrongAccusations: z.number().int().optional(),
 });
 export type LeaderboardEntry = z.infer<typeof leaderboardEntrySchema>;
 

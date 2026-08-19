@@ -634,11 +634,17 @@ export class LiveRoom {
   }
 
   leaderboard(): LeaderboardEntry[] {
-    return this.players
+    const entries = this.players
       .filter((p) => !p.left)
       .map((p) => {
         let progress = 0;
         let score: number | null = null;
+        // Board games never touch the puzzle-style `completed` flag on
+        // LivePlayer — it stays false for them forever. The engine's own
+        // ScoreInput.completed (true only for the winner, by accusation or
+        // by last-player-standing) is the real signal for those games.
+        let completed = p.completed;
+        let wrongAccusations: number | undefined;
 
         if (this.kind === 'puzzle' && this.puzzle) {
           const grade = gradePuzzle(
@@ -652,7 +658,15 @@ export class LiveRoom {
           // the leaderboard leaks the solution one cell at a time.
           progress = this.instantFeedback ? grade.progress : grade.filledFraction;
         } else if (this.gameState) {
-          progress = this.engine().score(this.gameState as never, p.id).progress;
+          const input = this.engine().score(this.gameState as never, p.id);
+          progress = input.progress;
+          completed = input.completed;
+          if (this.gameId === 'manor-mystery') {
+            const view = manorMystery.view(this.gameState as never, null) as {
+              players: { id: string; wrongAccusations: number }[];
+            };
+            wrongAccusations = view.players.find((pl) => pl.id === p.id)?.wrongAccusations ?? 0;
+          }
         }
 
         if (this.status === 'finished') {
@@ -665,13 +679,32 @@ export class LiveRoom {
           seat: p.seat,
           isBot: p.isBot,
           progress,
-          completed: p.completed,
+          completed,
           completedAtMs: p.completedAtMs,
           penalties: p.penalties,
           score,
+          ...(wrongAccusations !== undefined ? { wrongAccusations } : {}),
         };
-      })
-      .sort((a, b) => b.progress - a.progress);
+      });
+
+    if (this.status === 'finished') {
+      // Rank by the same score every results table uses — sorting by progress
+      // alone would put an unfinished Manor Mystery detective who has
+      // eliminated more cards above the actual winner.
+      const ranked = rankResults(
+        entries.map((e) => ({
+          playerId: e.playerId,
+          score: e.score ?? 0,
+          completedAtMs: e.completedAtMs,
+          penalties: e.penalties,
+          seat: e.seat,
+        })),
+      );
+      const order = new Map(ranked.map((r, i) => [r.playerId, i]));
+      return entries.sort((a, b) => (order.get(a.playerId) ?? 0) - (order.get(b.playerId) ?? 0));
+    }
+
+    return entries.sort((a, b) => b.progress - a.progress);
   }
 
   /** What a specific player may see of the game state. */
