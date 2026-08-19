@@ -89,6 +89,55 @@ export function netWorth(s: PTState, playerId: string): number {
   return total;
 }
 
+export interface AssetValueBreakdown {
+  cash: number;
+  /** Sum of the board price of every unmortgaged property owned. */
+  propertyValue: number;
+  /** Full construction cost of houses/hotels built, not the halved resale
+   *  value — these are owned assets, not what a liquidation would fetch. */
+  buildingValue: number;
+  total: number;
+}
+
+/**
+ * Property Tycoon's actual scoreboard result, per PLAN.md: total asset
+ * value, not the generic progress/accuracy/speed blend every other game
+ * uses. Formula: cash on hand + sum of unmortgaged property prices + full
+ * house/hotel construction cost. Mortgaged properties contribute nothing
+ * beyond the cash the player already banked for mortgaging them — counting
+ * their face value again would double-count that cash. This is deliberately
+ * NOT `netWorth` below: `netWorth` credits mortgaged properties at their
+ * (lower) mortgage value and halves the building premium, because it backs
+ * decisions like the Revenue Levy and liquidation planning where a realistic
+ * "what could I raise right now" number matters. Asset value is a
+ * end-of-game scoreboard number, so it counts what is actually owned.
+ */
+export function assetValueBreakdown(s: PTState, playerId: string): AssetValueBreakdown {
+  const player = playerById(s, playerId);
+  if (!player) return { cash: 0, propertyValue: 0, buildingValue: 0, total: 0 };
+  let propertyValue = 0;
+  let buildingValue = 0;
+  for (const index of propertiesOf(s, playerId)) {
+    const sq = squareAt(index);
+    const prop = s.properties[index];
+    if (!prop || prop.mortgaged) continue;
+    propertyValue += sq.price ?? 0;
+    if (prop.houses > 0 && sq.group) {
+      buildingValue += prop.houses * (HOUSE_COST[sq.group] ?? 0);
+    }
+  }
+  return {
+    cash: player.cash,
+    propertyValue,
+    buildingValue,
+    total: player.cash + propertyValue + buildingValue,
+  };
+}
+
+export function assetValue(s: PTState, playerId: string): number {
+  return assetValueBreakdown(s, playerId).total;
+}
+
 /** Cash a player could raise by selling every building and mortgaging all. */
 export function liquidationValue(s: PTState, playerId: string): number {
   const player = playerById(s, playerId);

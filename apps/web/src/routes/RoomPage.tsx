@@ -650,47 +650,74 @@ function PuzzleReveal({ gameId }: { gameId: GameId }): React.ReactElement | null
 /* ------------------------------------------------------------------ */
 
 function Leaderboard(): React.ReactElement {
-  const { leaderboard, room } = useRoom();
+  const { leaderboard, room, state } = useRoom();
   const reduced = useReducedMotion();
   const feedback = (room?.config as { instantFeedback?: boolean } | undefined)?.instantFeedback;
+  const finished = room?.status === 'finished';
+  const isManorMystery = room?.gameId === 'manor-mystery';
+
+  // 'Solved it' vs 'last player standing' comes straight from the engine's
+  // own view, phrased identically to the in-game status line — see
+  // ManorMysteryBoard's game_over case.
+  const winReason = isManorMystery
+    ? (state as { winReason?: 'accusation' | 'last-standing' | null } | null)?.winReason ?? null
+    : null;
+
+  const maxScore = finished
+    ? Math.max(1, ...leaderboard.map((e) => e.score ?? 0))
+    : 1;
 
   return (
     <PixelPanel title="Leaderboard">
       <ul className="flex flex-col gap-2">
-        {leaderboard.map((entry) => (
-          <motion.li
-            key={entry.playerId}
-            layout={!reduced}
-            transition={stepTransition(reduced ? 0 : ROW_REORDER_MS)}
-            className="flex flex-col gap-1"
-          >
-            <div className="flex items-center gap-2">
-              <SeatAvatar
-                seat={entry.seat}
-                displayName={entry.displayName}
-                isBot={entry.isBot}
-                size={22}
+        {leaderboard.map((entry) => {
+          const barValue = finished ? (entry.score ?? 0) / maxScore : entry.progress;
+          const wrongAccusations = entry.wrongAccusations ?? 0;
+          return (
+            <motion.li
+              key={entry.playerId}
+              layout={!reduced}
+              transition={stepTransition(reduced ? 0 : ROW_REORDER_MS)}
+              className="flex flex-col gap-1"
+            >
+              <div className="flex items-center gap-2">
+                <SeatAvatar
+                  seat={entry.seat}
+                  displayName={entry.displayName}
+                  isBot={entry.isBot}
+                  size={22}
+                />
+                <span className="text-[13px] truncate flex-1">{entry.displayName}</span>
+                {entry.completed && isManorMystery && (
+                  <PixelBadge tone="success">
+                    {winReason === 'last-standing' ? 'Last player standing' : 'Solved it'}
+                  </PixelBadge>
+                )}
+                {entry.completed && !isManorMystery && <PixelBadge tone="success">Done</PixelBadge>}
+                {!entry.completed && isManorMystery && wrongAccusations > 0 && (
+                  <PixelBadge tone="danger">
+                    {wrongAccusations > 1 ? `${wrongAccusations} wrong accusations` : 'Wrong accusation'}
+                  </PixelBadge>
+                )}
+                {entry.penalties > 0 && (
+                  <span className="text-[11px] text-pa-danger tabular">-{entry.penalties}</span>
+                )}
+                {entry.score !== null && (
+                  <span className="font-display text-[10px] tabular">{entry.score}</span>
+                )}
+              </div>
+              <SegmentedProgress
+                value={barValue}
+                color={seatColor(entry.seat)}
+                label={`${entry.displayName} ${finished ? 'score' : 'progress'}`}
               />
-              <span className="text-[13px] truncate flex-1">{entry.displayName}</span>
-              {entry.completed && <PixelBadge tone="success">Done</PixelBadge>}
-              {entry.penalties > 0 && (
-                <span className="text-[11px] text-pa-danger tabular">-{entry.penalties}</span>
-              )}
-              {entry.score !== null && (
-                <span className="font-display text-[10px] tabular">{entry.score}</span>
-              )}
-            </div>
-            <SegmentedProgress
-              value={entry.progress}
-              color={seatColor(entry.seat)}
-              label={`${entry.displayName} progress`}
-            />
-          </motion.li>
-        ))}
+            </motion.li>
+          );
+        })}
       </ul>
       {/* Only meaningful for puzzles: board-game progress is net worth, which
           is public anyway. */}
-      {!feedback && room && GAME_REGISTRY[room.gameId].kind === 'puzzle' && (
+      {!finished && !feedback && room && GAME_REGISTRY[room.gameId].kind === 'puzzle' && (
         <p className="mt-3 text-[11px] text-pa-ink-dim">
           Shows how much each player has filled in — not how much is correct.
         </p>

@@ -110,6 +110,13 @@ export interface MMState {
   history: SuggestionRecord[];
 
   winner: string | null;
+  /**
+   * How the game ended. 'accusation' means `winner` correctly named the case
+   * file. 'last-standing' means every other player is locked out from a
+   * wrong accusation, so `winner` cannot lose from here and the game ends
+   * without making them play it out. Null while the game is still running.
+   */
+  winReason: 'accusation' | 'last-standing' | null;
   log: LogEntry[];
 }
 
@@ -200,6 +207,7 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): MMState {
     pendingSuggestion: null,
     history: [],
     winner: null,
+    winReason: null,
     log: [],
   };
 }
@@ -225,13 +233,40 @@ function eliminate(p: MMPlayer, card: CardId): void {
   if (!p.eliminated.includes(card)) p.eliminated.push(card);
 }
 
-function advanceTurn(s: MMState): void {
+/**
+ * Seat-order tie-break over whichever set of players is still "active"
+ * (not locked out). Used both proactively — the moment only one player is
+ * left standing — and as a defensive fallback if a future code path ever
+ * lets every player end up locked out in the same reduce pass.
+ */
+function lastStanding(s: MMState): MMPlayer {
+  const active = s.players.filter((p) => !p.lockedOut);
+  const pool = active.length > 0 ? active : s.players;
+  return [...pool].sort((a, b) => a.seat - b.seat)[0] as MMPlayer;
+}
+
+/** Declares `winner` the winner by last-player-standing and ends the game. */
+function endByLastStanding(s: MMState, log: LogEntry[]): void {
+  const winner = lastStanding(s);
+  s.winner = winner.id;
+  s.winReason = 'last-standing';
+  s.phase = 'game_over';
+  log.push(
+    makeLog(
+      `${winner.id} wins — last player standing (everyone else is locked out)`,
+      winner.id,
+    ),
+  );
+}
+
+function advanceTurn(s: MMState, log: LogEntry[] = []): void {
   s.dice = null;
   s.roll = null;
   s.pendingSuggestion = null;
-  // Everyone locked out means nobody can ever win — end it.
+  // Defensive fallback: normally the accuse handler ends the game itself the
+  // moment only one active player remains, before it ever gets here.
   if (s.players.every((p) => p.lockedOut)) {
-    s.phase = 'game_over';
+    endByLastStanding(s, log);
     return;
   }
   for (let step = 1; step <= s.players.length; step++) {
@@ -242,7 +277,7 @@ function advanceTurn(s: MMState): void {
       return;
     }
   }
-  s.phase = 'game_over';
+  endByLastStanding(s, log);
 }
 
 /** Clockwise order after the suggester, for refutation. */
@@ -445,6 +480,7 @@ function reduce(
 
       if (correct) {
         s.winner = playerId;
+        s.winReason = 'accusation';
         s.phase = 'game_over';
         log.push(
           makeLog(
@@ -461,7 +497,15 @@ function reduce(
             playerId,
           ),
         );
-        advanceTurn(s);
+        // The moment a wrong accusation leaves at most one player active,
+        // nobody else can ever accuse again — declare it over right here
+        // instead of leaving the sole survivor to play out a foregone turn.
+        const active = s.players.filter((p) => !p.lockedOut);
+        if (active.length <= 1) {
+          endByLastStanding(s, log);
+        } else {
+          advanceTurn(s, log);
+        }
       }
       break;
     }
@@ -471,7 +515,7 @@ function reduce(
       if (s.phase === 'awaiting_refutation') return fail('Resolve the refutation first');
       if (s.phase === 'awaiting_move') return fail('Move first');
       if (s.phase === 'awaiting_action') return fail('Take your action first');
-      advanceTurn(s);
+      advanceTurn(s, log);
       break;
     }
   }
@@ -510,6 +554,7 @@ export interface MMView {
   /** Public suggestion history — who asked what, and who refuted (never which card). */
   history: SuggestionRecord[];
   winner: string | null;
+  winReason: 'accusation' | 'last-standing' | null;
   /** Present only for the requesting player. */
   you: {
     id: string;
@@ -581,6 +626,7 @@ function view(s: MMState, playerId: string | null): MMView {
     log: s.log,
     history: s.history,
     winner: s.winner,
+    winReason: s.winReason,
     you,
   };
 }
@@ -597,6 +643,9 @@ function score(s: MMState, playerId: string): ScoreInput {
   if (!p) {
     return { progress: 0, accuracy: 0, completed: false, completedAtMs: null, penalties: 0 };
   }
+  // `s.winner` is set identically whether the win came from a correct
+  // accusation or from being the last player standing — `winReason` (on the
+  // view) distinguishes them for display, but scoring treats both as "won".
   const completed = s.winner === playerId;
   return {
     progress: Math.min(1, p.eliminated.length / ELIMINABLE),
@@ -609,6 +658,9 @@ function score(s: MMState, playerId: string): ScoreInput {
 
 function isOver(s: MMState): { over: boolean; winner?: string } {
   if (s.winner) return { over: true, winner: s.winner };
+  // Defensive fallback only — the accuse handler always sets `s.winner`
+  // itself (by accusation or by last-player-standing) before the game can
+  // reach the state where every player is locked out.
   if (s.players.every((p) => p.lockedOut)) return { over: true };
   return { over: false };
 }

@@ -184,6 +184,10 @@ export function PropertyTycoonBoard({
   const can = (action: string): boolean => legalActions.includes(action);
   const onTurn = view.players[view.current]?.id === youId;
   const me = view.players.find((p) => p.id === youId);
+  // The DecisionPanel inlines the deed list right next to the bankruptcy
+  // button while you're in debt, so the sidebar copy would just be a
+  // redundant scroll away on mobile — hide it until the debt is settled.
+  const owingDebt = Boolean(view.debt && view.debt.playerId === youId);
   const state = asState(view);
   const walking = useWalkingPositions(view.players, reduced);
 
@@ -573,13 +577,15 @@ export function PropertyTycoonBoard({
           </PixelButton>
         </PixelCard>
 
-        <Portfolio
-          view={view}
-          state={state}
-          youId={youId}
-          onAction={onAction}
-          onOpenDeed={setDeed}
-        />
+        {!owingDebt && (
+          <Portfolio
+            view={view}
+            state={state}
+            youId={youId}
+            onAction={onAction}
+            onOpenDeed={setDeed}
+          />
+        )}
       </div>
 
       {/* ---------------------------- drawn card --------------------------- */}
@@ -848,6 +854,13 @@ function DecisionPanel({
             Cash {money(me?.cash ?? 0)} · short by{' '}
             {money(Math.max(0, view.debt.amount - (me?.cash ?? 0)))}
           </p>
+          <DeedList
+            view={view}
+            state={state}
+            youId={youId}
+            onAction={onAction}
+            onOpenDeed={onOpenDeed}
+          />
           <PixelButton
             size="sm"
             variant="danger"
@@ -1280,7 +1293,15 @@ function buyAdvice(view: PTView, state: PTState, index: number, youId: string | 
 /* Portfolio                                                           */
 /* ------------------------------------------------------------------ */
 
-function Portfolio({
+/**
+ * The grouped list of a player's own deeds — build, sell, mortgage, unmortgage
+ * per property. Lives in its own component so it can be mounted both in the
+ * `Portfolio` sidebar panel AND inline inside `DecisionPanel` when the player
+ * is in debt: on mobile the sidebar sits below the fold, so without this the
+ * only way to raise cash (sell houses, mortgage deeds) was invisible right
+ * where the bankruptcy decision is being made.
+ */
+function DeedList({
   view,
   state,
   youId,
@@ -1305,44 +1326,71 @@ function Portfolio({
     byGroup.set(group, [...(byGroup.get(group) ?? []), i]);
   }
 
+  if (owned.length === 0) {
+    return (
+      <p className="text-[12px] text-pa-ink-dim">
+        Nothing yet. Land on an unowned square to buy it, or win one at auction.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex max-h-[320px] flex-col gap-3 overflow-y-auto">
+      {[...byGroup.entries()].map(([group, indices]) => {
+        const total = (GROUPS[group] ?? []).length;
+        return (
+          <div key={group} className="flex flex-col gap-1">
+            <span className="flex items-center gap-2 text-[10px] uppercase text-pa-ink-dim">
+              <span
+                className="h-3 w-3 border border-pa-shadow"
+                style={{ backgroundColor: COLOUR_GROUP_COLORS[group] ?? '#8b93bf' }}
+              />
+              {GROUP_LABELS[group] ?? group} {indices.length}/{total}
+              {indices.length === total && <PixelBadge tone="success">Set</PixelBadge>}
+            </span>
+            <ul className="flex flex-col gap-1">
+              {indices.map((index) => (
+                <DeedRow
+                  key={index}
+                  view={view}
+                  state={state}
+                  index={index}
+                  youId={youId}
+                  onAction={onAction}
+                  onOpenDeed={onOpenDeed}
+                />
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Portfolio({
+  view,
+  state,
+  youId,
+  onAction,
+  onOpenDeed,
+}: {
+  view: PTView;
+  state: PTState;
+  youId: string | null;
+  onAction: (a: unknown) => void;
+  onOpenDeed: (i: number | null) => void;
+}): React.ReactElement {
   return (
     <PixelCard className="p-3">
       <h3 className="mb-2 font-display text-[10px] uppercase text-pa-ink-dim">Your deeds</h3>
-      {owned.length === 0 && (
-        <p className="text-[12px] text-pa-ink-dim">
-          Nothing yet. Land on an unowned square to buy it, or win one at auction.
-        </p>
-      )}
-      <div className="flex max-h-[320px] flex-col gap-3 overflow-y-auto">
-        {[...byGroup.entries()].map(([group, indices]) => {
-          const total = (GROUPS[group] ?? []).length;
-          return (
-            <div key={group} className="flex flex-col gap-1">
-              <span className="flex items-center gap-2 text-[10px] uppercase text-pa-ink-dim">
-                <span
-                  className="h-3 w-3 border border-pa-shadow"
-                  style={{ backgroundColor: COLOUR_GROUP_COLORS[group] ?? '#8b93bf' }}
-                />
-                {GROUP_LABELS[group] ?? group} {indices.length}/{total}
-                {indices.length === total && <PixelBadge tone="success">Set</PixelBadge>}
-              </span>
-              <ul className="flex flex-col gap-1">
-                {indices.map((index) => (
-                  <DeedRow
-                    key={index}
-                    view={view}
-                    state={state}
-                    index={index}
-                    youId={youId}
-                    onAction={onAction}
-                    onOpenDeed={onOpenDeed}
-                  />
-                ))}
-              </ul>
-            </div>
-          );
-        })}
-      </div>
+      <DeedList
+        view={view}
+        state={state}
+        youId={youId}
+        onAction={onAction}
+        onOpenDeed={onOpenDeed}
+      />
     </PixelCard>
   );
 }
