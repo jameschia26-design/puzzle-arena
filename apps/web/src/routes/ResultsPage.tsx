@@ -43,7 +43,7 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
   const podium = [...results].slice(0, 3);
   const order = [2, 1, 0]; // 3rd, 2nd, 1st
 
-  const heights = ['h-24', 'h-32', 'h-20'];
+  const heights = ['h-32', 'h-24', 'h-16'];
 
   return (
     <div className="flex flex-col gap-8">

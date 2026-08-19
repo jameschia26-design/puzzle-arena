@@ -1,7 +1,9 @@
 import {
+  congkakBot,
   manorMysteryBot,
   propertyTycoonBot,
   scrabbleBot,
+  type CongkakBotView,
   type MMBotView,
   type PTBotView,
   type SCRBotView,
@@ -101,6 +103,8 @@ export function scheduleBots(room: LiveRoom): void {
         action = propertyTycoonBot.chooseAction(view as PTBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'scrabble') {
         action = scrabbleBot.chooseAction(view as SCRBotView, actorId, rng, difficulty);
+      } else if (room.gameId === 'congkak') {
+        action = congkakBot.chooseAction(view as CongkakBotView, actorId, rng, difficulty);
       } else {
         action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, difficulty);
       }

@@ -521,6 +521,69 @@ describe('solo play against computer players', () => {
 
     hostSocket.close();
   }, 120_000);
+  it('hosts Congkak with a bot, receives legal actions, and records moves', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({
+        gameId: 'congkak',
+        config: {},
+        timeLimitSec: 600,
+      }),
+    });
+    const { id: roomId, code } = created.body;
+
+    const hostSocket = connect(adminCookie);
+    await connected(hostSocket);
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'SoloCongkak' });
+
+    const botRes = await api(`/api/rooms/${roomId}/bots`, {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ difficulty: 'normal' }),
+    });
+    expect(botRes.status).toBe(200);
+
+    const ok = await emit(hostSocket, EV.roomStart);
+    expect(ok.error).toBeUndefined();
+    await awaitStart(roomId);
+
+    const room = getRoom(roomId)!;
+    const hostId = room.players.find((p) => !p.isBot)!.id;
+    const firstSnapshot = room.snapshotFor(hostId);
+
+    // Host should have legal sow actions on their 7 houses (sow:0 .. sow:6)
+    expect(firstSnapshot.legalActions).toContain('sow:0');
+
+    // Submit move
+    const moveRes = await emit(hostSocket, EV.gameAction, { type: 'sow', pitIndex: 0 });
+    expect(moveRes.accepted).toBe(true);
+
+    await emit(hostSocket, EV.roomEndEarly);
+    hostSocket.close();
+  }, 60_000);
+  it('allows players to join directly via room code link without landing passcode entry', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'congkak', config: {}, timeLimitSec: 300 }),
+    });
+    const { id: roomId, code } = created.body;
+
+    // Guest visits direct link /r/:code -> mints guest cookie and connects
+    const guestCookie = (await api('/api/guest', { method: 'POST' })).setCookie;
+    const guestSocket = connect(guestCookie);
+    await connected(guestSocket);
+
+    // Joins directly using the URL's room code
+    const joinRes = await emit(guestSocket, EV.roomJoin, { code, displayName: 'DirectPlayer' });
+    expect(joinRes.error).toBeUndefined();
+    expect(joinRes.snapshot).toBeTruthy();
+    expect(joinRes.snapshot.room.code).toBe(code);
+    expect(joinRes.snapshot.room.gameId).toBe('congkak');
+
+    guestSocket.close();
+  });
 
   it('refuses to seat a bot once the room has started', async () => {
     const created = await api('/api/rooms', {

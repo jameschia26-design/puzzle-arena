@@ -35,10 +35,20 @@ export const env = {
    * where the same server answers on localhost, the 100.x address and the
    * MagicDNS name.
    */
-  trustedOrigins: (process.env['APP_TRUSTED_ORIGINS'] ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean),
+  trustedOrigins: Array.from(
+    new Set([
+      'http://localhost:5173',
+      'http://localhost:8080',
+      'http://localhost:8090',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:8080',
+      'http://127.0.0.1:8090',
+      ...(process.env['APP_TRUSTED_ORIGINS'] ?? '')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ]),
+  ),
 
   ai: {
     baseUrl: process.env['AI_BASE_URL'] ?? 'https://api.minimax.io/v1',

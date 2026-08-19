@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import { Bot, Copy, Lightbulb, Send, Settings, Trash2, X } from 'lucide-react';
+import { Bot, Copy, Lightbulb, Link2, Send, Settings, Trash2, X } from 'lucide-react';
 import {
   AVATAR_EMOJI,
   EV,
@@ -32,7 +32,9 @@ import { WordSearchBoard } from '../games/WordSearchBoard.js';
 import { PropertyTycoonBoard } from '../games/PropertyTycoonBoard.js';
 import { ManorMysteryBoard } from '../games/ManorMysteryBoard.js';
 import { ScrabbleBoard } from '../games/ScrabbleBoard.js';
+import { CongkakBoard } from '../games/CongkakBoard.js';
 import { ResultsTable } from './ResultsPage.js';
+import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
 export default function RoomPage(): React.ReactElement {
   const { code = '' } = useParams();
@@ -80,6 +82,23 @@ export default function RoomPage(): React.ReactElement {
   const meta = GAME_REGISTRY[gameId];
   const you = store.you;
   const isHost = you?.isHost ?? false;
+  // Play game-specific background music when room is active
+  React.useEffect(() => {
+    if (!room) return;
+    if (room.status === 'running') {
+      if (gameId === 'congkak') bgm.play('congkak');
+      else if (GAME_REGISTRY[gameId].kind === 'puzzle') bgm.play('puzzle');
+      else bgm.play('board');
+    } else if (room.status === 'finished') {
+      sfx.victory();
+      bgm.stop();
+    } else {
+      bgm.play('title');
+    }
+    return () => {
+      bgm.stop();
+    };
+  }, [room?.status, gameId]);
 
   /* ---------------- name gate ---------------- */
   if (!joined) {
@@ -158,6 +177,7 @@ export default function RoomPage(): React.ReactElement {
         </div>
         <div className="flex items-center gap-3">
           {running && <Countdown endsAt={store.endsAt} className="text-[16px] md:text-[24px]" />}
+          <SoundControlButtons />
           <PixelPopover
             trigger={
               <button
@@ -316,11 +336,23 @@ function Lobby({
             size="sm"
             onClick={() => {
               void navigator.clipboard.writeText(code);
-              toast('COPIED');
+              toast('CODE COPIED');
             }}
           >
             <Copy size={14} strokeWidth={3} className="lucide" />
-            Copy
+            Copy code
+          </PixelButton>
+          <PixelButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const url = `${window.location.origin}/r/${code}`;
+              void navigator.clipboard.writeText(url);
+              toast('LINK COPIED');
+            }}
+          >
+            <Link2 size={14} strokeWidth={3} className="lucide" />
+            Copy link
           </PixelButton>
         </div>
         <p className="mt-3 text-[13px] text-pa-ink-dim">{meta.blurb}</p>
@@ -572,6 +604,19 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'scrabble') {
     return (
       <ScrabbleBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'congkak') {
+    return (
+      <CongkakBoard
         view={state}
         players={store.players}
         youId={store.you?.playerId ?? null}

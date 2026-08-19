@@ -20,6 +20,8 @@ import {
   type ScoreInput,
 } from '@puzzle-arena/shared';
 import {
+  congkak,
+  congkakRules,
   manorMystery,
   manorMysteryRules,
   propertyTycoon,
@@ -231,6 +233,7 @@ export class LiveRoom {
   engine() {
     if (this.gameId === 'property-tycoon') return propertyTycoon as unknown as typeof propertyTycoon;
     if (this.gameId === 'scrabble') return scrabble as unknown as typeof propertyTycoon;
+    if (this.gameId === 'congkak') return congkak as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -239,9 +242,9 @@ export class LiveRoom {
     if (this.kind !== 'board' || !this.gameState) return null;
     if (this.gameId === 'property-tycoon') return propertyTycoonRules.actorToAct(this.gameState as never);
     if (this.gameId === 'scrabble') return scrabbleRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'congkak') return congkakRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
-
   private armEndTimer(): void {
     if (this.endTimer) clearTimeout(this.endTimer);
     if (!this.endsAt) return;
@@ -541,7 +544,7 @@ export class LiveRoom {
         // (total asset value for PT, raw point total for Scrabble). See the
         // comment on `assetValueBreakdown` in property-tycoon/rules.ts.
         const usesAssetValue =
-          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble') &&
+          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble' || this.gameId === 'congkak') &&
           input.assetValue !== undefined;
         const score = usesAssetValue
           ? Math.round(input.assetValue as number)

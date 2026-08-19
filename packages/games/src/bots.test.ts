@@ -4,6 +4,8 @@ import { actorToAct, propertyTycoon } from './property-tycoon/index.js';
 import { propertyTycoonBot, type PTBotView } from './property-tycoon/bot.js';
 import { manorMystery, type MMState } from './manor-mystery/index.js';
 import { manorMysteryBot, deduce, type MMBotView } from './manor-mystery/bot.js';
+import { congkak, type CongkakState } from './congkak/index.js';
+import { congkakBot, type CongkakBotView } from './congkak/bot.js';
 
 const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard'];
 
@@ -60,6 +62,22 @@ describe('bots only ever see the restricted view', () => {
       const view = propertyTycoon.view(state, 'a') as PTBotView;
       const action = propertyTycoonBot.chooseAction(view, 'a', mulberry32(1), difficulty);
       const r = propertyTycoon.reduce(state, 'a', action);
+      expect(r.ok).toBe(true);
+    }
+  });
+  it('never hands a Congkak bot the RNG stream', () => {
+    const state = congkak.setup(['a', 'b'], 42, {});
+    const view = congkak.view(state, 'a') as Record<string, unknown>;
+    expect(view['rng']).toBeUndefined();
+    expect(JSON.stringify(view)).not.toContain('"rng"');
+  });
+
+  it('a congkak bot policy produces legal actions across all difficulties', () => {
+    for (const difficulty of DIFFICULTIES) {
+      const state = congkak.setup(['a', 'b'], 42, {});
+      const view = congkak.view(state, 'a') as CongkakBotView;
+      const action = congkakBot.chooseAction(view, 'a', mulberry32(1), difficulty);
+      const r = congkak.reduce(state, 'a', action);
       expect(r.ok).toBe(true);
     }
   });
@@ -280,6 +298,34 @@ describe('bot-only games replay identically', () => {
     expect(a.players).toEqual(b.players);
     expect(a.caseFile).toEqual(b.caseFile);
     expect(a.winner).toBe(b.winner);
+  });
+  it('plays Congkak to the same final state twice', () => {
+    const play = (): CongkakState => {
+      let s = congkak.setup(['a', 'b'], 9876, {});
+      const rng = mulberry32(1234);
+      for (let i = 0; i < 500 && s.phase !== 'game_over'; i++) {
+        const actor = s.players[s.current]?.id as string;
+        const difficulty: BotDifficulty = actor === 'a' ? 'hard' : 'normal';
+        const view = congkak.view(s, actor) as CongkakBotView;
+        const action = congkakBot.chooseAction(view, actor, rng, difficulty);
+        const r = congkak.reduce(s, actor, action);
+        if (r.ok) {
+          s = r.state;
+          continue;
+        }
+        const fallback = congkak.reduce(s, actor, congkak.autoAction(s, actor));
+        if (!fallback.ok) throw new Error(`stuck at ${s.phase} for ${actor}`);
+        s = fallback.state;
+      }
+      return s;
+    };
+
+    const a = play();
+    const b = play();
+    expect(a.pits).toEqual(b.pits);
+    expect(a.storehouses).toEqual(b.storehouses);
+    expect(a.winner).toBe(b.winner);
+    expect(a.seq).toBe(b.seq);
   });
 
   it('lets a deducing bot eventually solve the mystery rather than guess', () => {

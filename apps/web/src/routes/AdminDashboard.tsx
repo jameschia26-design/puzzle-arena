@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Copy, Cpu, Plus } from 'lucide-react';
+import { Copy, Cpu, Link2, Plus } from 'lucide-react';
 import { GAME_IDS, GAME_REGISTRY, type GameId } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -202,17 +202,29 @@ export default function AdminDashboard(): React.ReactElement {
                       {room.status}
                     </PixelBadge>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <PixelButton
                       variant="ghost"
                       size="sm"
                       onClick={() => {
                         void navigator.clipboard.writeText(room.code);
-                        toast('COPIED');
+                        toast('CODE COPIED');
                       }}
                     >
                       <Copy size={14} strokeWidth={3} className="lucide" />
                       Code
+                    </PixelButton>
+                    <PixelButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const url = `${window.location.origin}/r/${room.code}`;
+                        void navigator.clipboard.writeText(url);
+                        toast('LINK COPIED');
+                      }}
+                    >
+                      <Link2 size={14} strokeWidth={3} className="lucide" />
+                      Link
                     </PixelButton>
                     <PixelButton size="sm" onClick={() => navigate(`/r/${room.code}`)}>
                       Open

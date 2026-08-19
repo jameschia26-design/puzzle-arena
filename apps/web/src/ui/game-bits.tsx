@@ -4,6 +4,7 @@ import { Bot } from 'lucide-react';
 import { cn } from './cn.js';
 import { inkOn, monogram, seatColor } from './seat.js';
 import { SNAP_MS, snapIn, stepTransition, useReducedMotion } from './motion.js';
+import { sfx } from './sound.js';
 
 /* ------------------------------------------------------------------ */
 /* SeatAvatar / PlayerChip                                             */
@@ -238,6 +239,7 @@ export function CodeInput({
 export function StartOverlay({ startsAt }: { startsAt: number | null }) {
   const [now, setNow] = React.useState(() => Date.now());
   const reduced = useReducedMotion();
+  const lastLabelRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (!startsAt) return;
@@ -245,12 +247,23 @@ export function StartOverlay({ startsAt }: { startsAt: number | null }) {
     return () => clearInterval(t);
   }, [startsAt]);
 
-  if (!startsAt) return null;
-  const remaining = startsAt - now;
-  if (remaining <= 0 || remaining > 4000) return null;
-
+  const remaining = startsAt ? startsAt - now : 0;
+  const active = Boolean(startsAt && remaining > 0 && remaining <= 4000);
   const step = Math.ceil(remaining / 600);
   const label = step >= 4 ? '3' : step === 3 ? '3' : step === 2 ? '2' : step === 1 ? '1' : 'GO';
+
+  React.useEffect(() => {
+    if (!active) {
+      lastLabelRef.current = null;
+      return;
+    }
+    if (lastLabelRef.current !== label) {
+      lastLabelRef.current = label;
+      sfx.countdown(label === 'GO');
+    }
+  }, [active, label]);
+
+  if (!active) return null;
 
   return (
     <div className="fixed inset-0 z-[9998] grid place-items-center bg-pa-bg/90">

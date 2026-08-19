@@ -100,13 +100,23 @@ export const scrabbleActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pass') }),
 ]);
 export type ScrabbleAction = z.infer<typeof scrabbleActionSchema>;
+export const congkakActionSchema = z.object({
+  type: z.literal('sow'),
+  pitIndex: z.number().int().min(0).max(17),
+});
+export type CongkakAction = z.infer<typeof congkakActionSchema>;
 
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
   manorMysteryActionSchema,
   scrabbleActionSchema,
+  congkakActionSchema,
 ]);
-export type GameAction = PropertyTycoonAction | ManorMysteryAction | ScrabbleAction;
+export type GameAction =
+  | PropertyTycoonAction
+  | ManorMysteryAction
+  | ScrabbleAction
+  | CongkakAction;
 
 /* ------------------------------------------------------------------ */
 /* Client -> server                                                    */

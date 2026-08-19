@@ -8,6 +8,7 @@ export const GAME_IDS = [
   'property-tycoon',
   'manor-mystery',
   'scrabble',
+  'congkak',
 ] as const;
 
 export type GameId = (typeof GAME_IDS)[number];
@@ -55,6 +56,11 @@ export const scrabbleConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(90),
 });
 
+export const congkakConfigSchema = z.object({
+  pitsPerSide: z.number().int().min(5).max(9).default(7),
+  seedsPerPit: z.number().int().min(4).max(7).default(7),
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
+});
 export interface GameMeta {
   id: GameId;
   title: string;
@@ -144,6 +150,17 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: scrabbleConfigSchema,
     blurb: 'Build words across a shared 15x15 board and rack up the highest score.',
+  },
+  congkak: {
+    id: 'congkak',
+    title: 'Congkak',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 1200,
+    supportsBots: true,
+    configSchema: congkakConfigSchema,
+    blurb: 'Classic Southeast Asian Mancala: sow seeds, trigger relay runs, and capture houses into your storehouse.',
   },
 };
 
