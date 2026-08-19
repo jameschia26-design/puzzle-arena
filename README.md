@@ -1,10 +1,10 @@
 # Puzzle Arena
 
 A multiplayer puzzle and board game platform. An admin registers, hosts a room,
-and players join with a 6-character passcode. Six games — four concurrent
-puzzles (Sudoku, Killer Sudoku, Nonogram, Word Search) and two turn-based board
-games (Property Tycoon, Manor Mystery). Every game is playable solo against
-bots.
+and players join with a 6-character passcode. Seven games — four concurrent
+puzzles (Sudoku, Killer Sudoku, Nonogram, Word Search) and three turn-based board
+games (Property Tycoon, Manor Mystery, Scrabble). Every game is playable solo
+against bots.
 
 ```
 packages/shared    Zod wire schemas, scoring, game registry, PRNG. No I/O.

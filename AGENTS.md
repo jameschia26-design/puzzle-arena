@@ -39,7 +39,7 @@ Notes:
 ## Tests
 
 ```bash
-npx vitest run                        # everything (202 tests)
+npx vitest run                        # everything (234 tests)
 BOT_THINK_MS=0 npx vitest run         # bots act instantly — required for e2e
 ```
 
@@ -78,11 +78,12 @@ real Postgres. It needs `docker compose up -d` first.
   playerId).completed` instead — that is what `runtime.ts#leaderboard()` does.
 - **Board games don't all score the same way.** `computeScore` (progress /
   accuracy / speed / penalties) is the puzzle-game default and Manor
-  Mystery's model too, but Property Tycoon's final score is total asset value
-  (`ScoreInput.assetValue`, computed in `property-tycoon/rules.ts`) and
-  bypasses `computeScore` entirely in `runtime.ts#finish()`. Check
-  `ScoreInput.assetValue !== undefined` before assuming `computeScore` is what
-  produced a board game's score.
+  Mystery's model too, but Property Tycoon and Scrabble both set
+  `ScoreInput.assetValue` (Property Tycoon: total asset value, computed in
+  `property-tycoon/rules.ts`; Scrabble: raw point total, `scrabble/index.ts`)
+  and bypass `computeScore` entirely in `runtime.ts#finish()`. Check
+  `ScoreInput.assetValue !== undefined` before assuming `computeScore` is
+  what produced a board game's score.
 - **npm workspaces does not hoist everything.** `better-auth` and `nanoid`
   resolve to `apps/server/node_modules`, which the runtime image must copy.
 - **`packages/games` is `"sideEffects": false` on purpose.** `apps/web`
