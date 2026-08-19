@@ -359,18 +359,31 @@ function Tile({ letter, isBlank, pending }: { letter: string; isBlank: boolean; 
   return (
     <span
       className={cn(
-        'relative flex h-full w-full items-center justify-center bg-pa-surface text-pa-bg',
-        pending && 'opacity-70 outline outline-2 outline-dashed outline-pa-cyan -outline-offset-2',
+        // pa-shadow is the darkest token; using it for glyph colour on the
+        // amber tile maximises contrast on a busy board on mobile-sized
+        // viewports. bg-pa-surface stays as a fallback for the rare case the
+        // --color-pa-amber custom property is missing.
+        'relative flex h-full w-full items-center justify-center bg-pa-surface text-pa-shadow',
+        // Pending tiles keep full contrast; the dashed cyan outline is the
+        // sole cue that the placement is provisional.
+        pending && 'outline outline-2 outline-dashed outline-pa-cyan -outline-offset-2',
       )}
       style={{ backgroundColor: 'var(--color-pa-amber)' }}
     >
-      <span className="font-display" style={{ fontSize: 'clamp(10px, 2.4vw, 16px)' }}>
+      <span
+        className="font-display"
+        // Bumped the mobile floor from 10 → 12px and tightened the cap to
+        // 18px so rack tiles stay readable without overflowing board cells.
+        style={{ fontSize: 'clamp(12px, 2.8vw, 18px)' }}
+      >
         {letter}
       </span>
       {value > 0 && (
         <span
-          className="absolute bottom-[1px] right-[2px] tabular"
-          style={{ fontSize: 'clamp(6px, 1.2vw, 9px)' }}
+          className="absolute bottom-[1px] right-[2px] tabular text-pa-shadow"
+          // Score digit floor raised 6 → 8px so the corner value is legible
+          // on a phone screen where the tile is ~25-32px square.
+          style={{ fontSize: 'clamp(8px, 1.4vw, 10px)' }}
         >
           {value}
         </span>
