@@ -450,6 +450,9 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   const store = useRoom();
   const state = store.state as any;
   const [hintCount, setHintCount] = React.useState(0);
+  // Pencil state lives up here so the toggle can sit below the number-key row
+  // where the captain's thumb can reach it, not in the top toolbar.
+  const [pencil, setPencil] = React.useState(false);
 
   /**
    * Moves render optimistically and roll back if the ack rejects. Without this
@@ -507,12 +510,6 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'sudoku' || gameId === 'killer-sudoku') {
     return (
       <div className="flex flex-col gap-3 items-start">
-        <SudokuBoard
-          givens={state.puzzle.givens}
-          board={board ?? state.puzzle.givens}
-          cages={state.puzzle.cages}
-          onCommit={(r, c, v) => void commitCell(r * 9 + c, v)}
-        />
         <HintButton
           count={hintCount}
           onHint={async () => {
@@ -525,6 +522,28 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
             }
           }}
         />
+        <SudokuBoard
+          givens={state.puzzle.givens}
+          board={board ?? state.puzzle.givens}
+          cages={state.puzzle.cages}
+          onCommit={(r, c, v) => void commitCell(r * 9 + c, v)}
+          pencil={pencil}
+          onPencilChange={setPencil}
+        />
+        <div className="flex items-center justify-center gap-3 flex-wrap w-full max-w-[min(92vw,560px)]">
+          <button
+            type="button"
+            onClick={() => setPencil((p) => !p)}
+            className={cn(
+              'font-display text-[10px] uppercase border-2 px-3 min-h-[44px] pa-shadow-sm cursor-pointer',
+              pencil ? 'border-pa-amber text-pa-amber' : 'border-pa-border text-pa-ink-dim',
+            )}
+            aria-pressed={pencil}
+          >
+            Pencil {pencil ? 'on' : 'off'}
+          </button>
+          <span className="text-[12px] text-pa-ink-dim">Arrows to move · 1-9 to fill · P for pencil</span>
+        </div>
       </div>
     );
   }
@@ -620,6 +639,8 @@ function PuzzleReveal({ gameId }: { gameId: GameId }): React.ReactElement | null
           onCommit={() => undefined}
           disabled
           wrongCells={wrong}
+          pencil={false}
+          onPencilChange={() => {}}
         />
       </div>
     );
