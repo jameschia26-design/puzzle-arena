@@ -5,7 +5,7 @@ import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard, PixelPanel } from '../ui/primitives.js';
 import { FastForward, Smartphone, Sparkles, Trophy, Zap, RotateCcw } from 'lucide-react';
-import { bgm, sfx } from '../ui/sound.js';
+import { bgm, sfx, unlockAudioSession } from '../ui/sound.js';
 
 interface CongkakBoardProps {
   view: CongkakView;
@@ -418,7 +418,7 @@ export function CongkakBoard({
 
   const handleSow = (pitIdx: number) => {
     if (!canSow(pitIdx)) return;
-
+    unlockAudioSession();
     const localKey = `${youId ?? 'me'}:${pitIdx}:${view.log.length + 1}`;
     seenMoveKeysRef.current.add(localKey);
 

@@ -14,7 +14,8 @@ let bgmGain: GainNode | null = null;
 
 let sfxEnabled = true;
 let musicEnabled = false;
-let masterVolume = 0.5;
+let masterVolume = 0.6;
+let isUnlocked = false;
 
 // Load settings from localStorage
 if (typeof window !== 'undefined') {
@@ -27,9 +28,13 @@ if (typeof window !== 'undefined') {
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!audioCtx) {
-    const AudioContextClass = window.AudioContext;
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return null;
     audioCtx = new AudioContextClass();
+
+    masterGain = audioCtx.createGain();
     masterGain.gain.setValueAtTime(masterVolume, audioCtx.currentTime);
     masterGain.connect(audioCtx.destination);
 
@@ -48,16 +53,39 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
-// Global user gesture listener to unlock audio context on first interaction
-if (typeof window !== 'undefined') {
-  const unlockAudio = () => {
-    const ctx = getAudioContext();
-    if (ctx && ctx.state === 'suspended') {
-      void ctx.resume();
+/**
+ * Robust Mobile / iOS Web Audio Unlocker:
+ * Plays a tiny 1-sample silent buffer during an active touch/click gesture
+ * to warm up the mobile hardware audio session.
+ */
+export function unlockAudioSession(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  if (ctx.state === 'suspended') {
+    void ctx.resume();
+  }
+
+  if (!isUnlocked) {
+    try {
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      isUnlocked = true;
+    } catch {
+      // Ignore
     }
-  };
-  window.addEventListener('click', unlockAudio, { once: true, passive: true });
-  window.addEventListener('keydown', unlockAudio, { once: true, passive: true });
+  }
+}
+
+// Global user touch & click listeners for immediate mobile unlocking
+if (typeof window !== 'undefined') {
+  const events = ['touchstart', 'touchend', 'pointerdown', 'click', 'keydown'];
+  events.forEach((ev) => {
+    window.addEventListener(ev, unlockAudioSession, { passive: true });
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -69,6 +97,7 @@ export const sfx = {
   drop(pitchFactor = 1.0) {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -93,6 +122,7 @@ export const sfx = {
   pickup() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -115,6 +145,7 @@ export const sfx = {
   tembak() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     // Laser zap
     const osc1 = ctx.createOscillator();
@@ -151,8 +182,8 @@ export const sfx = {
   extraTurn() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
-    // Sparkling 4-tone ascending arpeggio (C5 -> E5 -> G5 -> C6)
     const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -174,11 +205,12 @@ export const sfx = {
   blip() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'square';
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
     gain.gain.setValueAtTime(0.15, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
 
@@ -192,6 +224,7 @@ export const sfx = {
   correct() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     [659.25, 880.0].forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -213,6 +246,7 @@ export const sfx = {
   wrong() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -233,6 +267,7 @@ export const sfx = {
   rollDice() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     for (let i = 0; i < 6; i++) {
       const osc = ctx.createOscillator();
@@ -254,8 +289,8 @@ export const sfx = {
   victory() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
-    // Fanfare: C4, E4, G4, C5, G4, C5
     const melody = [
       { f: 261.63, d: 0.12 },
       { f: 329.63, d: 0.12 },
@@ -288,6 +323,7 @@ export const sfx = {
   countdown(isGo = false) {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -311,17 +347,13 @@ export const sfx = {
 export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title';
 
 interface NoteEvent {
-  note: number; // MIDI note (60 = C4) or 0 for rest
-  duration: number; // 1 = 16th note
+  note: number;
+  duration: number;
 }
 
 const m2f = (m: number): number => (m > 0 ? 440 * Math.pow(2, (m - 69) / 12) : 0);
 
-/**
- * 4 Distinct Classic Chiptune MIDI Soundtracks
- */
 const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; bass: NoteEvent[] }> = {
-  // 1. Congkak: Gamelan / Angklung Southeast Asian Pentatonic Melody (Slendro intervals: C, D, E, G, A)
   congkak: {
     tempo: 128,
     lead: [
@@ -342,7 +374,6 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
     ],
   },
 
-  // 2. Puzzle: Lofi Relaxing 8-Bit Focus Groove (Sudoku, Nonogram, Word Search)
   puzzle: {
     tempo: 104,
     lead: [
@@ -359,7 +390,6 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
     ],
   },
 
-  // 3. Board: Retro Tycoon & Mystery Arcade Swing (Property Tycoon, Scrabble, Manor Mystery)
   board: {
     tempo: 132,
     lead: [
@@ -376,7 +406,6 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
     ],
   },
 
-  // 4. Title / Lobby: Puzzle Arena Main Theme
   title: {
     tempo: 136,
     lead: [
@@ -433,6 +462,7 @@ function playTrackLoop(trackName: MusicTrack) {
   if (!musicEnabled) return;
   const ctx = getAudioContext();
   if (!ctx) return;
+  if (ctx.state === 'suspended') void ctx.resume();
 
   const track = TRACK_SEQUENCES[trackName] ?? TRACK_SEQUENCES.title;
   const sixteenthSec = (60 / track.tempo) / 4;
@@ -441,9 +471,7 @@ function playTrackLoop(trackName: MusicTrack) {
 
   const now = ctx.currentTime + 0.05;
 
-  // Voice 1: Melodic Pulse/Square lead
   scheduleVoice(ctx, track.lead, track.tempo, now, 'square', 0.12);
-  // Voice 2: Warm Triangle Bassline
   scheduleVoice(ctx, track.bass, track.tempo, now, 'triangle', 0.25);
 
   bgmLoopTimer = setTimeout(() => {
@@ -507,6 +535,7 @@ export function useAudioSettings() {
   const [sound, setSound] = React.useState(() => bgm.isSfxEnabled());
 
   const toggleMusic = React.useCallback(() => {
+    unlockAudioSession();
     const next = !bgm.isMusicEnabled();
     bgm.setMusicEnabled(next);
     setMusic(next);
@@ -514,6 +543,7 @@ export function useAudioSettings() {
   }, []);
 
   const toggleSfx = React.useCallback(() => {
+    unlockAudioSession();
     const next = !bgm.isSfxEnabled();
     bgm.setSfxEnabled(next);
     setSound(next);
@@ -535,7 +565,7 @@ export function SoundControlButtons({ className }: { className?: string }): Reac
         onClick={toggleMusic}
         aria-label={music ? 'Mute Music' : 'Enable Music'}
         className={cn(
-          'p-2 min-h-[40px] min-w-[40px] grid place-items-center',
+          'p-2 min-h-[40px] min-w-[40px] grid place-items-center cursor-pointer',
           music ? 'text-pa-cyan' : 'text-pa-ink-dim',
         )}
       >
@@ -548,7 +578,7 @@ export function SoundControlButtons({ className }: { className?: string }): Reac
         onClick={toggleSfx}
         aria-label={sound ? 'Mute Sound Effects' : 'Enable Sound Effects'}
         className={cn(
-          'p-2 min-h-[40px] min-w-[40px] grid place-items-center',
+          'p-2 min-h-[40px] min-w-[40px] grid place-items-center cursor-pointer',
           sound ? 'text-pa-amber' : 'text-pa-ink-dim',
         )}
       >
