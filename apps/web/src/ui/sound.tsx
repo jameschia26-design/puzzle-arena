@@ -13,14 +13,14 @@ let sfxGain: GainNode | null = null;
 let bgmGain: GainNode | null = null;
 
 let sfxEnabled = true;
-let musicEnabled = false;
-let masterVolume = 0.6;
+let musicEnabled = true; // Enabled by default so players hear the retro tunes
+let masterVolume = 0.8; // High volume for phone speakers
 let isUnlocked = false;
 
 // Load settings from localStorage
 if (typeof window !== 'undefined') {
   sfxEnabled = localStorage.getItem('pa:sound:sfx') !== 'false';
-  musicEnabled = localStorage.getItem('pa:sound:music') === 'true';
+  musicEnabled = localStorage.getItem('pa:sound:music') !== 'false'; // default true
   const savedVol = localStorage.getItem('pa:sound:volume');
   if (savedVol) masterVolume = Math.max(0, Math.min(1, Number(savedVol)));
 }
@@ -35,15 +35,15 @@ function getAudioContext(): AudioContext | null {
     audioCtx = new AudioContextClass();
 
     masterGain = audioCtx.createGain();
-    masterGain.gain.setValueAtTime(masterVolume, audioCtx.currentTime);
+    masterGain.gain.value = masterVolume;
     masterGain.connect(audioCtx.destination);
 
     sfxGain = audioCtx.createGain();
-    sfxGain.gain.setValueAtTime(sfxEnabled ? 1 : 0, audioCtx.currentTime);
+    sfxGain.gain.value = sfxEnabled ? 1 : 0;
     sfxGain.connect(masterGain);
 
     bgmGain = audioCtx.createGain();
-    bgmGain.gain.setValueAtTime(musicEnabled ? 0.35 : 0, audioCtx.currentTime);
+    bgmGain.gain.value = musicEnabled ? 0.35 : 0;
     bgmGain.connect(masterGain);
   }
 
@@ -54,9 +54,8 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
- * Robust Mobile / iOS Web Audio Unlocker:
- * Plays a tiny 1-sample silent buffer during an active touch/click gesture
- * to warm up the mobile hardware audio session.
+ * Mobile / Android / iOS Web Audio Unlocker:
+ * Directly resumes context and plays a 1-sample buffer during touch gestures.
  */
 export function unlockAudioSession(): void {
   const ctx = getAudioContext();
@@ -93,29 +92,30 @@ if (typeof window !== 'undefined') {
 /* ------------------------------------------------------------------ */
 
 export const sfx = {
-  /** Marble dropping into a pit (wooden / glass clink tone) */
+  /** Marble dropping into a pit (resonant wood / glass chime) */
   drop(pitchFactor = 1.0) {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t = ctx.currentTime + 0.01;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
     osc.type = 'triangle';
-    const baseFreq = 420 * pitchFactor;
-    osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.3, ctx.currentTime + 0.04);
-    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, ctx.currentTime + 0.09);
+    const baseFreq = 520 * pitchFactor;
+    osc.frequency.setValueAtTime(baseFreq, t);
+    osc.frequency.linearRampToValueAtTime(baseFreq * 1.4, t + 0.04);
+    osc.frequency.linearRampToValueAtTime(baseFreq * 0.9, t + 0.12);
 
-    gain.gain.setValueAtTime(0.35, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.6, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.16);
 
     osc.connect(gain);
     gain.connect(sfxGain);
 
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.13);
+    osc.start(t);
+    osc.stop(t + 0.17);
   },
 
   /** Scooping up seeds / picking up marble */
@@ -124,21 +124,22 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t = ctx.currentTime + 0.01;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(240, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(520, ctx.currentTime + 0.08);
+    osc.frequency.setValueAtTime(320, t);
+    osc.frequency.linearRampToValueAtTime(640, t + 0.09);
 
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.45, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.12);
 
     osc.connect(gain);
     gain.connect(sfxGain);
 
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.11);
+    osc.start(t);
+    osc.stop(t + 0.13);
   },
 
   /** Tembak capture explosion / reward blast */
@@ -147,34 +148,37 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t0 = ctx.currentTime + 0.01;
+
     // Laser zap
     const osc1 = ctx.createOscillator();
     const gain1 = ctx.createGain();
     osc1.type = 'sawtooth';
-    osc1.frequency.setValueAtTime(800, ctx.currentTime);
-    osc1.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.2);
+    osc1.frequency.setValueAtTime(960, t0);
+    osc1.frequency.linearRampToValueAtTime(140, t0 + 0.2);
 
-    gain1.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+    gain1.gain.setValueAtTime(0.5, t0);
+    gain1.gain.linearRampToValueAtTime(0.001, t0 + 0.22);
     osc1.connect(gain1);
     gain1.connect(sfxGain);
-    osc1.start(ctx.currentTime);
-    osc1.stop(ctx.currentTime + 0.23);
+    osc1.start(t0);
+    osc1.stop(t0 + 0.23);
 
     // Major reward chime chord (C5, E5, G5)
     [523.25, 659.25, 783.99].forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+      const t = t0 + 0.06 * i;
       osc.type = 'square';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + 0.05 * i);
+      osc.frequency.setValueAtTime(freq, t);
 
-      gain.gain.setValueAtTime(0.2, ctx.currentTime + 0.05 * i);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05 * i + 0.25);
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.25);
 
       osc.connect(gain);
       gain.connect(sfxGain!);
-      osc.start(ctx.currentTime + 0.05 * i);
-      osc.stop(ctx.currentTime + 0.05 * i + 0.26);
+      osc.start(t);
+      osc.stop(t + 0.26);
     });
   },
 
@@ -184,20 +188,22 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t0 = ctx.currentTime + 0.01;
     const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+      const t = t0 + i * 0.08;
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.07);
+      osc.frequency.setValueAtTime(freq, t);
 
-      gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.07);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.07 + 0.18);
+      gain.gain.setValueAtTime(0.5, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.2);
 
       osc.connect(gain);
       gain.connect(sfxGain!);
-      osc.start(ctx.currentTime + i * 0.07);
-      osc.stop(ctx.currentTime + i * 0.07 + 0.2);
+      osc.start(t);
+      osc.stop(t + 0.22);
     });
   },
 
@@ -207,17 +213,18 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t = ctx.currentTime + 0.01;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'square';
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+    osc.frequency.setValueAtTime(659.25, t); // E5
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.06);
 
     osc.connect(gain);
     gain.connect(sfxGain);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.05);
+    osc.start(t);
+    osc.stop(t + 0.07);
   },
 
   /** Correct entry / tile placement */
@@ -226,19 +233,21 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t0 = ctx.currentTime + 0.01;
     [659.25, 880.0].forEach((freq, i) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+      const t = t0 + i * 0.09;
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.08);
+      osc.frequency.setValueAtTime(freq, t);
 
-      gain.gain.setValueAtTime(0.25, ctx.currentTime + i * 0.08);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 0.2);
+      gain.gain.setValueAtTime(0.4, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.22);
 
       osc.connect(gain);
       gain.connect(sfxGain!);
-      osc.start(ctx.currentTime + i * 0.08);
-      osc.stop(ctx.currentTime + i * 0.08 + 0.21);
+      osc.start(t);
+      osc.stop(t + 0.23);
     });
   },
 
@@ -248,19 +257,20 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t = ctx.currentTime + 0.01;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(140, ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(80, ctx.currentTime + 0.18);
+    osc.frequency.setValueAtTime(160, t);
+    osc.frequency.linearRampToValueAtTime(80, t + 0.2);
 
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.22);
 
     osc.connect(gain);
     gain.connect(sfxGain);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.21);
+    osc.start(t);
+    osc.stop(t + 0.23);
   },
 
   /** Dice rolling rattle (Property Tycoon) */
@@ -269,19 +279,21 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t0 = ctx.currentTime + 0.01;
     for (let i = 0; i < 6; i++) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
+      const t = t0 + i * 0.05;
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(180 + Math.random() * 200, ctx.currentTime + i * 0.05);
+      osc.frequency.setValueAtTime(220 + Math.random() * 260, t);
 
-      gain.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.05 + 0.04);
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.05);
 
       osc.connect(gain);
       gain.connect(sfxGain);
-      osc.start(ctx.currentTime + i * 0.05);
-      osc.stop(ctx.currentTime + i * 0.05 + 0.05);
+      osc.start(t);
+      osc.stop(t + 0.06);
     }
   },
 
@@ -300,15 +312,15 @@ export const sfx = {
       { f: 523.25, d: 0.5 },
     ];
 
-    let t = ctx.currentTime;
+    let t = ctx.currentTime + 0.01;
     melody.forEach((note) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'square';
       osc.frequency.setValueAtTime(note.f, t);
 
-      gain.gain.setValueAtTime(0.25, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + note.d);
+      gain.gain.setValueAtTime(0.4, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + note.d);
 
       osc.connect(gain);
       gain.connect(sfxGain!);
@@ -325,18 +337,19 @@ export const sfx = {
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();
 
+    const t = ctx.currentTime + 0.01;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(isGo ? 880 : 440, ctx.currentTime);
+    osc.frequency.setValueAtTime(isGo ? 987.77 : 493.88, t); // B5 or B4
 
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (isGo ? 0.35 : 0.15));
+    gain.gain.setValueAtTime(0.5, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + (isGo ? 0.35 : 0.16));
 
     osc.connect(gain);
     gain.connect(sfxGain);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + (isGo ? 0.36 : 0.16));
+    osc.start(t);
+    osc.stop(t + (isGo ? 0.36 : 0.17));
   },
 };
 
@@ -446,7 +459,7 @@ function scheduleVoice(
       osc.frequency.setValueAtTime(m2f(ev.note), t);
 
       gain.gain.setValueAtTime(volume, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + durSec * 0.95);
+      gain.gain.linearRampToValueAtTime(0.001, t + durSec * 0.95);
 
       osc.connect(gain);
       gain.connect(bgmGain!);
@@ -471,8 +484,10 @@ function playTrackLoop(trackName: MusicTrack) {
 
   const now = ctx.currentTime + 0.05;
 
-  scheduleVoice(ctx, track.lead, track.tempo, now, 'square', 0.12);
-  scheduleVoice(ctx, track.bass, track.tempo, now, 'triangle', 0.25);
+  // Voice 1: Melodic Pulse/Square lead
+  scheduleVoice(ctx, track.lead, track.tempo, now, 'square', 0.2);
+  // Voice 2: Warm Triangle Bassline
+  scheduleVoice(ctx, track.bass, track.tempo, now, 'triangle', 0.35);
 
   bgmLoopTimer = setTimeout(() => {
     if (musicEnabled && currentBgmTrack === trackName) {
@@ -500,7 +515,7 @@ export const bgm = {
     musicEnabled = enabled;
     localStorage.setItem('pa:sound:music', String(enabled));
     if (bgmGain && audioCtx) {
-      bgmGain.gain.setValueAtTime(enabled ? 0.35 : 0, audioCtx.currentTime);
+      bgmGain.gain.value = enabled ? 0.35 : 0;
     }
     if (enabled && currentBgmTrack) {
       playTrackLoop(currentBgmTrack);
@@ -513,7 +528,7 @@ export const bgm = {
     sfxEnabled = enabled;
     localStorage.setItem('pa:sound:sfx', String(enabled));
     if (sfxGain && audioCtx) {
-      sfxGain.gain.setValueAtTime(enabled ? 1 : 0, audioCtx.currentTime);
+      sfxGain.gain.value = enabled ? 1 : 0;
     }
   },
 
@@ -566,7 +581,7 @@ export function SoundControlButtons({ className }: { className?: string }): Reac
         aria-label={music ? 'Mute Music' : 'Enable Music'}
         className={cn(
           'p-2 min-h-[40px] min-w-[40px] grid place-items-center cursor-pointer',
-          music ? 'text-pa-cyan' : 'text-pa-ink-dim',
+          music ? 'text-pa-cyan' : 'text-pa-ink-dim opacity-60',
         )}
       >
         <Music size={15} strokeWidth={2.5} className="lucide" />
@@ -579,7 +594,7 @@ export function SoundControlButtons({ className }: { className?: string }): Reac
         aria-label={sound ? 'Mute Sound Effects' : 'Enable Sound Effects'}
         className={cn(
           'p-2 min-h-[40px] min-w-[40px] grid place-items-center cursor-pointer',
-          sound ? 'text-pa-amber' : 'text-pa-ink-dim',
+          sound ? 'text-pa-amber' : 'text-pa-ink-dim opacity-60',
         )}
       >
         {sound ? (
