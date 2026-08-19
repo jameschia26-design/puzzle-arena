@@ -534,18 +534,30 @@ export class LiveRoom {
       .filter((p) => !p.left || p.isBot)
       .map((p) => {
         const input = this.scoreInputFor(p);
+        // Property Tycoon does not go through the progress/accuracy/speed
+        // blend at all — its score IS total asset value. See the comment on
+        // `assetValueBreakdown` in property-tycoon/rules.ts for the formula.
+        const usesAssetValue = this.gameId === 'property-tycoon' && input.assetValue !== undefined;
+        const score = usesAssetValue
+          ? Math.round(input.assetValue as number)
+          : computeScore(input, this.timeLimitMs);
+        const detail =
+          this.gameId === 'property-tycoon' && this.gameState
+            ? propertyTycoonRules.assetValueBreakdown(this.gameState as never, p.id)
+            : {};
         return {
           playerId: p.id,
           displayName: p.displayName,
           seat: p.seat,
           isBot: p.isBot,
-          score: computeScore(input, this.timeLimitMs),
+          score,
           progress: input.progress,
           accuracy: input.accuracy,
           speed: speedComponent(input, this.timeLimitMs),
           completed: input.completed,
           completedAtMs: input.completedAtMs,
           penalties: input.penalties,
+          detail,
         };
       });
 
@@ -572,7 +584,7 @@ export class LiveRoom {
               completed: r.completed,
               completedAtMs: r.completedAtMs,
               penalties: r.penalties,
-              detail: {},
+              detail: r.detail,
             })),
           )
           .onConflictDoNothing();

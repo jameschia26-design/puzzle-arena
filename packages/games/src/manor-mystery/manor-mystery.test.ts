@@ -409,6 +409,67 @@ describe('accusation', () => {
     if (a) a.wrongAccusations = 3;
     expect(engine.score(s, 'a').accuracy).toBe(0);
   });
+
+  it('marks a correct accusation win with winReason "accusation"', () => {
+    let s = fresh();
+    s.phase = 'awaiting_action';
+    s = act(s, 'a', {
+      type: 'accuse',
+      suspect: s.caseFile.suspect,
+      weapon: s.caseFile.weapon,
+      room: s.caseFile.room,
+    });
+    expect(s.winner).toBe('a');
+    expect(s.winReason).toBe('accusation');
+  });
+
+  it('declares the sole remaining active player the winner the moment everyone else is locked out, without requiring them to act', () => {
+    let s = fresh(); // a, b, c
+    s.phase = 'awaiting_action';
+    const wrongRoom = ROOMS.find((r) => r !== s.caseFile.room) as string;
+    const wrongAccuse = (id: string): void => {
+      s = act(s, id, {
+        type: 'accuse',
+        suspect: s.caseFile.suspect,
+        weapon: s.caseFile.weapon,
+        room: wrongRoom as never,
+      });
+    };
+
+    wrongAccuse('a');
+    expect(s.winner).toBeNull();
+    expect(s.phase).not.toBe('game_over');
+    // Turn passed to the next active player, b.
+    expect(s.players[s.current]?.id).toBe('b');
+
+    wrongAccuse('b');
+
+    // Only c is left active — the game ends right here, c never had to act.
+    expect(s.phase).toBe('game_over');
+    expect(s.winner).toBe('c');
+    expect(s.winReason).toBe('last-standing');
+    expect(engine.isOver(s)).toEqual({ over: true, winner: 'c' });
+    expect(s.log.some((l) => /last player standing/i.test(l.text))).toBe(true);
+    // The winner-by-stalemate scores exactly like a winner-by-accusation.
+    expect(engine.score(s, 'c').completed).toBe(true);
+  });
+
+  it('tie-breaks a defensive all-locked-out fallback by seat order', () => {
+    // Not reachable through the reducer (min players is 3, and the accuse
+    // handler always ends the game the moment one player remains) — this
+    // guards the fallback in `advanceTurn`/`isOver` directly.
+    const s = fresh();
+    for (const p of s.players) p.lockedOut = true;
+    // Exercise it via a legal off-turn action path: endTurn on the current
+    // player while everyone (including them) is already locked out.
+    s.phase = 'awaiting_end_turn';
+    const r = engine.reduce(s, (s.players[s.current] as { id: string }).id, { type: 'endTurn' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.state.winner).toBe(s.players[0]?.id);
+      expect(r.state.winReason).toBe('last-standing');
+    }
+  });
 });
 
 /* ================================================================== */
