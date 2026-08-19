@@ -463,4 +463,106 @@ every board game component already uses.
   existing two games, called out here so it doesn't read as scope creep
   when it shows up in the implementation diff.
 
-Implementation outcome (Phase 3-4) will be appended below once landed.
+## Phase 3-4 — Implementation outcome
+
+Landed on `fm/feat-scrabble-game` in three commits: research/architecture
+report, engine + dictionary + bot + runtime wiring, and frontend UI + a
+client-bundle fix. `npx tsc -b` and `npx tsc -p apps/web/tsconfig.json
+--noEmit` are both clean; `npx vitest run` (234 tests, including
+`e2e.test.ts` against real Postgres) is green; `npm run build --workspace=
+apps/web` succeeds. A full game — room creation, placement, dictionary and
+connectivity validation, cross-word scoring, bot response, turn-timeout
+auto-pass, rack refill — was manually exercised end-to-end in a real browser
+against the dev server (see below).
+
+### Deviations from the Phase 2 plan, and why
+
+- **Dictionary storage: generated `.ts`, not a runtime-loaded `.txt`.** The
+  plan's §2.5 said `packages/games/src/scrabble/data/enable1.txt` loaded via
+  `readFileSync`. That does not survive the Docker image: `Dockerfile` only
+  copies each package's `dist/` folder into the runtime stage (see
+  CLAUDE.md's `.dockerignore`/`tsc -b` notes), and `tsc -b` does not copy
+  non-`.ts` assets into `dist/`. The word list is instead committed as
+  `packages/games/src/scrabble/dictionary-data.ts` — a single exported
+  template-literal string, 172,823 words, generated once from the public
+  ENABLE1 source and compiled by `tsc` like everything else. `dictionary.ts`
+  splits it into a `Set` once at module load, same memoisation as planned.
+- **Board/tile constants moved to `packages/shared`, discovered as a real
+  bug, not a refactor for its own sake.** Building `ScrabbleBoard.tsx`
+  against `@puzzle-arena/games` (matching how `PropertyTycoonBoard.tsx`/
+  `ManorMysteryBoard.tsx` already import `propertyTycoonRules`/
+  `manorMysteryRules`) inflated the client bundle from 771 KB to 2.52 MB —
+  the 172k-word dictionary was shipping to every browser tab, for every
+  game, not just Scrabble rooms. Root cause: `packages/games` had no
+  `"sideEffects": false` in its `package.json`, so Rollup conservatively kept
+  every submodule's top-level evaluation (dictionary `Set` construction
+  included) for any module reached by a *live* import, even when the
+  specific bindings pulled from that barrel were unrelated and got
+  dead-code-eliminated afterward. Fixed two ways together: (1) added
+  `"sideEffects": false` to `packages/games/package.json`, letting Rollup
+  drop genuinely-unused submodules package-wide (this also benefits Property
+  Tycoon/Manor Mystery, not just Scrabble); (2) moved the *pure* board-layout
+  and tile-value data (premium squares, tile distribution, `letterValue`,
+  `RACK_SIZE`, `BLANK`, etc. — everything with no dictionary or bot
+  dependency) into `packages/shared/src/scrabble.ts`, which the client
+  already depends on, so `ScrabbleBoard.tsx` never needs to import
+  `@puzzle-arena/games` for anything but a type-only `ScrabbleView`.
+  `packages/games/src/scrabble/board.ts` and `tiles.ts` re-export from shared
+  so the engine's own import paths (`rules.ts`, `bot.ts`, `index.ts`, tests)
+  needed no changes. Net result: bundle is back to 781 KB, 10 KB over the
+  true pre-Scrabble baseline (771 KB) — the actual weight of the new board
+  UI and shared constants.
+- **`runtime.ts#engine()`/`bots.ts#scheduleBots` became a three-way `if`
+  chain**, exactly as flagged as a likely diff in the architecture section's
+  Risks — no behaviour change for Property Tycoon or Manor Mystery.
+- **Bot move-generator search bounds**, not previously pinned down in the
+  architecture section: `MAX_WORD_LEN = 7`, `MAX_ANCHORS = 16` (sampled via
+  the same seeded `Rng` the policy already receives, for replay
+  determinism), `MAX_BUCKET_SCAN = 800` same-length dictionary words per
+  candidate window, `CANDIDATE_CAP = 150` total candidates per turn. Chosen
+  empirically: an unbounded search (anchors × axes × lengths × offsets ×
+  full dictionary buckets) made a single bot-only test game take over 60
+  seconds; these bounds brought the full `scrabble.test.ts` suite (including
+  a 300-ply bot-only replay-determinism game) down to ~5 seconds while still
+  finding legal, often good, moves in every case observed. This is the same
+  "best-effort, not tournament-strength" trade-off flagged in §1.3 — a
+  bounded search can miss a valid long word that a full dictionary scan
+  would find, which is acceptable for the documented easy/normal/hard tiers
+  and would matter only for a future Quackle-backed "expert" tier.
+- **Challenge flow: skipped, as explicitly permitted by Out of Scope.**
+  There is no `challenge` action in `ScrabbleAction`; invalid words are
+  rejected at placement time by the dictionary check in `rules.ts`, so no
+  invalid word ever reaches the board for a later challenge to contest.
+
+### What matches the plan exactly
+
+Board layout (premium squares), tile distribution/values, rack size, bag
+size, first-move centre rule, single-line/contiguity/connectivity checks,
+blank-tile handling, exchange's 7-tile bag floor, six-pass forfeiture, the
+emptied-rack end-of-game score transfer, the `assetValue` scoring escape
+hatch (Scrabble's raw point total, mirroring Property Tycoon's total-asset-
+value pattern), the `ScrabbleAction` addition to the existing `GameAction`
+union with no new socket events, and the `scrabbleConfigSchema`/
+`GAME_REGISTRY` entry (which alone surfaced Scrabble in the room-creation
+dropdown, confirmed live) all landed as designed in Phase 2.
+
+### Manual verification
+
+Ran the dev server against the worktree's own Postgres, registered a host
+account, created a 2-4 player Scrabble room, added a bot, started the game,
+and played several turns as the human player interleaved with the bot:
+- The board renders all four premium-square types with distinct tints and
+  correct positions; the room-creation dropdown lists "SCRABBLE" with its
+  registry blurb and auto-fills the 45-minute default time limit.
+- A turn timeout correctly triggered the `autoAction` pass (never an
+  auto-placement), exactly like Property Tycoon never auto-buys.
+- The bot played "PRY" covering the centre square on the opening move, then
+  later extended a human-played "PIE" into "DEVA" as a legal connecting
+  cross-word — confirming the bot's dictionary-bucket generator, cross-word
+  validation, and the reducer's own validation agree on legality.
+- Scores matched hand-computed premium-square math exactly (a plain "PIE"
+  play scored 5, matching P(3, reused, no premium) + I(1) + E(1) with no
+  premium squares under the two new tiles).
+- Rack refilled to 7 tiles after each play, tiles-remaining-in-bag counter
+  decremented correctly, and the leaderboard rail tracked both players'
+  scores live.

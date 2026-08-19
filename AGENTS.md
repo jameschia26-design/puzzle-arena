@@ -1,9 +1,10 @@
 # Puzzle Arena — working notes
 
 Multiplayer puzzle and board game platform. An admin registers, hosts a room,
-and players join with a 6-character passcode. Six games: four concurrent puzzles
-(Sudoku, Killer Sudoku, Nonogram, Word Search) and two turn-based board games
-(Property Tycoon, Manor Mystery). Every game is playable solo against bots.
+and players join with a 6-character passcode. Seven games: four concurrent
+puzzles (Sudoku, Killer Sudoku, Nonogram, Word Search) and three turn-based
+board games (Property Tycoon, Manor Mystery, Scrabble). Every game is
+playable solo against bots.
 
 `PLAN.md` is the build reference and the source of truth for design decisions.
 This file records how to run it and what to be careful about.
@@ -84,6 +85,18 @@ real Postgres. It needs `docker compose up -d` first.
   produced a board game's score.
 - **npm workspaces does not hoist everything.** `better-auth` and `nanoid`
   resolve to `apps/server/node_modules`, which the runtime image must copy.
+- **`packages/games` is `"sideEffects": false` on purpose.** `apps/web`
+  imports `@puzzle-arena/games` straight from source (see `vite.config.ts`'s
+  alias), and `packages/games/src/index.ts` is one barrel that statically
+  imports every board game's engine. Without that flag, Rollup keeps a
+  submodule's top-level evaluation for any import reached by the client's
+  build, even when the specific bindings pulled from the barrel are
+  unrelated and get dead-code-eliminated afterward — that shipped Scrabble's
+  172k-word dictionary to every player's browser until it was added. A large
+  static table or asset added to any board game engine belongs in
+  `packages/shared` if the client needs to render from it directly (board
+  layout, tile values, …) — importing `@puzzle-arena/games` client-side
+  should stay limited to types and small per-game view/rules helpers.
 
 ## AI providers
 
