@@ -23,6 +23,7 @@ import {
 import { CARD_BY_ID, CIVIC_DECK, FORTUNE_DECK, type Card } from './cards.js';
 import type { PTConfig, PTPlayer, PTState } from './state.js';
 import {
+  assetValue,
   buildingCounts,
   canBuild,
   canMortgage,
@@ -965,6 +966,10 @@ function score(s: PTState, playerId: string): ScoreInput {
     completed,
     completedAtMs: completed ? s.winnerAtMs : null,
     penalties: player.penalties,
+    // The runtime's leaderboard/results use THIS, not `computeScore`, as
+    // Property Tycoon's final score — see the comment on `assetValueBreakdown`
+    // in rules.ts for the exact formula and why it differs from `netWorth`.
+    assetValue: assetValue(s, playerId),
   };
 }
 

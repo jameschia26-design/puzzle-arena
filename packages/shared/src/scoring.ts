@@ -10,6 +10,16 @@ export interface ScoreInput {
   completed: boolean;
   completedAtMs: number | null; // ms from room start; null unless completed
   penalties: number; // hints, illegal-move strikes, turn timeouts
+  /**
+   * Board-game-only escape hatch. Property Tycoon's result is total asset
+   * value (cash + property + buildings), not a progress/accuracy/speed
+   * blend, so it does not go through `computeScore` at all — see
+   * `packages/games/src/property-tycoon/rules.ts` (`assetValue`) and
+   * `runtime.ts#finish()`, which uses this field directly as the leaderboard
+   * score instead of calling `computeScore`. Absent (undefined) for every
+   * other game; `computeScore` itself never reads it.
+   */
+  assetValue?: number;
 }
 
 export const SCORE_WEIGHTS = { progress: 0.55, accuracy: 0.2, speed: 0.25 } as const;

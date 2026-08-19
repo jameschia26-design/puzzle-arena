@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { actorToAct, propertyTycoon as engine } from './index.js';
 import type { PTState } from './state.js';
 import { GROUPS, HOUSE_COST, JAIL_INDEX, squareAt } from './board.js';
-import { netWorth, ownsFullGroup, rentFor } from './rules.js';
+import { assetValue, assetValueBreakdown, netWorth, ownsFullGroup, rentFor } from './rules.js';
 
 const PLAYERS = ['p1', 'p2', 'p3'];
 
@@ -751,6 +751,64 @@ describe('scoring and views', () => {
     const v = engine.view(s, 'p1') as Record<string, unknown>;
     expect(v.rng).toBeUndefined();
     expect(v.properties).toBeDefined();
+  });
+});
+
+describe('asset-value scoring — Property Tycoon does not use computeScore', () => {
+  it('is cash + unmortgaged property price + full house/hotel cost', () => {
+    const s = fresh();
+    grant(s, 'p1', [1]); // Ash Lane, price 60
+    const prop = s.properties[1];
+    if (prop) prop.houses = 2;
+    // 1500 cash + 60 face + 2 * 50 (full house cost, not halved) = 1660
+    expect(assetValue(s, 'p1')).toBe(1660);
+  });
+
+  it('differs from netWorth precisely in how mortgaged deeds and buildings count', () => {
+    const s = fresh();
+    grant(s, 'p1', [1]);
+    const prop = s.properties[1];
+    if (prop) prop.houses = 2;
+    // netWorth: half the building cost, full mortgage-value credit if mortgaged.
+    expect(netWorth(s, 'p1')).toBe(1610); // 1500 + 60 + (2*50)/2
+    // assetValue: full building cost, nothing extra for a mortgaged deed.
+    expect(assetValue(s, 'p1')).toBe(1660); // 1500 + 60 + 2*50
+  });
+
+  it('counts nothing extra for a mortgaged deed beyond the cash already banked', () => {
+    const s = fresh();
+    grant(s, 'p1', [1]);
+    const prop = s.properties[1];
+    if (prop) prop.mortgaged = true;
+    // Mortgaging already paid the player the mortgage value in cash; asset
+    // value must not also count the deed's face value on top of that.
+    expect(assetValue(s, 'p1')).toBe(1500);
+  });
+
+  it('breaks the total down into cash, property and building value', () => {
+    const s = fresh();
+    grant(s, 'p1', [1, 3]); // Ash Lane 60, Cherry Court 60
+    const prop = s.properties[1];
+    if (prop) prop.houses = 1;
+    const breakdown = assetValueBreakdown(s, 'p1');
+    expect(breakdown).toEqual({
+      cash: 1500,
+      propertyValue: 120,
+      buildingValue: HOUSE_COST[squareAt(1).group as string],
+      total: 1500 + 120 + (HOUSE_COST[squareAt(1).group as string] as number),
+    });
+  });
+
+  it('exposes assetValue on the engine ScoreInput, separate from progress', () => {
+    const s = fresh();
+    grant(s, 'p1', [1]);
+    const score = engine.score(s, 'p1');
+    expect(score.assetValue).toBe(assetValue(s, 'p1'));
+  });
+
+  it('is undefined for a player who is not in the game', () => {
+    const s = fresh();
+    expect(engine.score(s, 'nobody').assetValue).toBeUndefined();
   });
 });
 
