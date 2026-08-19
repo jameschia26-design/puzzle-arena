@@ -24,6 +24,8 @@ import {
   manorMysteryRules,
   propertyTycoon,
   propertyTycoonRules,
+  scrabble,
+  scrabbleRules,
 } from '@puzzle-arena/games';
 import { wordSearch } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -227,17 +229,17 @@ export class LiveRoom {
   }
 
   engine() {
-    return this.gameId === 'property-tycoon'
-      ? (propertyTycoon as unknown as typeof propertyTycoon)
-      : (manorMystery as unknown as typeof propertyTycoon);
+    if (this.gameId === 'property-tycoon') return propertyTycoon as unknown as typeof propertyTycoon;
+    if (this.gameId === 'scrabble') return scrabble as unknown as typeof propertyTycoon;
+    return manorMystery as unknown as typeof propertyTycoon;
   }
 
   /** Whoever the board game is waiting on, or null. */
   actorToAct(): string | null {
     if (this.kind !== 'board' || !this.gameState) return null;
-    return this.gameId === 'property-tycoon'
-      ? propertyTycoonRules.actorToAct(this.gameState as never)
-      : manorMysteryRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'property-tycoon') return propertyTycoonRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'scrabble') return scrabbleRules.actorToAct(this.gameState as never);
+    return manorMysteryRules.actorToAct(this.gameState as never);
   }
 
   private armEndTimer(): void {
@@ -534,10 +536,13 @@ export class LiveRoom {
       .filter((p) => !p.left || p.isBot)
       .map((p) => {
         const input = this.scoreInputFor(p);
-        // Property Tycoon does not go through the progress/accuracy/speed
-        // blend at all — its score IS total asset value. See the comment on
-        // `assetValueBreakdown` in property-tycoon/rules.ts for the formula.
-        const usesAssetValue = this.gameId === 'property-tycoon' && input.assetValue !== undefined;
+        // Property Tycoon and Scrabble don't go through the progress/accuracy/
+        // speed blend at all — their score IS the assetValue escape hatch
+        // (total asset value for PT, raw point total for Scrabble). See the
+        // comment on `assetValueBreakdown` in property-tycoon/rules.ts.
+        const usesAssetValue =
+          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble') &&
+          input.assetValue !== undefined;
         const score = usesAssetValue
           ? Math.round(input.assetValue as number)
           : computeScore(input, this.timeLimitMs);

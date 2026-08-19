@@ -359,6 +359,23 @@ describe('a sudoku room end to end', () => {
     expect(hostResult).toBeDefined();
     expect(hostResult.rank).toBe(2);
 
+    // --- the finished-state leaderboard bar: higher score must render a
+    // longer bar, not a shorter one. Reproduces the client's exact math
+    // from RoomPage.tsx's Leaderboard component. ---
+    const finishedBoard = room!.leaderboard();
+    const guestEntry = finishedBoard.find((e) => e.playerId === guestId)!;
+    const hostEntry = finishedBoard.find(
+      (e) => e.playerId === hostJoin.snapshot.you.playerId,
+    )!;
+    expect(guestEntry.score).not.toBeNull();
+    expect(hostEntry.score).not.toBeNull();
+    expect(guestEntry.score!).toBeGreaterThan(hostEntry.score ?? 0);
+    const maxScore = Math.max(1, ...finishedBoard.map((e) => e.score ?? 0));
+    const guestBar = (guestEntry.score ?? 0) / maxScore;
+    const hostBar = (hostEntry.score ?? 0) / maxScore;
+    expect(guestBar).toBeGreaterThan(hostBar);
+    expect(guestBar).toBeCloseTo(1, 5); // the top scorer's bar is full
+
     // --- the solution is revealed only now ---
     const afterSnap = room!.snapshotFor(guestId) as RoomSnapshot;
     expect((afterSnap.state as any).solution).toEqual(solution);

@@ -101,16 +101,18 @@ export interface AssetValueBreakdown {
 
 /**
  * Property Tycoon's actual scoreboard result, per PLAN.md: total asset
- * value, not the generic progress/accuracy/speed blend every other game
- * uses. Formula: cash on hand + sum of unmortgaged property prices + full
- * house/hotel construction cost. Mortgaged properties contribute nothing
- * beyond the cash the player already banked for mortgaging them — counting
- * their face value again would double-count that cash. This is deliberately
- * NOT `netWorth` below: `netWorth` credits mortgaged properties at their
- * (lower) mortgage value and halves the building premium, because it backs
- * decisions like the Revenue Levy and liquidation planning where a realistic
- * "what could I raise right now" number matters. Asset value is a
- * end-of-game scoreboard number, so it counts what is actually owned.
+ * value, not the generic progress/accuracy/speed blend most other games use
+ * (Scrabble also bypasses it, with its own raw point total — see
+ * `runtime.ts#finish()`). Formula: cash on hand + sum of unmortgaged
+ * property prices + full house/hotel construction cost. Mortgaged
+ * properties contribute nothing beyond the cash the player already banked
+ * for mortgaging them — counting their face value again would double-count
+ * that cash. This is deliberately NOT `netWorth` below: `netWorth` credits
+ * mortgaged properties at their (lower) mortgage value and halves the
+ * building premium, because it backs decisions like the Revenue Levy and
+ * liquidation planning where a realistic "what could I raise right now"
+ * number matters. Asset value is an end-of-game scoreboard number, so it
+ * counts what is actually owned.
  */
 export function assetValueBreakdown(s: PTState, playerId: string): AssetValueBreakdown {
   const player = playerById(s, playerId);

@@ -37,8 +37,6 @@ export function SudokuBoard({
   disabled,
   wrongCells,
   solution,
-  pencil,
-  onPencilChange,
 }: {
   givens: number[];
   board: number[];
@@ -48,11 +46,9 @@ export function SudokuBoard({
   /** Results view: the player's own wrong cells, outlined in danger. */
   wrongCells?: Set<number>;
   solution?: number[] | null;
-  /** Owned by the page so the toggle can sit outside this component. */
-  pencil: boolean;
-  onPencilChange: (next: boolean) => void;
 }) {
   const [cursor, setCursor] = React.useState(0);
+  const [pencil, setPencil] = React.useState(false);
   const [marks, setMarks] = React.useState<Record<number, Set<number>>>({});
 
   const cageOf = React.useMemo(() => {
@@ -171,7 +167,7 @@ export function SudokuBoard({
     else if (e.key === 'ArrowRight') setCursor(row * 9 + ((col + 1) % 9));
     else if (/^[1-9]$/.test(e.key)) write(cursor, Number(e.key));
     else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') write(cursor, 0);
-    else if (e.key.toLowerCase() === 'p') onPencilChange(!pencil);
+    else if (e.key.toLowerCase() === 'p') setPencil((p) => !p);
     else return;
     e.preventDefault();
   };
@@ -180,6 +176,21 @@ export function SudokuBoard({
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setPencil((p) => !p)}
+          className={cn(
+            'font-display text-[10px] uppercase border-2 px-3 min-h-[44px] pa-shadow-sm cursor-pointer',
+            pencil ? 'border-pa-amber text-pa-amber' : 'border-pa-border text-pa-ink-dim',
+          )}
+          aria-pressed={pencil}
+        >
+          Pencil {pencil ? 'on' : 'off'}
+        </button>
+        <span className="text-[12px] text-pa-ink-dim">Arrows to move · 1-9 to fill · P for pencil</span>
+      </div>
+
       {(cages?.length ?? 0) > 0 && (
         <p className="flex items-center gap-2 text-[12px] text-pa-ink-dim">
           <span

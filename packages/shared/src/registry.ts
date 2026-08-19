@@ -7,6 +7,7 @@ export const GAME_IDS = [
   'word-search',
   'property-tycoon',
   'manor-mystery',
+  'scrabble',
 ] as const;
 
 export type GameId = (typeof GAME_IDS)[number];
@@ -47,6 +48,10 @@ export const propertyTycoonConfigSchema = z.object({
 });
 
 export const manorMysteryConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(90),
+});
+
+export const scrabbleConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(90),
 });
 
@@ -128,6 +133,17 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: manorMysteryConfigSchema,
     blurb: 'Deduce the suspect, weapon and room before anyone else.',
+  },
+  scrabble: {
+    id: 'scrabble',
+    title: 'Scrabble',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 4,
+    defaultTimeLimitSec: 2700,
+    supportsBots: true,
+    configSchema: scrabbleConfigSchema,
+    blurb: 'Build words across a shared 15x15 board and rack up the highest score.',
   },
 };
 
