@@ -31,6 +31,7 @@ import { NonogramBoard } from '../games/NonogramBoard.js';
 import { WordSearchBoard } from '../games/WordSearchBoard.js';
 import { PropertyTycoonBoard } from '../games/PropertyTycoonBoard.js';
 import { ManorMysteryBoard } from '../games/ManorMysteryBoard.js';
+import { ScrabbleBoard } from '../games/ScrabbleBoard.js';
 import { ResultsTable } from './ResultsPage.js';
 
 export default function RoomPage(): React.ReactElement {
@@ -558,6 +559,19 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'property-tycoon') {
     return (
       <PropertyTycoonBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'scrabble') {
+    return (
+      <ScrabbleBoard
         view={state}
         players={store.players}
         youId={store.you?.playerId ?? null}

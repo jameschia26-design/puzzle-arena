@@ -17,13 +17,21 @@ export type {
   SuggestionRecord,
 } from './manor-mystery/index.js';
 
+export { scrabble } from './scrabble/index.js';
+export * as scrabbleRules from './scrabble/index.js';
+export { scrabbleBot, type SCRBotView } from './scrabble/bot.js';
+export type { ScrabbleState, ScrabblePlayer, ScrabbleConfig } from './scrabble/state.js';
+export type { ScrabbleView, ScrabblePublicPlayer } from './scrabble/index.js';
+
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
 import { manorMystery } from './manor-mystery/index.js';
+import { scrabble } from './scrabble/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
 export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = {
   'property-tycoon': propertyTycoon as unknown as GameEngine<never, never>,
   'manor-mystery': manorMystery as unknown as GameEngine<never, never>,
+  scrabble: scrabble as unknown as GameEngine<never, never>,
 };

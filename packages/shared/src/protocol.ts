@@ -81,11 +81,32 @@ export const manorMysteryActionSchema = z.discriminatedUnion('type', [
 ]);
 export type ManorMysteryAction = z.infer<typeof manorMysteryActionSchema>;
 
+/** A single newly placed tile, as sent by the client. `letter` is always the
+ *  resolved A-Z letter — for a blank, the letter the player chose for it. */
+export const scrabblePlacedTileSchema = z.object({
+  row: z.number().int().min(0).max(14),
+  col: z.number().int().min(0).max(14),
+  letter: z.string().regex(/^[A-Z]$/),
+  isBlank: z.boolean().optional(),
+});
+
+export const scrabbleActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('place'), tiles: z.array(scrabblePlacedTileSchema).min(1).max(7) }),
+  z.object({
+    type: z.literal('exchange'),
+    // Rack contents to trade back: 'A'-'Z' or '_' for an unassigned blank.
+    letters: z.array(z.string().regex(/^[A-Z_]$/)).min(1).max(7),
+  }),
+  z.object({ type: z.literal('pass') }),
+]);
+export type ScrabbleAction = z.infer<typeof scrabbleActionSchema>;
+
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
   manorMysteryActionSchema,
+  scrabbleActionSchema,
 ]);
-export type GameAction = PropertyTycoonAction | ManorMysteryAction;
+export type GameAction = PropertyTycoonAction | ManorMysteryAction | ScrabbleAction;
 
 /* ------------------------------------------------------------------ */
 /* Client -> server                                                    */

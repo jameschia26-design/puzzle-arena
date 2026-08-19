@@ -1,8 +1,10 @@
 import {
   manorMysteryBot,
   propertyTycoonBot,
+  scrabbleBot,
   type MMBotView,
   type PTBotView,
+  type SCRBotView,
 } from '@puzzle-arena/games';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
 import { env } from '../env.js';
@@ -95,10 +97,13 @@ export function scheduleBots(room: LiveRoom): void {
 
     let action: unknown;
     try {
-      action =
-        room.gameId === 'property-tycoon'
-          ? propertyTycoonBot.chooseAction(view as PTBotView, actorId, rng, difficulty)
-          : manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, difficulty);
+      if (room.gameId === 'property-tycoon') {
+        action = propertyTycoonBot.chooseAction(view as PTBotView, actorId, rng, difficulty);
+      } else if (room.gameId === 'scrabble') {
+        action = scrabbleBot.chooseAction(view as SCRBotView, actorId, rng, difficulty);
+      } else {
+        action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, difficulty);
+      }
     } catch (err) {
       logger.error({ err, roomId: room.id }, 'bot policy threw; using autoAction');
       action = room.engine().autoAction(room.gameState as never, actorId);
