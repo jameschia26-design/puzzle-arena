@@ -211,7 +211,6 @@ export function SudokuBoard({
         {Array.from({ length: 81 }, (_, i) => {
           const row = Math.floor(i / 9);
           const col = i % 9;
-          const given = (givens[i] ?? 0) !== 0;
           const value = board[i] ?? 0;
           const cage = cageOf.get(i);
           const edges = cageEdges.get(i);
@@ -235,7 +234,7 @@ export function SudokuBoard({
                 row % 3 === 0 && row !== 0 && 'border-t-2 border-t-pa-ink',
                 isCursor && 'bg-pa-surface-2',
                 sameValue && 'bg-pa-surface',
-                given ? 'text-pa-ink-dim' : 'text-pa-cyan',
+                'text-pa-ink',
                 conflicted && 'text-pa-danger',
                 wrong && 'outline outline-2 outline-pa-danger -outline-offset-2',
               )}
@@ -279,7 +278,10 @@ export function SudokuBoard({
                   {value}
                 </span>
               ) : (marks[i]?.size ?? 0) > 0 ? (
-                <span className="text-[8px] leading-[1.1] text-pa-ink-dim tabular px-[2px]">
+                <span
+                  className="leading-[1.1] text-pa-ink-dim tabular px-[1px]"
+                  style={{ fontSize: 'clamp(10px, 2.6vw, 12px)' }}
+                >
                   {[...(marks[i] ?? [])].sort().join('')}
                 </span>
               ) : null}
