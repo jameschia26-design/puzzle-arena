@@ -278,12 +278,13 @@ export function SudokuBoard({
                   {value}
                 </span>
               ) : (marks[i]?.size ?? 0) > 0 ? (
-                <span
-                  className="leading-[1.1] text-pa-ink-dim tabular px-[1px]"
-                  style={{ fontSize: 'clamp(10px, 2.6vw, 12px)' }}
-                >
-                  {[...(marks[i] ?? [])].sort().join('')}
-                </span>
+                <div className="grid grid-cols-3 grid-rows-3 place-items-center w-full h-full text-pa-ink-dim tabular">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                    <span key={n} style={{ fontSize: 'clamp(10px, 2.6vw, 12px)', lineHeight: 1 }}>
+                      {marks[i]?.has(n) ? n : ''}
+                    </span>
+                  ))}
+                </div>
               ) : null}
 
               {solution && wrong && (
