@@ -81,7 +81,18 @@ function pickCageSize(rng: Rng, difficulty: Difficulty): number {
 
 /** Partition all 81 cells into orthogonally-connected cages of size 2..5 with
  *  no digit repeated inside a cage. */
-function growCages(solution: Grid, rng: Rng, difficulty: Difficulty): number[][] {
+/**
+ * One pass of the grow-then-merge algorithm. Returns null if a size-1 cage
+ * survives the merge fallbacks with the size-5 cap in place — the caller
+ * retries with fresh randomness rather than ever handing out a cage layout
+ * that leaks a digit.
+ */
+function growCagesOnce(
+  solution: Grid,
+  rng: Rng,
+  difficulty: Difficulty,
+  allowOversizeMerge: boolean,
+): number[][] | null {
   const owner = new Int16Array(CELLS).fill(-1);
   const cages: number[][] = [];
 
@@ -119,12 +130,13 @@ function growCages(solution: Grid, rng: Rng, difficulty: Difficulty): number[][]
     if (cells.length !== 1) continue;
     const only = cells[0] as number;
     const digit = solution[only] as number;
+    const sizeCap = allowOversizeMerge ? Infinity : 5;
 
     for (const n of neighbours(only)) {
       const otherId = owner[n] as number;
       if (otherId === id) continue;
       const other = cages[otherId] as number[];
-      if (other.length >= 5) continue;
+      if (other.length >= sizeCap) continue;
       if (other.some((c) => solution[c] === digit)) continue;
       other.push(only);
       owner[only] = otherId;
@@ -150,7 +162,36 @@ function growCages(solution: Grid, rng: Rng, difficulty: Difficulty): number[][]
     }
   }
 
-  return cages.filter((c) => c.length > 0);
+  const result = cages.filter((c) => c.length > 0);
+  // The one invariant that must never be violated: no size-1 cage leaks a
+  // digit. If one survived even the merge fallbacks, this whole layout is
+  // rejected rather than returned.
+  if (result.some((c) => c.length === 1)) return null;
+  return result;
+}
+
+/**
+ * Retry `growCagesOnce` a bounded, small number of times, relaxing the
+ * size-5 cap only once the strict attempts are exhausted — guaranteed to
+ * succeed eventually because a fully-partitioned grid always has *some*
+ * digit-clash-free neighbour once cage size is unconstrained. Only used at
+ * the one call site that has no outer retry loop of its own to fall back
+ * on; the main generation loop below instead treats a single `null` from
+ * `growCagesOnce` as "try the next seed", reusing the retry budget it
+ * already has rather than multiplying attempts on top of it.
+ */
+function growCagesWithFallback(solution: Grid, rng: Rng, difficulty: Difficulty): number[][] {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const result = growCagesOnce(solution, rng, difficulty, false);
+    if (result) return result;
+  }
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const result = growCagesOnce(solution, rng, difficulty, true);
+    if (result) return result;
+  }
+  // Unreachable in practice (see doc comment), but never hand back a layout
+  // with a leaking singleton cage.
+  throw new Error('growCages: could not produce a cage layout without a size-1 cage');
 }
 
 function connected(cells: number[]): boolean {
@@ -255,7 +296,13 @@ export function generate(opts: { difficulty: Difficulty; seed: number }): {
     for (let attempt = 0; attempt < 400 && Date.now() < deadline; attempt++) {
       const rng = mulberry32(opts.seed + attempt * 6151);
       const solution = generateFullGrid(rng);
-      let cageCells = growCages(solution, rng, profile);
+      // A single strict-cap attempt: on the rare occasion a singleton cage
+      // can't be merged, just move on to the next seed rather than retrying
+      // in a nested loop — the outer attempt loop already has 400 seeds and
+      // its own time budget, and multiplying retries on top of it is what
+      // pushed 'hard'/'expert' generation close to the test timeout.
+      let cageCells = growCagesOnce(solution, rng, profile, false);
+      if (!cageCells) continue;
 
       for (let round = 0; round < 8; round++) {
         if (Date.now() >= deadline) break;
@@ -290,13 +337,19 @@ export function generate(opts: { difficulty: Difficulty; seed: number }): {
   // fully-revealed grid is trivially unique.
   const rng = mulberry32(opts.seed + 999983);
   const solution = generateFullGrid(rng);
-  const cageCells = growCages(solution, rng, 'easy');
+  const cageCells = growCagesWithFallback(solution, rng, 'easy');
   const constraint = cageConstraint(
     cageCells.map((cells) => ({ cells, sum: sumOf(cells, solution) })),
   );
   const givens: Grid = [...noGivens];
   for (let i = 0; i < CELLS; i++) {
-    if (countSolutions(givens, 2, constraint) === 1) break;
+    // Same node budget as the main search loop above. Without it, a nearly
+    // given-free Killer board can send a single call here down a pathological
+    // branch that burns far past any reasonable generation latency — the
+    // exact case the main loop's budget already exists to guard against; a
+    // budget-exhausted call is "not proven unique", so the loop just reveals
+    // another digit and tries again, which still always terminates.
+    if (countSolutions(givens, 2, constraint, 4, NODE_BUDGET) === 1) break;
     const blanks: number[] = [];
     for (let c = 0; c < CELLS; c++) if (givens[c] === 0) blanks.push(c);
     if (blanks.length === 0) break;

@@ -5,6 +5,7 @@ import { scrabbleBot, type SCRBotView } from './bot.js';
 import type { ScrabbleState } from './state.js';
 import { BOARD_SIZE, indexOf, premiumAt } from './board.js';
 import { BAG_SIZE, RACK_SIZE, freshBag } from './tiles.js';
+import { rackValue } from './rules.js';
 
 const PLAYERS = ['p1', 'p2'];
 
@@ -285,9 +286,10 @@ describe('exchange', () => {
 });
 
 describe('pass and six-pass forfeiture', () => {
-  it('ends the game after six consecutive scoreless turns, scores untouched', () => {
+  it('ends the game after six consecutive scoreless turns, deducting each rack like standard Scrabble', () => {
     let s = fresh();
     const scoresBefore = s.players.map((p) => p.score);
+    const rackValuesBefore = s.players.map((p) => rackValue(p.rack));
     for (let i = 0; i < 6; i++) {
       const actor = s.players[s.current] as ScrabbleState['players'][number];
       const r = engine.reduce(s, actor.id, { type: 'pass' });
@@ -296,7 +298,12 @@ describe('pass and six-pass forfeiture', () => {
     }
     expect(s.turnPhase).toBe('game_over');
     expect(s.winReason).toBe('six-passes');
-    expect(s.players.map((p) => p.score)).toEqual(scoresBefore);
+    // Nobody emptied their rack, so — unlike the emptied-rack ending — every
+    // player's own unplayed tiles are deducted from their own score, exactly
+    // as standard Scrabble scores a game that ends without a rack going out.
+    expect(s.players.map((p) => p.score)).toEqual(
+      scoresBefore.map((score, i) => score - (rackValuesBefore[i] ?? 0)),
+    );
     expect(engine.isOver(s).over).toBe(true);
   });
 

@@ -97,7 +97,7 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): PTState {
     rolledDoublesThisTurn: false,
     pendingPurchase: null,
     auction: null,
-    debt: null,
+    debt: [],
     trades: [],
     fortuneDeck: rng.shuffle(FORTUNE_DECK.map((c) => c.id)),
     fortuneIdx: 0,
@@ -136,7 +136,30 @@ function pay(
     ),
   );
   if (from.cash < 0) {
-    s.debt = { playerId: from.id, amount: -from.cash, creditor: to?.id ?? null };
+    const existing = s.debt.find((d) => d.playerId === from.id);
+    if (existing) existing.amount = -from.cash;
+    else s.debt.push({ playerId: from.id, amount: -from.cash, creditor: to?.id ?? null });
+  }
+}
+
+/**
+ * Debt can be settled by any means that raises the debtor's cash back to
+ * zero or above — mortgaging, selling a house, an accepted trade, even
+ * someone else's card effect — not just the handlers that used to check for
+ * it explicitly. Called once after every action so no settlement path has
+ * to remember to clear it itself, and so multiple simultaneous debtors
+ * (e.g. from a "collect from every player" card) each clear independently
+ * as they resolve, instead of only whichever one last occupied the single
+ * debt slot the state used to have.
+ */
+function settleClearedDebts(s: PTState): void {
+  const had = s.debt.length > 0;
+  s.debt = s.debt.filter((d) => {
+    const debtor = playerById(s, d.playerId);
+    return !!debtor && !debtor.bankrupt && debtor.cash < 0;
+  });
+  if (had && s.debt.length === 0 && s.phase === 'awaiting_debt_settlement') {
+    settlePhase(s);
   }
 }
 
@@ -325,7 +348,7 @@ function resolveSquare(
 
 /** Choose the phase after a square has resolved. */
 function settlePhase(s: PTState): void {
-  if (s.debt) {
+  if (s.debt.length > 0) {
     s.phase = 'awaiting_debt_settlement';
   } else if (s.pendingPurchase !== null) {
     s.phase = 'awaiting_purchase_decision';
@@ -453,7 +476,7 @@ function bankrupt(s: PTState, player: PTPlayer, creditorId: string | null, log: 
 
   player.jailCards = [];
   player.cash = 0;
-  s.debt = null;
+  s.debt = s.debt.filter((d) => d.playerId !== player.id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -534,7 +557,7 @@ function reduce(
   ]);
   // A debtor must be able to settle even when it is not their turn: a card like
   // "collect 50 from every player" can bankrupt someone who is not on turn.
-  const isDebtor = s.debt?.playerId === playerId;
+  const isDebtor = s.debt.some((d) => d.playerId === playerId);
   if (!onTurn && !isDebtor && !offTurnAllowed.has(action.type)) return fail('Not your turn');
 
   switch (action.type) {
@@ -664,11 +687,8 @@ function reduce(
       }
       player.cash += refund;
       log.push(makeLog(`${playerId} sells a building on ${sq.name} for ${refund}`, playerId));
-      if (s.debt && s.debt.playerId === playerId && player.cash >= 0) {
-        s.debt = null;
-        // The debt is settled — leave the settlement phase.
-        if (s.phase === 'awaiting_debt_settlement') settlePhase(s);
-      }
+      // Debt clearing is handled generically by settleClearedDebts() after
+      // every action, not here — see its doc comment.
       break;
     }
 
@@ -681,11 +701,6 @@ function reduce(
       prop.mortgaged = true;
       player.cash += sq.mortgage ?? 0;
       log.push(makeLog(`${playerId} mortgages ${sq.name} for ${sq.mortgage}`, playerId));
-      if (s.debt && s.debt.playerId === playerId && player.cash >= 0) {
-        s.debt = null;
-        // The debt is settled — leave the settlement phase.
-        if (s.phase === 'awaiting_debt_settlement') settlePhase(s);
-      }
       break;
     }
 
@@ -741,8 +756,15 @@ function reduce(
       }
       const proposer = playerById(s, trade.from);
       if (!proposer || proposer.bankrupt) return fail('The proposer is no longer in the game');
-      if (proposer.cash < trade.give.cash) return fail('The proposer cannot cover their cash');
-      if (player.cash < trade.receive.cash) return fail('You cannot cover that cash');
+      // Paying $0 is always affordable, even for a player already in debt for
+      // an unrelated reason — a trade that hands them cash (receive.cash: 0)
+      // is exactly how they might raise it, so this must not reject them.
+      if (trade.give.cash > 0 && proposer.cash < trade.give.cash) {
+        return fail('The proposer cannot cover their cash');
+      }
+      if (trade.receive.cash > 0 && player.cash < trade.receive.cash) {
+        return fail('You cannot cover that cash');
+      }
 
       proposer.cash -= trade.give.cash;
       player.cash += trade.give.cash;
@@ -787,10 +809,10 @@ function reduce(
     }
 
     case 'declareBankruptcy': {
-      const shortfall = s.debt && s.debt.playerId === playerId ? s.debt.amount : 0;
-      if (shortfall === 0 && player.cash >= 0) return fail('You are not in debt');
+      const myDebt = s.debt.find((d) => d.playerId === playerId);
+      if (!myDebt && player.cash >= 0) return fail('You are not in debt');
       const wasOnTurn = (s.players[s.current] as PTPlayer).id === playerId;
-      bankrupt(s, player, s.debt?.creditor ?? null, log);
+      bankrupt(s, player, myDebt?.creditor ?? null, log);
       if (wasOnTurn) {
         endTurn(s, log);
       } else {
@@ -808,7 +830,7 @@ function reduce(
     }
 
     case 'endTurn': {
-      if (s.phase === 'awaiting_debt_settlement' && s.debt) {
+      if (s.phase === 'awaiting_debt_settlement' && s.debt.length > 0) {
         return fail('Settle your debt first');
       }
       if (s.phase === 'auction') return fail('Finish the auction first');
@@ -872,7 +894,11 @@ function rollInJail(prev: PTState, playerId: string): ReduceResult<PTState> {
       player.inJail = false;
       player.jailTurns = 0;
       log.push(makeLog(`${playerId} pays the ${JAIL_FINE} fine after three tries`, playerId));
-      if (player.cash < 0) s.debt = { playerId, amount: -player.cash, creditor: null };
+      if (player.cash < 0) {
+        const existing = s.debt.find((d) => d.playerId === playerId);
+        if (existing) existing.amount = -player.cash;
+        else s.debt.push({ playerId, amount: -player.cash, creditor: null });
+      }
       moveTo(s, player, player.position + total, log, true);
       resolveSquare(s, player, total, log);
     } else {
@@ -922,8 +948,11 @@ function legalActions(s: PTState, playerId: string): string[] {
     if (s.phase === 'awaiting_end_turn') out.push('endTurn');
   }
 
-  // Settling a debt is the debtor's job, on turn or not.
-  if (s.phase === 'awaiting_debt_settlement' && s.debt?.playerId === playerId) {
+  // Settling a debt is the debtor's job, on turn or not — and any of
+  // several simultaneous debtors (e.g. from a "collect from everyone" card)
+  // may resolve their own debt independently, not just whichever one the
+  // turn timer happens to be watching.
+  if (s.debt.some((d) => d.playerId === playerId)) {
     out.push('declareBankruptcy');
   }
 
@@ -985,20 +1014,28 @@ function autoAction(s: PTState, playerId: string): PropertyTycoonAction {
   return { type: 'endTurn' };
 }
 
+function rollFromJailEntry(s: PTState, playerId: string): ReduceResult<PTState> {
+  const player = playerById(s, playerId);
+  if (!player) return { ok: false, error: 'Not in this game' };
+  if ((s.players[s.current] as PTPlayer).id !== playerId) {
+    return { ok: false, error: 'Not your turn' };
+  }
+  return rollInJail(s, playerId);
+}
+
 export const propertyTycoon: GameEngine<PTState, PropertyTycoonAction> = {
   id: 'property-tycoon',
   setup,
   reduce(s, playerId, action) {
     // Rolling from jail follows its own rules.
-    if (action.type === 'roll' && s.phase === 'in_jail_decision') {
-      const player = playerById(s, playerId);
-      if (!player) return { ok: false, error: 'Not in this game' };
-      if ((s.players[s.current] as PTPlayer).id !== playerId) {
-        return { ok: false, error: 'Not your turn' };
-      }
-      return rollInJail(s, playerId);
-    }
-    return reduce(s, playerId, action);
+    const result =
+      action.type === 'roll' && s.phase === 'in_jail_decision'
+        ? rollFromJailEntry(s, playerId)
+        : reduce(s, playerId, action);
+    // Debt can clear via any settlement path (mortgage, house sale, an
+    // accepted trade, ...) — see settleClearedDebts's doc comment.
+    if (result.ok) settleClearedDebts(result.state);
+    return result;
   },
   autoAction,
   view,
@@ -1017,6 +1054,6 @@ export { isOver, netWorth as propertyNetWorth };
 export function actorToAct(s: PTState): string | null {
   if (s.phase === 'game_over') return null;
   if (s.phase === 'auction' && s.auction) return s.auction.turn;
-  if (s.phase === 'awaiting_debt_settlement' && s.debt) return s.debt.playerId;
+  if (s.phase === 'awaiting_debt_settlement' && s.debt.length > 0) return s.debt[0]!.playerId;
   return (s.players[s.current] as PTPlayer | undefined)?.id ?? null;
 }

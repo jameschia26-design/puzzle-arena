@@ -95,6 +95,14 @@ function maybeEndGame(s: ScrabbleState, log: LogEntry[]): boolean {
   if (s.passStreak >= 6) {
     s.turnPhase = 'game_over';
     s.winReason = 'six-passes';
+    // Standard end-of-game adjustment: since nobody emptied their rack here,
+    // every player's final score is reduced by the value of the tiles still
+    // in their own rack — the symmetric case to the emptied-rack path above,
+    // which credits that value to whoever went out instead.
+    for (const p of s.players) {
+      const value = rackValue(p.rack);
+      if (value > 0) p.score -= value;
+    }
     let best = s.players[0] as ScrabblePlayer;
     for (const p of s.players) {
       if (p.score > best.score || (p.score === best.score && p.seat < best.seat)) best = p;

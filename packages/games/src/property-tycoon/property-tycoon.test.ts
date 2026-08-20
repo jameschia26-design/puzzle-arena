@@ -615,7 +615,7 @@ describe('debt and bankruptcy', () => {
       const r = engine.reduce(t, 'p1', { type: 'roll' });
       if (r.ok && r.state.players[0]?.position === 1) {
         expect(r.state.phase).toBe('awaiting_debt_settlement');
-        expect(r.state.debt?.playerId).toBe('p1');
+        expect(r.state.debt[0]?.playerId).toBe('p1');
         return;
       }
     }
@@ -625,7 +625,7 @@ describe('debt and bankruptcy', () => {
   it('blocks endTurn while a debt is outstanding', () => {
     const s = fresh();
     s.phase = 'awaiting_debt_settlement';
-    s.debt = { playerId: 'p1', amount: 100, creditor: 'p2' };
+    s.debt = [{ playerId: 'p1', amount: 100, creditor: 'p2' }];
     expect(reject(s, 'p1', { type: 'endTurn' })).toMatch(/debt/i);
   });
 
@@ -634,11 +634,59 @@ describe('debt and bankruptcy', () => {
     grant(s, 'p1', [1]);
     const p1 = s.players[0];
     if (p1) p1.cash = -20;
-    s.debt = { playerId: 'p1', amount: 20, creditor: 'p2' };
+    s.debt = [{ playerId: 'p1', amount: 20, creditor: 'p2' }];
     s.phase = 'awaiting_debt_settlement';
     s = act(s, 'p1', { type: 'mortgage', propertyId: 1 });
-    expect(s.debt).toBeNull();
+    expect(s.debt).toEqual([]);
     expect(s.players[0]?.cash).toBeGreaterThanOrEqual(0);
+  });
+
+  it('clears the debt when it is settled by an accepted trade, not just mortgage/sellHouse', () => {
+    let s = fresh();
+    const p1 = s.players[0];
+    if (p1) p1.cash = -20;
+    s.debt = [{ playerId: 'p1', amount: 20, creditor: null }];
+    s.phase = 'awaiting_debt_settlement';
+
+    s = act(s, 'p2', {
+      type: 'proposeTrade',
+      toPlayerId: 'p1',
+      give: { cash: 50, properties: [] },
+      receive: { cash: 0, properties: [] },
+    });
+    const tradeId = s.trades[0]?.id as string;
+    s = act(s, 'p1', { type: 'respondTrade', tradeId, accept: true });
+
+    expect(s.players[0]?.cash).toBeGreaterThanOrEqual(0);
+    expect(s.debt).toEqual([]);
+    expect(s.phase).not.toBe('awaiting_debt_settlement');
+  });
+
+  it('tracks multiple simultaneous debtors independently, as a "collect from everyone" card can create', () => {
+    let s = fresh();
+    grant(s, 'p1', [1]);
+    grant(s, 'p2', [3]);
+    const p1 = s.players[0];
+    const p2 = s.players[1];
+    if (p1) p1.cash = -20;
+    if (p2) p2.cash = -20;
+    s.debt = [
+      { playerId: 'p1', amount: 20, creditor: 'p3' },
+      { playerId: 'p2', amount: 20, creditor: 'p3' },
+    ];
+    s.phase = 'awaiting_debt_settlement';
+    expect(actorToAct(s)).toBe('p1');
+
+    // p2 settles first even though p1 is at the front of the queue — off-turn
+    // debtors are not blocked by each other.
+    s = act(s, 'p2', { type: 'mortgage', propertyId: 3 });
+    expect(s.debt.map((d) => d.playerId)).toEqual(['p1']);
+    expect(s.phase).toBe('awaiting_debt_settlement');
+    expect(s.players[1]?.cash).toBeGreaterThanOrEqual(0);
+
+    s = act(s, 'p1', { type: 'mortgage', propertyId: 1 });
+    expect(s.debt).toEqual([]);
+    expect(s.phase).not.toBe('awaiting_debt_settlement');
   });
 
   it('hands everything to the creditor on bankruptcy to a player', () => {
@@ -649,7 +697,7 @@ describe('debt and bankruptcy', () => {
       p1.cash = -50;
       p1.jailCards = ['f9'];
     }
-    s.debt = { playerId: 'p1', amount: 50, creditor: 'p2' };
+    s.debt = [{ playerId: 'p1', amount: 50, creditor: 'p2' }];
     s.phase = 'awaiting_debt_settlement';
     s = act(s, 'p1', { type: 'declareBankruptcy' });
 
@@ -664,7 +712,7 @@ describe('debt and bankruptcy', () => {
     grant(s, 'p1', [1]);
     const p1 = s.players[0];
     if (p1) p1.cash = -50;
-    s.debt = { playerId: 'p1', amount: 50, creditor: null };
+    s.debt = [{ playerId: 'p1', amount: 50, creditor: null }];
     s.phase = 'awaiting_debt_settlement';
     s = act(s, 'p1', { type: 'declareBankruptcy' });
     expect(s.properties[1]?.owner).toBeNull();
@@ -678,7 +726,7 @@ describe('debt and bankruptcy', () => {
     s.housesRemaining = 30;
     const p1 = s.players[0];
     if (p1) p1.cash = -10;
-    s.debt = { playerId: 'p1', amount: 10, creditor: 'p2' };
+    s.debt = [{ playerId: 'p1', amount: 10, creditor: 'p2' }];
     s.phase = 'awaiting_debt_settlement';
     s = act(s, 'p1', { type: 'declareBankruptcy' });
     expect(s.properties[1]?.houses).toBe(0);
@@ -694,7 +742,7 @@ describe('debt and bankruptcy', () => {
       p3.cash = -10;
     }
     s.current = 2;
-    s.debt = { playerId: 'p3', amount: 10, creditor: null };
+    s.debt = [{ playerId: 'p3', amount: 10, creditor: null }];
     s.phase = 'awaiting_debt_settlement';
     s = act(s, 'p3', { type: 'declareBankruptcy' });
     expect(s.phase).toBe('game_over');

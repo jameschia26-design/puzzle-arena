@@ -2,10 +2,35 @@ import * as React from 'react';
 import { cn } from '../ui/cn.js';
 import { SEAT_COLORS } from '../ui/seat.js';
 
+interface Cell {
+  x: number;
+  y: number;
+}
+
+/** The straight 8-direction line between two cells, or empty if they don't form one. */
+function computeLine(anchor: Cell, hover: Cell, size: number): Set<number> {
+  const dx = Math.sign(hover.x - anchor.x);
+  const dy = Math.sign(hover.y - anchor.y);
+  const straight =
+    hover.x === anchor.x ||
+    hover.y === anchor.y ||
+    Math.abs(hover.x - anchor.x) === Math.abs(hover.y - anchor.y);
+  if (!straight) return new Set<number>();
+  const len = Math.max(Math.abs(hover.x - anchor.x), Math.abs(hover.y - anchor.y)) + 1;
+  const cells = new Set<number>();
+  for (let k = 0; k < len; k++) {
+    cells.add((anchor.y + dy * k) * size + (anchor.x + dx * k));
+  }
+  return cells;
+}
+
 /**
  * Pointer-drag selects a straight line in one of eight directions. The server
  * decides whether the selection is a word — the client never knows where they
- * are hidden.
+ * are hidden. `onSelect` resolves with the word that selection completed, or
+ * null when it didn't match an unfound word; a cell is only ever permanently
+ * tinted once the server confirms a find, so a stray tap or a wrong guess
+ * always clears itself instead of leaving a "stuck" highlighted cell behind.
  */
 export function WordSearchBoard({
   size,
@@ -19,51 +44,49 @@ export function WordSearchBoard({
   grid: string[];
   words: string[];
   found: string[];
-  onSelect: (y1: number, x1: number, y2: number, x2: number) => void;
+  onSelect: (y1: number, x1: number, y2: number, x2: number) => Promise<string | null>;
   disabled?: boolean;
 }) {
-  const [anchor, setAnchor] = React.useState<{ x: number; y: number } | null>(null);
-  const [hover, setHover] = React.useState<{ x: number; y: number } | null>(null);
-  /** Cells of words already found, tinted per word. */
+  const [anchor, setAnchor] = React.useState<Cell | null>(null);
+  const [hover, setHover] = React.useState<Cell | null>(null);
+  /** Cells of words already confirmed found, tinted per word. */
   const [highlights, setHighlights] = React.useState<Record<number, string>>({});
 
   const inLine = React.useMemo(() => {
     if (!anchor || !hover) return new Set<number>();
-    const dx = Math.sign(hover.x - anchor.x);
-    const dy = Math.sign(hover.y - anchor.y);
-    const len = Math.max(Math.abs(hover.x - anchor.x), Math.abs(hover.y - anchor.y)) + 1;
-    // Only accept the 8 true directions.
-    const straight =
-      hover.x === anchor.x ||
-      hover.y === anchor.y ||
-      Math.abs(hover.x - anchor.x) === Math.abs(hover.y - anchor.y);
-    if (!straight) return new Set<number>();
-    const cells = new Set<number>();
-    for (let k = 0; k < len; k++) {
-      cells.add((anchor.y + dy * k) * size + (anchor.x + dx * k));
-    }
-    return cells;
+    return computeLine(anchor, hover, size);
   }, [anchor, hover, size]);
 
-  const finish = (): void => {
-    if (anchor && hover && !disabled) {
-      onSelect(anchor.y, anchor.x, hover.y, hover.x);
-      // Tint optimistically; the ack decides whether it sticks.
-      const colour = SEAT_COLORS[found.length % SEAT_COLORS.length] as string;
-      setHighlights((prev) => {
-        const next = { ...prev };
-        for (const cell of inLine) next[cell] = colour;
-        return next;
-      });
+  const finish = React.useCallback((): void => {
+    if (!anchor || !hover || disabled) {
+      setAnchor(null);
+      setHover(null);
+      return;
     }
+    const submittedAnchor = anchor;
+    const submittedHover = hover;
+    const cells = computeLine(submittedAnchor, submittedHover, size);
     setAnchor(null);
     setHover(null);
-  };
+
+    void onSelect(submittedAnchor.y, submittedAnchor.x, submittedHover.y, submittedHover.x).then(
+      (word) => {
+        if (!word) return; // wrong guess or a repeat — nothing to tint, selection just clears
+        const colourIndex = words.indexOf(word);
+        const colour = SEAT_COLORS[(colourIndex >= 0 ? colourIndex : 0) % SEAT_COLORS.length] as string;
+        setHighlights((prev) => {
+          const next = { ...prev };
+          for (const cell of cells) next[cell] = colour;
+          return next;
+        });
+      },
+    );
+  }, [anchor, hover, disabled, size, words, onSelect]);
 
   React.useEffect(() => {
     window.addEventListener('pointerup', finish);
     return () => window.removeEventListener('pointerup', finish);
-  });
+  }, [finish]);
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">

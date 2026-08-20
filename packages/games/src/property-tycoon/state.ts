@@ -83,7 +83,11 @@ export interface PTState {
 
   pendingPurchase: number | null;
   auction: PTAuction | null;
-  debt: { playerId: string; amount: number; creditor: string | null } | null;
+  /** Every player currently in debt — a "collect from everyone" card can put
+   *  more than one player in the hole at once, so this is a list, not a
+   *  single slot. Each entry clears independently once that player's cash
+   *  is non-negative again, by whatever means. */
+  debt: { playerId: string; amount: number; creditor: string | null }[];
   trades: PTTrade[];
 
   fortuneDeck: string[];

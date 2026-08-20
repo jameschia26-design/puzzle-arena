@@ -48,7 +48,7 @@ interface PTView {
     highBidder: string | null;
     turn: string;
   } | null;
-  debt: { playerId: string; amount: number; creditor: string | null } | null;
+  debt: { playerId: string; amount: number; creditor: string | null }[];
   trades: { id: string; from: string; to: string; give: any; receive: any }[];
   lastCard: DrawnCard | null;
   housesRemaining: number;
@@ -187,7 +187,7 @@ export function PropertyTycoonBoard({
   // The DecisionPanel inlines the deed list right next to the bankruptcy
   // button while you're in debt, so the sidebar copy would just be a
   // redundant scroll away on mobile — hide it until the debt is settled.
-  const owingDebt = Boolean(view.debt && view.debt.playerId === youId);
+  const owingDebt = view.debt.some((d) => d.playerId === youId);
   const state = asState(view);
   const walking = useWalkingPositions(view.players, reduced);
 
@@ -724,7 +724,7 @@ function TurnBanner({
 function actorOf(view: PTView): string | null {
   if (view.phase === 'game_over') return null;
   if (view.phase === 'auction' && view.auction) return view.auction.turn;
-  if (view.phase === 'awaiting_debt_settlement' && view.debt) return view.debt.playerId;
+  if (view.phase === 'awaiting_debt_settlement' && view.debt.length > 0) return view.debt[0]!.playerId;
   return view.players[view.current]?.id ?? null;
 }
 
@@ -748,10 +748,13 @@ function phaseLabel(view: PTView, nameOf: (id: string) => string, youId: string 
       return view.auction
         ? `Auction for ${squareAt(view.auction.propertyId).name} — ${who} to bid.`
         : 'Auction in progress.';
-    case 'awaiting_debt_settlement':
-      return view.debt
-        ? `${who} owe${yours ? '' : 's'} ${money(view.debt.amount)} — raise it or go bankrupt.`
-        : `${who} owe${yours ? '' : 's'} money.`;
+    case 'awaiting_debt_settlement': {
+      const activeDebt = actorId ? view.debt.find((d) => d.playerId === actorId) : undefined;
+      const extra = view.debt.length > 1 ? ` (${view.debt.length - 1} more waiting)` : '';
+      return activeDebt
+        ? `${who} owe${yours ? '' : 's'} ${money(activeDebt.amount)} — raise it or go bankrupt.${extra}`
+        : `${who} owe${yours ? '' : 's'} money.${extra}`;
+    }
     case 'awaiting_end_turn':
       return `${who} can build or mortgage, then end the turn.`;
     case 'game_over':
@@ -796,7 +799,8 @@ function DecisionPanel({
 }): React.ReactElement | null {
   const buying = view.pendingPurchase !== null && onTurn && (can('buy') || can('decline'));
   const bidding = Boolean(view.auction) && (can('bid') || can('passBid'));
-  const owing = Boolean(view.debt && view.debt.playerId === youId);
+  const myDebt = view.debt.find((d) => d.playerId === youId);
+  const owing = Boolean(myDebt);
 
   if (!buying && !bidding && !owing) return null;
 
@@ -840,19 +844,19 @@ function DecisionPanel({
         />
       )}
 
-      {owing && view.debt && !buying && !bidding && (
+      {owing && myDebt && !buying && !bidding && (
         <div className="flex flex-col gap-2">
           <h3 className="font-display text-[11px] uppercase text-pa-danger">
-            You owe {money(view.debt.amount)}
+            You owe {money(myDebt.amount)}
           </h3>
           <p className="text-[12px] text-pa-ink-dim">
-            {view.debt.creditor ? `Owed to ${nameOf(view.debt.creditor)}.` : 'Owed to the bank.'}{' '}
+            {myDebt.creditor ? `Owed to ${nameOf(myDebt.creditor)}.` : 'Owed to the bank.'}{' '}
             Sell houses or mortgage deeds below to raise it. You are only bankrupt once there is
             nothing left to sell.
           </p>
           <p className="text-[12px] tabular">
             Cash {money(me?.cash ?? 0)} · short by{' '}
-            {money(Math.max(0, view.debt.amount - (me?.cash ?? 0)))}
+            {money(Math.max(0, myDebt.amount - (me?.cash ?? 0)))}
           </p>
           <DeedList
             view={view}

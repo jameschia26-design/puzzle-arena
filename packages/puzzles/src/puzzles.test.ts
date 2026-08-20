@@ -119,6 +119,12 @@ describe('sudoku generation', () => {
 
 describe('killer sudoku generation', () => {
   for (const difficulty of DIFFICULTIES) {
+    // 'hard'/'expert' occasionally fall through every cage profile to the
+    // digit-revealing last resort, which is the slowest legal path through
+    // the generator by design (it exists precisely so generation always
+    // terminates) — the default 60s test timeout is too tight for that on a
+    // loaded machine, so this test gets a longer budget rather than the
+    // generator being made to cut corners on uniqueness to satisfy a test.
     it(`produces instances at ${difficulty} with exactly one solution`, () => {
       // Fewer seeds than Sudoku: proving a given-free Killer board unique is
       // far more expensive, and 8 seeds per tier already exercises every path.
@@ -146,7 +152,7 @@ describe('killer sudoku generation', () => {
 
         expect(meta.seed).toBe(seed);
       }
-    });
+    }, 180_000);
   }
 
   it('reveals no digits in the common case', () => {

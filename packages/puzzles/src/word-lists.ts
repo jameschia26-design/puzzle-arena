@@ -24,9 +24,21 @@ export const FALLBACK_WORD_LISTS: Record<string, string[]> = {
   travel: ['AIRPORT', 'CABIN', 'COMPASS', 'FERRY', 'JOURNEY', 'LUGGAGE', 'PASSPORT', 'SAFARI', 'SHUTTLE', 'TICKET', 'VOYAGE', 'HOSTEL'],
   cinema: ['ACTOR', 'CAMERA', 'CREDITS', 'DIRECTOR', 'EDITOR', 'MONTAGE', 'PREMIERE', 'SCREEN', 'SCRIPT', 'STUDIO', 'TRAILER', 'SCENE'],
   autumn: ['ACORN', 'AMBER', 'CHESTNUT', 'CIDER', 'CRISP', 'HARVEST', 'LANTERN', 'MAPLE', 'ORCHARD', 'PUMPKIN', 'RUSSET', 'SWEATER'],
+  transportation: ['AIRPLANE', 'BICYCLE', 'CARAVAN', 'CARGO', 'COMMUTE', 'FERRY', 'FREIGHT', 'HIGHWAY', 'LOCOMOTIVE', 'PILOT', 'RAILWAY', 'VEHICLE'],
 };
 
 export const DEFAULT_WORDS = FALLBACK_WORD_LISTS.space as string[];
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** True when `needle` appears in `haystack` as a whole word/phrase, not merely
+ *  as a raw substring — a plain `.includes()` would wrongly match e.g.
+ *  "transportation" against "sport" ("tran-SPORT-ation"). */
+function wordBoundaryMatch(haystack: string, needle: string): boolean {
+  return new RegExp(`\\b${escapeRegExp(needle)}\\b`).test(haystack);
+}
 
 /** Best bundled list for a theme, falling back to Space. */
 export function fallbackWordsFor(theme: string): string[] {
@@ -34,7 +46,7 @@ export function fallbackWordsFor(theme: string): string[] {
   const exact = FALLBACK_WORD_LISTS[key];
   if (exact) return exact;
   for (const [name, words] of Object.entries(FALLBACK_WORD_LISTS)) {
-    if (key.includes(name) || name.includes(key)) return words;
+    if (wordBoundaryMatch(key, name) || wordBoundaryMatch(name, key)) return words;
   }
   return DEFAULT_WORDS;
 }

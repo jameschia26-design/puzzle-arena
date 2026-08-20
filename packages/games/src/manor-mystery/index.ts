@@ -513,7 +513,15 @@ function reduce(
     case 'endTurn': {
       if (!onTurn) return fail('Not your turn');
       if (s.phase === 'awaiting_refutation') return fail('Resolve the refutation first');
-      if (s.phase === 'awaiting_move') return fail('Move first');
+      if (s.phase === 'awaiting_move') {
+        // Normally you must move after rolling — but a player fully boxed in
+        // by other tokens (reachable() finds nothing) has no legal move to
+        // make, and would otherwise be stuck in this phase forever: even the
+        // turn timer's own autoAction falls back to `endTurn` here, so the
+        // reducer must accept it or that fallback is a lie.
+        const { cells, rooms } = reachable(player.position, s.roll ?? 0, blockedCells(s, playerId));
+        if (cells.length > 0 || rooms.length > 0) return fail('Move first');
+      }
       if (s.phase === 'awaiting_action') return fail('Take your action first');
       advanceTurn(s, log);
       break;
@@ -683,9 +691,12 @@ function legalActions(s: MMState, playerId: string): string[] {
       out.push('roll', 'accuse');
       if (p.position.room && SECRET_PASSAGES[p.position.room]) out.push('useSecretPassage');
       break;
-    case 'awaiting_move':
-      out.push('move');
+    case 'awaiting_move': {
+      const { cells, rooms } = reachable(p.position, s.roll ?? 0, blockedCells(s, playerId));
+      if (cells.length > 0 || rooms.length > 0) out.push('move');
+      else out.push('endTurn'); // boxed in — nothing reachable, nothing to move to
       break;
+    }
     case 'awaiting_suggestion':
       out.push('suggest', 'accuse', 'endTurn');
       break;

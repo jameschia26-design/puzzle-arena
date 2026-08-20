@@ -30,7 +30,7 @@ export interface PTBotView {
     highBidder: string | null;
     turn: string;
   } | null;
-  debt: { playerId: string; amount: number; creditor: string | null } | null;
+  debt: { playerId: string; amount: number; creditor: string | null }[];
   trades: {
     id: string;
     from: string;
@@ -122,7 +122,7 @@ export const propertyTycoonBot: BotPolicy<PTBotView, PropertyTycoonAction> = {
     }
 
     /* ---------------- debt ---------------- */
-    if (v.debt && v.debt.playerId === selfId) {
+    if (v.debt.some((d) => d.playerId === selfId)) {
       // Sell buildings evenly first — the most-built square in the biggest group.
       const mine = ownedBy(v, selfId);
       const withHouses = mine

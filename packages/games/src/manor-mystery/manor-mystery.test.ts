@@ -644,4 +644,33 @@ describe('the turn loop', () => {
     s = act(s, 'a', { type: 'roll' });
     expect(reject(s, 'a', { type: 'move', x: 23, y: 23 })).toMatch(/out of reach/i);
   });
+
+  it('lets a fully boxed-in player end their turn instead of being stuck forever', () => {
+    let s = fresh(P6, 4242);
+    const meId = (s.players[s.current] as { id: string }).id;
+    const me = s.players.find((p) => p.id === meId)!;
+    me.position = { room: null, x: 7, y: 0 };
+
+    // Occupy every corridor cell one step away so nothing is reachable.
+    const blockers = s.players.filter((p) => p.id !== meId).slice(0, 3);
+    const spots: [number, number][] = [
+      [6, 0],
+      [8, 0],
+      [7, 1],
+    ];
+    blockers.forEach((p, i) => {
+      p.position = { room: null, x: spots[i]![0], y: spots[i]![1] };
+    });
+
+    s = act(s, meId, { type: 'roll' });
+    s.roll = 1; // force a small, deterministic roll regardless of what was actually rolled
+
+    const { cells, rooms } = reachable(me.position, s.roll, new Set(spots.map(([x, y]) => `${x},${y}`)));
+    expect(cells).toHaveLength(0);
+    expect(rooms).toHaveLength(0);
+
+    expect(engine.legalActions(s, meId)).toEqual(['endTurn']);
+    s = act(s, meId, { type: 'endTurn' });
+    expect(s.players.find((p) => p.id === meId)?.position).toEqual({ room: null, x: 7, y: 0 });
+  });
 });
