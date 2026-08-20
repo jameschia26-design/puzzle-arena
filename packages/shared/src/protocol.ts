@@ -119,12 +119,6 @@ export const checkersActionSchema = z.object({
 });
 export type CheckersAction = z.infer<typeof checkersActionSchema>;
 
-export const aeroplaneChessActionSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('roll') }),
-  z.object({ type: z.literal('movePlane'), tokenIndex: z.number().int().min(0).max(3) }),
-]);
-export type AeroplaneChessAction = z.infer<typeof aeroplaneChessActionSchema>;
-
 export const bigTwoCardSchema = z.object({
   rank: z.number().int().min(0).max(12),
   suit: z.number().int().min(0).max(3),
@@ -141,7 +135,6 @@ export const gameActionSchema = z.union([
   scrabbleActionSchema,
   congkakActionSchema,
   checkersActionSchema,
-  aeroplaneChessActionSchema,
   bigTwoActionSchema,
 ]);
 export type GameAction =
@@ -150,9 +143,7 @@ export type GameAction =
   | ScrabbleAction
   | CongkakAction
   | CheckersAction
-  | AeroplaneChessAction
   | BigTwoAction;
-
 /* ------------------------------------------------------------------ */
 /* Client -> server                                                    */
 /* ------------------------------------------------------------------ */

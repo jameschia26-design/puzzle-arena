@@ -10,7 +10,6 @@ export const GAME_IDS = [
   'scrabble',
   'congkak',
   'checkers',
-  'aeroplane-chess',
   'big-two',
 ] as const;
 
@@ -66,10 +65,6 @@ export const congkakConfigSchema = z.object({
 });
 
 export const checkersConfigSchema = z.object({
-  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
-});
-
-export const aeroplaneChessConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
 });
 
@@ -188,17 +183,6 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: checkersConfigSchema,
     blurb: 'International draughts: flying kings, forced captures, and a race to clear the board.',
-  },
-  'aeroplane-chess': {
-    id: 'aeroplane-chess',
-    title: 'Aeroplane Chess',
-    kind: 'board',
-    minPlayers: 2,
-    maxPlayers: 4,
-    defaultTimeLimitSec: 1800,
-    supportsBots: true,
-    configSchema: aeroplaneChessConfigSchema,
-    blurb: 'Roll and race four planes around the board — catch a tailwind, dodge capture, land home.',
   },
   'big-two': {
     id: 'big-two',

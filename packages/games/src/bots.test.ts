@@ -8,8 +8,6 @@ import { congkak, type CongkakState } from './congkak/index.js';
 import { congkakBot, type CongkakBotView } from './congkak/bot.js';
 import { checkers, type CheckersState } from './checkers/index.js';
 import { checkersBot, type CheckersBotView } from './checkers/bot.js';
-import { aeroplaneChess, type AeroplaneChessState } from './aeroplane-chess/index.js';
-import { aeroplaneChessBot, type AeroplaneChessBotView } from './aeroplane-chess/bot.js';
 import { bigTwo, type BigTwoState } from './big-two/index.js';
 import { bigTwoBot, type BigTwoBotView } from './big-two/bot.js';
 
@@ -102,22 +100,6 @@ describe('bots only ever see the restricted view', () => {
       const action = checkersBot.chooseAction(view, 'a', mulberry32(1), difficulty);
       const r = checkers.reduce(state, 'a', action);
       expect(r.ok).toBe(true);
-    }
-  });
-
-  it('never hands an Aeroplane Chess bot the RNG stream', () => {
-    const state = aeroplaneChess.setup(['a', 'b'], 42, {});
-    const view = aeroplaneChess.view(state, 'a') as Record<string, unknown>;
-    expect(view['rng']).toBeUndefined();
-    expect(JSON.stringify(view)).not.toContain('"rng"');
-  });
-
-  it('an aeroplane chess bot policy produces legal actions across all difficulties', () => {
-    for (const difficulty of DIFFICULTIES) {
-      const state = aeroplaneChess.setup(['a', 'b'], 42, {});
-      const view = aeroplaneChess.view(state, 'a') as AeroplaneChessBotView;
-      const action = aeroplaneChessBot.chooseAction(view, 'a', mulberry32(1), difficulty);
-      expect(['roll', 'movePlane']).toContain(action.type);
     }
   });
 
@@ -413,33 +395,6 @@ describe('bot-only games replay identically', () => {
     expect(a.seq).toBe(b.seq);
   });
 
-  it('plays Aeroplane Chess to the same final state twice', () => {
-    const play = (): AeroplaneChessState => {
-      let s = aeroplaneChess.setup(['a', 'b', 'c'], 909090, {});
-      const rng = mulberry32(654);
-      for (let i = 0; i < 5000 && s.phase !== 'game_over'; i++) {
-        const actor = s.players[s.current]?.id as string;
-        const difficulty: BotDifficulty = actor === 'a' ? 'hard' : actor === 'b' ? 'normal' : 'easy';
-        const view = aeroplaneChess.view(s, actor) as AeroplaneChessBotView;
-        const action = aeroplaneChessBot.chooseAction(view, actor, rng, difficulty);
-        const r = aeroplaneChess.reduce(s, actor, action);
-        if (r.ok) {
-          s = r.state;
-          continue;
-        }
-        const fallback = aeroplaneChess.reduce(s, actor, aeroplaneChess.autoAction(s, actor));
-        if (!fallback.ok) throw new Error(`stuck for ${actor}`);
-        s = fallback.state;
-      }
-      return s;
-    };
-
-    const a = play();
-    const b = play();
-    expect(a.players).toEqual(b.players);
-    expect(a.winner).toBe(b.winner);
-    expect(a.seq).toBe(b.seq);
-  });
 
   it('plays Big Two to the same final state twice', () => {
     const play = (): BigTwoState => {

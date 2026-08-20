@@ -20,8 +20,6 @@ import {
   type ScoreInput,
 } from '@puzzle-arena/shared';
 import {
-  aeroplaneChess,
-  aeroplaneChessRules,
   bigTwo,
   bigTwoRules,
   checkers,
@@ -241,7 +239,6 @@ export class LiveRoom {
     if (this.gameId === 'scrabble') return scrabble as unknown as typeof propertyTycoon;
     if (this.gameId === 'congkak') return congkak as unknown as typeof propertyTycoon;
     if (this.gameId === 'checkers') return checkers as unknown as typeof propertyTycoon;
-    if (this.gameId === 'aeroplane-chess') return aeroplaneChess as unknown as typeof propertyTycoon;
     if (this.gameId === 'big-two') return bigTwo as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
@@ -253,7 +250,6 @@ export class LiveRoom {
     if (this.gameId === 'scrabble') return scrabbleRules.actorToAct(this.gameState as never);
     if (this.gameId === 'congkak') return congkakRules.actorToAct(this.gameState as never);
     if (this.gameId === 'checkers') return checkersRules.actorToAct(this.gameState as never);
-    if (this.gameId === 'aeroplane-chess') return aeroplaneChessRules.actorToAct(this.gameState as never);
     if (this.gameId === 'big-two') return bigTwoRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }

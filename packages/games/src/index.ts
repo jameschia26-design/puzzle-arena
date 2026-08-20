@@ -43,24 +43,6 @@ export type {
 } from './checkers/state.js';
 export type { CheckersView, CheckersPublicPlayer, CheckersLastMove, CheckersLegalMove } from './checkers/state.js';
 
-export { aeroplaneChess } from './aeroplane-chess/index.js';
-export * as aeroplaneChessRules from './aeroplane-chess/index.js';
-export { aeroplaneChessBot, type AeroplaneChessBotView } from './aeroplane-chess/bot.js';
-export type {
-  AeroplaneChessState,
-  AeroplaneChessPlayer,
-  AeroplaneChessConfig,
-  AeroplaneChessAction,
-  AeroplaneChessToken,
-  AeroplaneChessTokens,
-} from './aeroplane-chess/state.js';
-export type {
-  AeroplaneChessView,
-  AeroplaneChessPublicPlayer,
-  AeroplaneChessLastMove,
-  AeroplaneChessCapture,
-} from './aeroplane-chess/state.js';
-
 export { bigTwo } from './big-two/index.js';
 export * as bigTwoRules from './big-two/index.js';
 export { bigTwoBot, type BigTwoBotView } from './big-two/bot.js';
@@ -81,7 +63,6 @@ import { manorMystery } from './manor-mystery/index.js';
 import { scrabble } from './scrabble/index.js';
 import { congkak } from './congkak/index.js';
 import { checkers } from './checkers/index.js';
-import { aeroplaneChess } from './aeroplane-chess/index.js';
 import { bigTwo } from './big-two/index.js';
 import type { GameEngine } from './engine.js';
 
@@ -92,6 +73,5 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   scrabble: scrabble as unknown as GameEngine<never, never>,
   congkak: congkak as unknown as GameEngine<never, never>,
   checkers: checkers as unknown as GameEngine<never, never>,
-  'aeroplane-chess': aeroplaneChess as unknown as GameEngine<never, never>,
   'big-two': bigTwo as unknown as GameEngine<never, never>,
 };

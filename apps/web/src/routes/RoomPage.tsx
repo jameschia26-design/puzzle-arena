@@ -34,7 +34,6 @@ import { ManorMysteryBoard } from '../games/ManorMysteryBoard.js';
 import { ScrabbleBoard } from '../games/ScrabbleBoard.js';
 import { CongkakBoard } from '../games/CongkakBoard.js';
 import { CheckersBoard } from '../games/CheckersBoard.js';
-import { AeroplaneChessBoard } from '../games/AeroplaneChessBoard.js';
 import { BigTwoBoard } from '../games/BigTwoBoard.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
@@ -98,7 +97,6 @@ export default function RoomPage(): React.ReactElement {
     if (room.status === 'running') {
       if (gameId === 'congkak') bgm.play('congkak');
       else if (gameId === 'checkers') bgm.play('checkers');
-      else if (gameId === 'aeroplane-chess') bgm.play('aeroplane');
       else if (gameId === 'big-two') bgm.play('bigtwo');
       else if (GAME_REGISTRY[gameId].kind === 'puzzle') bgm.play('puzzle');
       else bgm.play('board');
@@ -692,19 +690,6 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'checkers') {
     return (
       <CheckersBoard
-        view={state}
-        players={store.players}
-        youId={store.you?.playerId ?? null}
-        legalActions={store.legalActions}
-        turnEndsAt={store.turnEndsAt}
-        onAction={(a) => void gameAction(a)}
-      />
-    );
-  }
-
-  if (gameId === 'aeroplane-chess') {
-    return (
-      <AeroplaneChessBoard
         view={state}
         players={store.players}
         youId={store.you?.playerId ?? null}

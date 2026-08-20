@@ -1,12 +1,10 @@
 import {
-  aeroplaneChessBot,
   bigTwoBot,
   checkersBot,
   congkakBot,
   manorMysteryBot,
   propertyTycoonBot,
   scrabbleBot,
-  type AeroplaneChessBotView,
   type BigTwoBotView,
   type CheckersBotView,
   type CongkakBotView,
@@ -113,8 +111,6 @@ export function scheduleBots(room: LiveRoom): void {
         action = congkakBot.chooseAction(view as CongkakBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'checkers') {
         action = checkersBot.chooseAction(view as CheckersBotView, actorId, rng, difficulty);
-      } else if (room.gameId === 'aeroplane-chess') {
-        action = aeroplaneChessBot.chooseAction(view as AeroplaneChessBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'big-two') {
         action = bigTwoBot.chooseAction(view as BigTwoBotView, actorId, rng, difficulty);
       } else {

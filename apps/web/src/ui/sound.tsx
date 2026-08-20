@@ -453,7 +453,7 @@ export const sfx = {
 /* Retro Chiptune / MIDI Background Music Generator (BGM)             */
 /* ------------------------------------------------------------------ */
 
-export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title' | 'checkers' | 'aeroplane' | 'bigtwo';
+export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title' | 'checkers' | 'bigtwo';
 
 interface NoteEvent {
   note: number;
@@ -542,21 +542,6 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
       { note: 41, duration: 8 }, { note: 45, duration: 8 },
     ],
   },
-
-  aeroplane: {
-    tempo: 150,
-    lead: [
-      { note: 72, duration: 2 }, { note: 74, duration: 2 }, { note: 76, duration: 2 }, { note: 79, duration: 2 },
-      { note: 81, duration: 4 }, { note: 79, duration: 2 }, { note: 76, duration: 2 }, { note: 74, duration: 4 },
-      { note: 72, duration: 2 }, { note: 74, duration: 2 }, { note: 76, duration: 2 }, { note: 72, duration: 2 },
-      { note: 79, duration: 4 }, { note: 76, duration: 4 },
-    ],
-    bass: [
-      { note: 48, duration: 2 }, { note: 48, duration: 2 }, { note: 53, duration: 2 }, { note: 53, duration: 2 },
-      { note: 50, duration: 2 }, { note: 50, duration: 2 }, { note: 55, duration: 2 }, { note: 55, duration: 2 },
-    ],
-  },
-
   bigtwo: {
     tempo: 100,
     lead: [

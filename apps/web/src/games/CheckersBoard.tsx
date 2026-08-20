@@ -25,6 +25,10 @@ function sameSquare(a: CheckersPos, b: CheckersPos): boolean {
   return a.row === b.row && a.col === b.col;
 }
 
+function matchesPrefix(full: CheckersPos[], prefix: CheckersPos[]): boolean {
+  if (prefix.length > full.length) return false;
+  return prefix.every((p, i) => sameSquare(p, full[i] as CheckersPos));
+}
 /** Visual centre of a square as a percentage, respecting board orientation. */
 function visualPercent(pos: CheckersPos, flipped: boolean): { left: number; top: number } {
   const vr = flipped ? 9 - pos.row : pos.row;
@@ -86,7 +90,7 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
   }, [view.lastMove, view.board, reduced]);
 
   const candidates = React.useMemo(
-    () => legalMoves.filter((m) => path.every((p, i) => sameSquare(p, m.path[i] as CheckersPos))),
+    () => legalMoves.filter((m) => matchesPrefix(m.path, path)),
     [legalMoves, path],
   );
 
@@ -98,6 +102,15 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
     }
     return set;
   }, [candidates, path]);
+
+  const destinationOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const c of candidates) {
+      const dest = c.path[c.path.length - 1];
+      if (dest) set.add(`${dest.row},${dest.col}`);
+    }
+    return set;
+  }, [candidates]);
 
   const startOptions = React.useMemo(() => {
     const set = new Set<string>();
@@ -113,37 +126,57 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
 
   const handleTap = (row: number, col: number): void => {
     if (!isMyTurn || isGameOver) return;
+    const target: CheckersPos = { row, col };
     const key = `${row},${col}`;
 
     if (path.length === 0) {
       if (!startOptions.has(key)) return;
       unlockAudioSession();
       sfx.blip();
-      setPath([{ row, col }]);
+      setPath([target]);
       return;
     }
 
-    if (sameSquare(path[0] as CheckersPos, { row, col })) {
+    if (sameSquare(path[0] as CheckersPos, target)) {
       setPath([]); // tapping the selected piece again deselects
       return;
     }
 
-    if (!nextOptions.has(key)) {
-      setPath([]); // tapping anywhere else cancels the in-progress selection
+    const isImmediateNext = nextOptions.has(key);
+    const destCandidates = candidates.filter(
+      (c) => sameSquare(c.path[c.path.length - 1] as CheckersPos, target) && matchesPrefix(c.path, path),
+    );
+
+    if (!isImmediateNext && destCandidates.length === 0) {
+      // If tapping another startable piece, switch selection directly
+      if (startOptions.has(key)) {
+        sfx.blip();
+        setPath([target]);
+      } else {
+        setPath([]);
+      }
       return;
     }
 
-    const newPath = [...path, { row, col }];
-    const stillLonger = candidates.some((c) => c.path.length > newPath.length);
-    const fullMatch = candidates.find((c) => c.path.length === newPath.length);
+    if (isImmediateNext) {
+      const newPath = [...path, target];
+      const matchingCandidates = candidates.filter((c) => matchesPrefix(c.path, newPath));
+      const stillLonger = matchingCandidates.some((c) => c.path.length > newPath.length);
+      const exactMatch = matchingCandidates.find((c) => c.path.length === newPath.length);
 
-    if (fullMatch && !stillLonger) {
+      if (exactMatch && !stillLonger) {
+        unlockAudioSession();
+        onAction({ type: 'move', path: exactMatch.path });
+        setPath([]);
+      } else {
+        sfx.pickup();
+        setPath(newPath);
+      }
+    } else if (destCandidates.length === 1) {
+      // Direct tap on destination for unique jump sequence
       unlockAudioSession();
-      onAction({ type: 'move', path: fullMatch.path });
+      onAction({ type: 'move', path: destCandidates[0]!.path });
       setPath([]);
-    } else {
-      sfx.pickup();
-      setPath(newPath);
     }
   };
 
@@ -193,7 +226,8 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
               const hideForGhost = ghostDest && sameSquare(ghostDest, { row, col });
               const piece = dark && !hideForGhost ? view.board[row * 10 + col] : null;
               const isSelected = path.length > 0 && sameSquare(path[0] as CheckersPos, { row, col });
-              const isNextOption = dark && nextOptions.has(`${row},${col}`);
+              const isNextOption =
+                dark && (nextOptions.has(`${row},${col}`) || destinationOptions.has(`${row},${col}`));
               const isStartable = dark && path.length === 0 && isMyTurn && startOptions.has(`${row},${col}`);
               const isLastFrom = flash && sameSquare(flash.from, { row, col });
               const isLastTo = flash && sameSquare(flash.to, { row, col });
