@@ -492,6 +492,26 @@ export const sfx = {
     osc.stop(t + 0.11);
   },
 
+  /** Card / tile deal sound */
+  deal() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(520, t);
+    osc.frequency.linearRampToValueAtTime(780, t + 0.06);
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.08);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.09);
+  },
+
   /** Big Two: a bomb (four-of-a-kind or straight flush) hits the table. */
   bomb() {
     const ctx = getAudioContext();

@@ -121,10 +121,13 @@ export function MinesweeperBoard({
     [cols, flags, isCompleted, isDetonated, onCommit, revealed, solution, totalCells],
   );
 
-  // Handle cell flag (Right-Click or Tap in flag mode)
+  // Handle cell flag (Right-Click, Long-Press, or Tap in flag mode)
   const handleToggleFlag = React.useCallback(
-    (row: number, col: number, e?: React.MouseEvent) => {
-      if (e) e.preventDefault();
+    (row: number, col: number, e?: React.SyntheticEvent) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       unlockAudioSession();
       if (isDetonated || isCompleted) return;
       const idx = row * cols + col;
@@ -144,6 +147,30 @@ export function MinesweeperBoard({
     },
     [cols, isCompleted, isDetonated, revealed],
   );
+
+  // Mobile Touch Long-Press Timer
+  const longPressTimerRef = React.useRef<number | undefined>(undefined);
+  const isLongPressRef = React.useRef(false);
+
+  const startLongPress = React.useCallback(
+    (row: number, col: number) => {
+      isLongPressRef.current = false;
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = window.setTimeout(() => {
+        isLongPressRef.current = true;
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          navigator.vibrate?.(40);
+        }
+        handleToggleFlag(row, col);
+      }, 350);
+    },
+    [handleToggleFlag],
+  );
+
+  const cancelLongPress = React.useCallback(() => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = undefined;
+  }, []);
 
   // Handle chord click on revealed numbers
   const handleChord = React.useCallback(
@@ -253,13 +280,14 @@ export function MinesweeperBoard({
         </div>
       </PixelPanel>
 
-      {/* Grid Container */}
-      <div className="flex justify-center overflow-auto p-2 bg-[#090d16] border-2 border-pa-border rounded-lg">
+      {/* Grid Container — Horizontal scrollable on narrow screens without distortion */}
+      <div className="w-full overflow-x-auto overflow-y-hidden p-2 sm:p-4 bg-[#090d16] border-2 border-pa-border rounded-lg flex justify-start sm:justify-center">
         <div
-          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none"
+          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none m-auto shrink-0 touch-pan-x"
           style={{
-            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            gridTemplateColumns: `repeat(${cols}, 32px)`,
             width: 'max-content',
+            WebkitTouchCallout: 'none',
           }}
         >
           {Array.from({ length: totalCells }).map((_, idx) => {
@@ -274,10 +302,28 @@ export function MinesweeperBoard({
               <button
                 key={idx}
                 type="button"
-                onContextMenu={(e) => handleToggleFlag(r, c, e)}
-                onClick={() => {
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleToggleFlag(r, c, e);
+                }}
+                onTouchStart={() => startLongPress(r, c)}
+                onTouchEnd={(e) => {
+                  if (isLongPressRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                  cancelLongPress();
+                }}
+                onTouchMove={cancelLongPress}
+                onTouchCancel={cancelLongPress}
+                onClick={(e) => {
+                  if (isLongPressRef.current) {
+                    isLongPressRef.current = false;
+                    return;
+                  }
                   if (flagMode) {
-                    handleToggleFlag(r, c);
+                    handleToggleFlag(r, c, e);
                   } else if (isRev) {
                     handleChord(r, c);
                   } else {
@@ -285,7 +331,8 @@ export function MinesweeperBoard({
                   }
                 }}
                 className={cn(
-                  'w-8 h-8 sm:w-9 sm:h-9 text-[14px] sm:text-[16px] font-bold font-mono flex items-center justify-center transition-all cursor-pointer',
+                  'w-8 h-8 min-w-[32px] min-h-[32px] sm:w-9 sm:h-9 sm:min-w-[36px] sm:min-h-[36px] aspect-square shrink-0',
+                  'text-[14px] sm:text-[16px] font-bold font-mono flex items-center justify-center transition-all cursor-pointer select-none touch-manipulation',
                   isRev
                     ? isMine
                       ? 'bg-red-950 border border-red-500 text-pa-pink shadow-[0_0_10px_rgba(239,68,68,0.5)]'
