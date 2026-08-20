@@ -9,6 +9,9 @@ export const GAME_IDS = [
   'manor-mystery',
   'scrabble',
   'congkak',
+  'checkers',
+  'aeroplane-chess',
+  'big-two',
 ] as const;
 
 export type GameId = (typeof GAME_IDS)[number];
@@ -61,6 +64,19 @@ export const congkakConfigSchema = z.object({
   seedsPerPit: z.number().int().min(4).max(7).default(7),
   turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
 });
+
+export const checkersConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
+});
+
+export const aeroplaneChessConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
+});
+
+export const bigTwoConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
+});
+
 export interface GameMeta {
   id: GameId;
   title: string;
@@ -161,6 +177,39 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: congkakConfigSchema,
     blurb: 'Classic Southeast Asian Mancala: sow seeds, trigger relay runs, and capture houses into your storehouse.',
+  },
+  checkers: {
+    id: 'checkers',
+    title: 'Checkers',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 1800,
+    supportsBots: true,
+    configSchema: checkersConfigSchema,
+    blurb: 'International draughts: flying kings, forced captures, and a race to clear the board.',
+  },
+  'aeroplane-chess': {
+    id: 'aeroplane-chess',
+    title: 'Aeroplane Chess',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 4,
+    defaultTimeLimitSec: 1800,
+    supportsBots: true,
+    configSchema: aeroplaneChessConfigSchema,
+    blurb: 'Roll and race four planes around the board — catch a tailwind, dodge capture, land home.',
+  },
+  'big-two': {
+    id: 'big-two',
+    title: 'Big Two',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 4,
+    defaultTimeLimitSec: 1800,
+    supportsBots: true,
+    configSchema: bigTwoConfigSchema,
+    blurb: 'Shed your hand first — beat the last combo or pass, bombs beat anything.',
   },
 };
 

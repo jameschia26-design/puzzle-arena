@@ -1,8 +1,14 @@
 import {
+  aeroplaneChessBot,
+  bigTwoBot,
+  checkersBot,
   congkakBot,
   manorMysteryBot,
   propertyTycoonBot,
   scrabbleBot,
+  type AeroplaneChessBotView,
+  type BigTwoBotView,
+  type CheckersBotView,
   type CongkakBotView,
   type MMBotView,
   type PTBotView,
@@ -105,6 +111,12 @@ export function scheduleBots(room: LiveRoom): void {
         action = scrabbleBot.chooseAction(view as SCRBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'congkak') {
         action = congkakBot.chooseAction(view as CongkakBotView, actorId, rng, difficulty);
+      } else if (room.gameId === 'checkers') {
+        action = checkersBot.chooseAction(view as CheckersBotView, actorId, rng, difficulty);
+      } else if (room.gameId === 'aeroplane-chess') {
+        action = aeroplaneChessBot.chooseAction(view as AeroplaneChessBotView, actorId, rng, difficulty);
+      } else if (room.gameId === 'big-two') {
+        action = bigTwoBot.chooseAction(view as BigTwoBotView, actorId, rng, difficulty);
       } else {
         action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, difficulty);
       }
@@ -161,18 +173,25 @@ export function schedulePuzzleBots(room: LiveRoom): void {
         clearInterval(tick);
         return;
       }
-      if (idx >= order.length) {
-        clearInterval(tick);
-        return;
-      }
 
-      // Correct any deliberate error whose time has come.
+      // Correct any deliberate error whose time has come. This runs even
+      // after the solve order itself is exhausted — a mistake made in the
+      // final few cells schedules its fix at `idx + 3`, which can land past
+      // `order.length`; stopping the interval on order-exhaustion alone (the
+      // old bug) left that cell permanently wrong and, in a solo-vs-bots
+      // room, silently blocked the "everyone finished" early end.
       for (const [when, path] of [...pendingFixes]) {
         if (idx >= when) {
           pendingFixes.delete(when);
           const correct = correctValueFor(room, path);
           if (correct !== null) room.commit(bot.id, path, correct);
         }
+      }
+
+      if (idx >= order.length) {
+        idx++; // keep the clock running so a still-pending fix's `when` is reached
+        if (pendingFixes.size === 0) clearInterval(tick);
+        return;
       }
 
       const target = order[idx++];

@@ -351,13 +351,109 @@ export const sfx = {
     osc.start(t);
     osc.stop(t + (isGo ? 0.36 : 0.17));
   },
+
+  /** Checkers: a man is crowned king — a short triumphant chime. */
+  crown() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+
+    const t0 = ctx.currentTime + 0.01;
+    [392.0, 523.25, 659.25].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = t0 + i * 0.07;
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.4, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.2);
+      osc.connect(gain);
+      gain.connect(sfxGain!);
+      osc.start(t);
+      osc.stop(t + 0.21);
+    });
+  },
+
+  /** Aeroplane Chess: a plane released from the hangar onto the runway. */
+  launch() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(720, t + 0.18);
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.2);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.21);
+  },
+
+  /** Big Two: a combo laid onto the table — a crisp card slide. */
+  cardPlay() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.linearRampToValueAtTime(440, t + 0.08);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.1);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.11);
+  },
+
+  /** Big Two: a bomb (four-of-a-kind or straight flush) hits the table. */
+  bomb() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+
+    const t0 = ctx.currentTime + 0.01;
+    const low = ctx.createOscillator();
+    const lowGain = ctx.createGain();
+    low.type = 'sawtooth';
+    low.frequency.setValueAtTime(120, t0);
+    low.frequency.exponentialRampToValueAtTime(40, t0 + 0.3);
+    lowGain.gain.setValueAtTime(0.55, t0);
+    lowGain.gain.linearRampToValueAtTime(0.001, t0 + 0.32);
+    low.connect(lowGain);
+    lowGain.connect(sfxGain);
+    low.start(t0);
+    low.stop(t0 + 0.33);
+
+    [659.25, 783.99, 987.77].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = t0 + 0.04 * i;
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(gain);
+      gain.connect(sfxGain!);
+      osc.start(t);
+      osc.stop(t + 0.19);
+    });
+  },
 };
 
 /* ------------------------------------------------------------------ */
 /* Retro Chiptune / MIDI Background Music Generator (BGM)             */
 /* ------------------------------------------------------------------ */
 
-export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title';
+export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title' | 'checkers' | 'aeroplane' | 'bigtwo';
 
 interface NoteEvent {
   note: number;
@@ -430,6 +526,49 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
     bass: [
       { note: 36, duration: 4 }, { note: 40, duration: 4 }, { note: 43, duration: 4 }, { note: 40, duration: 4 },
       { note: 38, duration: 4 }, { note: 41, duration: 4 }, { note: 45, duration: 4 }, { note: 41, duration: 4 },
+    ],
+  },
+
+  checkers: {
+    tempo: 92,
+    lead: [
+      { note: 57, duration: 4 }, { note: 60, duration: 4 }, { note: 64, duration: 4 }, { note: 67, duration: 2 },
+      { note: 65, duration: 2 }, { note: 64, duration: 4 }, { note: 62, duration: 4 }, { note: 60, duration: 8 },
+      { note: 57, duration: 4 }, { note: 59, duration: 4 }, { note: 60, duration: 4 }, { note: 62, duration: 2 },
+      { note: 64, duration: 2 }, { note: 62, duration: 8 },
+    ],
+    bass: [
+      { note: 45, duration: 8 }, { note: 43, duration: 8 },
+      { note: 41, duration: 8 }, { note: 45, duration: 8 },
+    ],
+  },
+
+  aeroplane: {
+    tempo: 150,
+    lead: [
+      { note: 72, duration: 2 }, { note: 74, duration: 2 }, { note: 76, duration: 2 }, { note: 79, duration: 2 },
+      { note: 81, duration: 4 }, { note: 79, duration: 2 }, { note: 76, duration: 2 }, { note: 74, duration: 4 },
+      { note: 72, duration: 2 }, { note: 74, duration: 2 }, { note: 76, duration: 2 }, { note: 72, duration: 2 },
+      { note: 79, duration: 4 }, { note: 76, duration: 4 },
+    ],
+    bass: [
+      { note: 48, duration: 2 }, { note: 48, duration: 2 }, { note: 53, duration: 2 }, { note: 53, duration: 2 },
+      { note: 50, duration: 2 }, { note: 50, duration: 2 }, { note: 55, duration: 2 }, { note: 55, duration: 2 },
+    ],
+  },
+
+  bigtwo: {
+    tempo: 100,
+    lead: [
+      { note: 62, duration: 3 }, { note: 65, duration: 1 }, { note: 69, duration: 2 }, { note: 67, duration: 2 },
+      { note: 64, duration: 4 }, { note: 62, duration: 3 }, { note: 65, duration: 1 }, { note: 67, duration: 2 },
+      { note: 64, duration: 2 }, { note: 60, duration: 4 }, { note: 62, duration: 3 }, { note: 65, duration: 1 },
+      { note: 69, duration: 2 }, { note: 72, duration: 2 }, { note: 69, duration: 4 }, { note: 65, duration: 6 },
+      { note: 0, duration: 2 },
+    ],
+    bass: [
+      { note: 38, duration: 4 }, { note: 43, duration: 4 }, { note: 41, duration: 4 }, { note: 45, duration: 4 },
+      { note: 38, duration: 4 }, { note: 43, duration: 4 }, { note: 36, duration: 4 }, { note: 43, duration: 4 },
     ],
   },
 };

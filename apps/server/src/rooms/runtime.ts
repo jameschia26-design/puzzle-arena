@@ -20,6 +20,12 @@ import {
   type ScoreInput,
 } from '@puzzle-arena/shared';
 import {
+  aeroplaneChess,
+  aeroplaneChessRules,
+  bigTwo,
+  bigTwoRules,
+  checkers,
+  checkersRules,
   congkak,
   congkakRules,
   manorMystery,
@@ -234,6 +240,9 @@ export class LiveRoom {
     if (this.gameId === 'property-tycoon') return propertyTycoon as unknown as typeof propertyTycoon;
     if (this.gameId === 'scrabble') return scrabble as unknown as typeof propertyTycoon;
     if (this.gameId === 'congkak') return congkak as unknown as typeof propertyTycoon;
+    if (this.gameId === 'checkers') return checkers as unknown as typeof propertyTycoon;
+    if (this.gameId === 'aeroplane-chess') return aeroplaneChess as unknown as typeof propertyTycoon;
+    if (this.gameId === 'big-two') return bigTwo as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -243,6 +252,9 @@ export class LiveRoom {
     if (this.gameId === 'property-tycoon') return propertyTycoonRules.actorToAct(this.gameState as never);
     if (this.gameId === 'scrabble') return scrabbleRules.actorToAct(this.gameState as never);
     if (this.gameId === 'congkak') return congkakRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'checkers') return checkersRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'aeroplane-chess') return aeroplaneChessRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'big-two') return bigTwoRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
   private armEndTimer(): void {
@@ -289,7 +301,7 @@ export class LiveRoom {
     playerId: string,
     path: string,
     value: number | string | null,
-  ): { accepted: boolean; correct?: boolean; progress: number; error?: string } {
+  ): { accepted: boolean; correct?: boolean; progress: number; error?: string; foundWord?: string | null } {
     const player = this.player(playerId);
     if (!player || this.status !== 'running' || !this.puzzle) {
       return { accepted: false, progress: 0, error: 'Room is not running' };
@@ -308,6 +320,8 @@ export class LiveRoom {
     }
 
     let nextState: unknown | null;
+    /** Word Search only: the newly-found word from this selection, if any. */
+    let foundWord: string | null = null;
 
     if (this.gameId === 'word-search') {
       // path is "y1,x1,y2,x2" — a drag selection, validated against the solution
@@ -329,7 +343,10 @@ export class LiveRoom {
         y2 as number,
       );
       const found = [...st.found];
-      if (word && !found.includes(word)) found.push(word);
+      if (word && !found.includes(word)) {
+        found.push(word);
+        foundWord = word;
+      }
       nextState = { found, selections: st.selections + 1 };
     } else {
       nextState = applyCommit(this.gameId, player.state, this.puzzle.puzzle, path, value);
@@ -353,7 +370,7 @@ export class LiveRoom {
     void this.appendEvent(player.id, { type: 'commit', path, value });
     this.broadcastLeaderboard();
 
-    const ack: { accepted: boolean; correct?: boolean; progress: number } = {
+    const ack: { accepted: boolean; correct?: boolean; progress: number; foundWord?: string | null } = {
       accepted: true,
       progress: grade.progress,
     };
@@ -361,6 +378,10 @@ export class LiveRoom {
     if (this.instantFeedback) {
       ack.correct = this.isCommitCorrect(path, value);
     }
+    // Word Search always reveals which word (if any) a selection completed —
+    // that is the game's core feedback loop, not a solution leak, since the
+    // client never learns *where* the remaining words are.
+    if (this.gameId === 'word-search') ack.foundWord = foundWord;
     if (grade.complete) this.checkAllDone();
     return ack;
   }

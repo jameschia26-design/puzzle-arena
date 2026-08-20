@@ -106,17 +106,52 @@ export const congkakActionSchema = z.object({
 });
 export type CongkakAction = z.infer<typeof congkakActionSchema>;
 
+export const checkersPosSchema = z.object({
+  row: z.number().int().min(0).max(9),
+  col: z.number().int().min(0).max(9),
+});
+export const checkersActionSchema = z.object({
+  type: z.literal('move'),
+  // Start square + every landing square, including intermediate jumps in a
+  // multi-capture chain. 21 is a generous ceiling — a side only ever has 20
+  // pieces to capture in total.
+  path: z.array(checkersPosSchema).min(2).max(21),
+});
+export type CheckersAction = z.infer<typeof checkersActionSchema>;
+
+export const aeroplaneChessActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('roll') }),
+  z.object({ type: z.literal('movePlane'), tokenIndex: z.number().int().min(0).max(3) }),
+]);
+export type AeroplaneChessAction = z.infer<typeof aeroplaneChessActionSchema>;
+
+export const bigTwoCardSchema = z.object({
+  rank: z.number().int().min(0).max(12),
+  suit: z.number().int().min(0).max(3),
+});
+export const bigTwoActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('play'), cards: z.array(bigTwoCardSchema).min(1).max(5) }),
+  z.object({ type: z.literal('pass') }),
+]);
+export type BigTwoAction = z.infer<typeof bigTwoActionSchema>;
+
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
   manorMysteryActionSchema,
   scrabbleActionSchema,
   congkakActionSchema,
+  checkersActionSchema,
+  aeroplaneChessActionSchema,
+  bigTwoActionSchema,
 ]);
 export type GameAction =
   | PropertyTycoonAction
   | ManorMysteryAction
   | ScrabbleAction
-  | CongkakAction;
+  | CongkakAction
+  | CheckersAction
+  | AeroplaneChessAction
+  | BigTwoAction;
 
 /* ------------------------------------------------------------------ */
 /* Client -> server                                                    */
@@ -262,6 +297,11 @@ export interface PuzzleCommitAck {
   correct?: boolean;
   progress: number;
   error?: string;
+  /** Word Search only: the word this selection completed, or null when the
+   *  selection did not match an unfound word. Distinct from `correct` — Word
+   *  Search always reveals which words it finds, regardless of the host's
+   *  instantFeedback setting, since that is the whole point of the game. */
+  foundWord?: string | null;
 }
 
 export interface GameActionAck {

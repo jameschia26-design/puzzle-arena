@@ -33,6 +33,9 @@ import { PropertyTycoonBoard } from '../games/PropertyTycoonBoard.js';
 import { ManorMysteryBoard } from '../games/ManorMysteryBoard.js';
 import { ScrabbleBoard } from '../games/ScrabbleBoard.js';
 import { CongkakBoard } from '../games/CongkakBoard.js';
+import { CheckersBoard } from '../games/CheckersBoard.js';
+import { AeroplaneChessBoard } from '../games/AeroplaneChessBoard.js';
+import { BigTwoBoard } from '../games/BigTwoBoard.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
@@ -60,6 +63,13 @@ export default function RoomPage(): React.ReactElement {
         ...(chosenAvatar ? { avatar: chosenAvatar } : {}),
       });
       if (res.error) {
+        // A finished or abandoned room is a dead end for room:join — send the
+        // player to the results page instead of leaving them stuck on a bare
+        // error with no way back.
+        if (res.error === 'That room has finished') {
+          navigate(`/r/${code.toUpperCase()}/results`, { replace: true });
+          return;
+        }
         setJoinError(res.error);
         return;
       }
@@ -87,6 +97,9 @@ export default function RoomPage(): React.ReactElement {
     if (!room) return;
     if (room.status === 'running') {
       if (gameId === 'congkak') bgm.play('congkak');
+      else if (gameId === 'checkers') bgm.play('checkers');
+      else if (gameId === 'aeroplane-chess') bgm.play('aeroplane');
+      else if (gameId === 'big-two') bgm.play('bigtwo');
       else if (GAME_REGISTRY[gameId].kind === 'puzzle') bgm.play('puzzle');
       else bgm.play('board');
     } else if (room.status === 'finished') {
@@ -136,9 +149,14 @@ export default function RoomPage(): React.ReactElement {
             </div>
           </div>
           {joinError && (
-            <p role="alert" className="text-pa-danger text-[13px]">
-              {joinError}
-            </p>
+            <div className="flex flex-col gap-3">
+              <p role="alert" className="text-pa-danger text-[13px]">
+                {joinError}
+              </p>
+              <PixelButton variant="secondary" size="sm" onClick={() => navigate('/')}>
+                Back to home
+              </PixelButton>
+            </div>
           )}
           <PixelButton
             size="lg"
@@ -565,6 +583,19 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'nonogram') {
     return (
       <div className="flex flex-col gap-3 items-start overflow-x-auto">
+        <HintButton
+          count={hintCount}
+          onHint={async () => {
+            const res = await emit<{ hint: { path: string; value: number } | null }>(EV.puzzleHint);
+            if (res.hint) {
+              setHintCount((n) => n + 1);
+              const [r, c] = res.hint.path.split(',').map(Number);
+              const size = state.puzzle.size as number;
+              await commitCell((r ?? 0) * size + (c ?? 0), res.hint.value);
+              toast(`Revealed row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
+            }
+          }}
+        />
         <NonogramBoard
           size={state.puzzle.size}
           rowClues={state.puzzle.rowClues}
@@ -578,13 +609,44 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
 
   if (gameId === 'word-search') {
     return (
-      <WordSearchBoard
-        size={state.puzzle.size}
-        grid={state.puzzle.grid}
-        words={state.puzzle.words}
-        found={board?.found ?? []}
-        onSelect={(y1, x1, y2, x2) => void commit(`${y1},${x1},${y2},${x2}`, null)}
-      />
+      <div className="flex flex-col gap-3 items-start">
+        <HintButton
+          count={hintCount}
+          onHint={async () => {
+            const res = await emit<{ hint: { path: string; value: string } | null }>(EV.puzzleHint);
+            if (res.hint) {
+              setHintCount((n) => n + 1);
+              const [r, c] = res.hint.path.split(',').map(Number);
+              toast(`${res.hint.value} starts near row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
+            }
+          }}
+        />
+        <WordSearchBoard
+          size={state.puzzle.size}
+          grid={state.puzzle.grid}
+          words={state.puzzle.words}
+          found={board?.found ?? []}
+          onSelect={async (y1, x1, y2, x2): Promise<string | null> => {
+            const res = await emit<{ accepted: boolean; foundWord?: string | null; error?: string }>(
+              EV.puzzleCommit,
+              { path: `${y1},${x1},${y2},${x2}`, value: null },
+            );
+            if (!res.accepted) {
+              if (res.error && res.error !== 'Illegal move') toast(res.error);
+              return null;
+            }
+            const word = res.foundWord ?? null;
+            if (word) {
+              setBoard((prev: { found?: string[]; selections?: number } | undefined) => {
+                const prevFound = prev?.found ?? [];
+                if (prevFound.includes(word)) return prev;
+                return { ...(prev ?? {}), found: [...prevFound, word] };
+              });
+            }
+            return word;
+          }}
+        />
+      </div>
     );
   }
 
@@ -617,6 +679,45 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'congkak') {
     return (
       <CongkakBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'checkers') {
+    return (
+      <CheckersBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'aeroplane-chess') {
+    return (
+      <AeroplaneChessBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'big-two') {
+    return (
+      <BigTwoBoard
         view={state}
         players={store.players}
         youId={store.you?.playerId ?? null}

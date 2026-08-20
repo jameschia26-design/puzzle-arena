@@ -29,11 +29,60 @@ export { congkakBot, type CongkakBotView } from './congkak/bot.js';
 export type { CongkakState, CongkakPlayer, CongkakConfig, CongkakAction } from './congkak/state.js';
 export type { CongkakView, CongkakPublicPlayer, CongkakLastMove } from './congkak/state.js';
 
+export { checkers } from './checkers/index.js';
+export * as checkersRules from './checkers/index.js';
+export { checkersBot, type CheckersBotView } from './checkers/bot.js';
+export type {
+  CheckersState,
+  CheckersPlayer,
+  CheckersConfig,
+  CheckersAction,
+  CheckersPiece,
+  CheckersPos,
+  CheckersSide,
+} from './checkers/state.js';
+export type { CheckersView, CheckersPublicPlayer, CheckersLastMove, CheckersLegalMove } from './checkers/state.js';
+
+export { aeroplaneChess } from './aeroplane-chess/index.js';
+export * as aeroplaneChessRules from './aeroplane-chess/index.js';
+export { aeroplaneChessBot, type AeroplaneChessBotView } from './aeroplane-chess/bot.js';
+export type {
+  AeroplaneChessState,
+  AeroplaneChessPlayer,
+  AeroplaneChessConfig,
+  AeroplaneChessAction,
+  AeroplaneChessToken,
+  AeroplaneChessTokens,
+} from './aeroplane-chess/state.js';
+export type {
+  AeroplaneChessView,
+  AeroplaneChessPublicPlayer,
+  AeroplaneChessLastMove,
+  AeroplaneChessCapture,
+} from './aeroplane-chess/state.js';
+
+export { bigTwo } from './big-two/index.js';
+export * as bigTwoRules from './big-two/index.js';
+export { bigTwoBot, type BigTwoBotView } from './big-two/bot.js';
+export type {
+  BigTwoState,
+  BigTwoPlayer,
+  BigTwoConfig,
+  BigTwoAction,
+  BigTwoCard,
+  BigTwoCombo,
+  BigTwoComboCategory,
+} from './big-two/state.js';
+export type { BigTwoView, BigTwoPublicPlayer, BigTwoLastPlay } from './big-two/state.js';
+
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
 import { manorMystery } from './manor-mystery/index.js';
 import { scrabble } from './scrabble/index.js';
 import { congkak } from './congkak/index.js';
+import { checkers } from './checkers/index.js';
+import { aeroplaneChess } from './aeroplane-chess/index.js';
+import { bigTwo } from './big-two/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
@@ -42,4 +91,7 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   'manor-mystery': manorMystery as unknown as GameEngine<never, never>,
   scrabble: scrabble as unknown as GameEngine<never, never>,
   congkak: congkak as unknown as GameEngine<never, never>,
+  checkers: checkers as unknown as GameEngine<never, never>,
+  'aeroplane-chess': aeroplaneChess as unknown as GameEngine<never, never>,
+  'big-two': bigTwo as unknown as GameEngine<never, never>,
 };
