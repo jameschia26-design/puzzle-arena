@@ -4,10 +4,13 @@ import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { Bot, Copy, Lightbulb, Link2, Send, Settings, Trash2, X } from 'lucide-react';
 import {
+  AVATAR_EMOJI,
   BOT_DIFFICULTIES,
+  EV,
   GAME_REGISTRY,
   type BotDifficulty,
   type GameId,
+  type PlayerView,
 } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -652,16 +655,35 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'minesweeper') {
     return (
       <div className="flex flex-col gap-3 items-start w-full">
-        <HintButton count={store.hintCount} onHint={handleHint} />
+        <HintButton
+          count={hintCount}
+          onHint={async () => {
+            const res = await emit<{ hint: { path: string; value: number } | null }>(EV.puzzleHint);
+            if (res.hint) {
+              setHintCount((n) => n + 1);
+              const [r, c] = res.hint.path.split(',').map(Number);
+              await commit(`${r},${c}`, res.hint.value);
+              toast(`Safe cell revealed at row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
+            }
+          }}
+        />
         <MinesweeperBoard
-          puzzle={puzzle as never}
-          board={board}
-          solution={solution as never}
+          puzzle={state.puzzle}
+          board={board ?? state.initialState}
+          solution={state.solution ?? null}
           players={store.players}
           youId={store.you?.playerId ?? null}
           turnEndsAt={store.turnEndsAt}
-          onCommit={(path, value) => void handleCommit(path, value)}
-          onHint={handleHint}
+          onCommit={(path, value) => void commit(path, value)}
+          onHint={async () => {
+            const res = await emit<{ hint: { path: string; value: number } | null }>(EV.puzzleHint);
+            if (res.hint) {
+              setHintCount((n) => n + 1);
+              const [r, c] = res.hint.path.split(',').map(Number);
+              await commit(`${r},${c}`, res.hint.value);
+              toast(`Safe cell revealed at row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
+            }
+          }}
         />
       </div>
     );

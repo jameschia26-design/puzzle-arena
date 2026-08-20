@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import type { GameId } from '@puzzle-arena/shared';
+import type { GameId, PropertyTycoonAction } from '@puzzle-arena/shared';
+import { propertyTycoonRules } from '@puzzle-arena/games';
 import { complete } from './client.js';
 import { logger } from '../logger.js';
-
 export interface AiBotMoveRequest {
   gameId: GameId;
   view: unknown;
@@ -210,6 +210,198 @@ function formatCongkakPrompt(view: CongkakPromptView, actorId: string): { system
 }
 
 /* ------------------------------------------------------------------ */
+/* Property Tycoon AI Prompt & Parser                                 */
+/* ------------------------------------------------------------------ */
+
+interface PropertyTycoonPromptView {
+  phase: string;
+  current: number;
+  players: {
+    id: string;
+    seat: number;
+    cash: number;
+    position: number;
+    inJail: boolean;
+    jailTurns: number;
+    jailCards: string[];
+    bankrupt: boolean;
+  }[];
+  properties: Record<number, { owner: string | null; houses: number; mortgaged: boolean }>;
+  pendingPurchase: number | null;
+  auction: {
+    propertyId: number;
+    participants: string[];
+    passed: string[];
+    highBid: number;
+    highBidder: string | null;
+    turn: string;
+  } | null;
+  debt: { playerId: string; amount: number; creditor: string | null }[];
+  trades: {
+    id: string;
+    from: string;
+    to: string;
+    give: { cash: number; properties: number[] };
+    receive: { cash: number; properties: number[] };
+  }[];
+  housesRemaining: number;
+  hotelsRemaining: number;
+}
+
+const propertyTycoonMoveSchema = z.object({
+  action: z.enum([
+    'roll',
+    'buy',
+    'decline',
+    'bid',
+    'passBid',
+    'buildHouse',
+    'sellHouse',
+    'mortgage',
+    'unmortgage',
+    'respondTrade',
+    'payJailFine',
+    'useJailCard',
+    'declareBankruptcy',
+    'endTurn',
+  ]),
+  amount: z.number().int().optional(),
+  propertyId: z.number().int().optional(),
+  tradeId: z.string().optional(),
+  accept: z.boolean().optional(),
+  reasoning: z.string().optional(),
+});
+
+function formatPropertyTycoonPrompt(
+  view: PropertyTycoonPromptView,
+  actorId: string,
+): { system: string; user: string } {
+  const me = view.players.find((p) => p.id === actorId);
+  const myCash = me?.cash ?? 0;
+  const myPos = me?.position ?? 0;
+  const mySquare = propertyTycoonRules.squareAt(myPos);
+
+  // Group properties owned by player
+  const myProperties: string[] = [];
+  for (const [groupName, indices] of Object.entries(propertyTycoonRules.GROUPS) as [string, number[]][]) {
+    const ownedInGroup = indices.filter((idx) => view.properties[idx]?.owner === actorId);
+    if (ownedInGroup.length > 0) {
+      const isMonopoly = ownedInGroup.length === indices.length;
+      const details = ownedInGroup
+        .map((idx) => {
+          const sq = propertyTycoonRules.squareAt(idx);
+          const p = view.properties[idx]!;
+          const hStr = p.houses === 5 ? 'Hotel' : `${p.houses} houses`;
+          const mStr = p.mortgaged ? ' (MORTGAGED)' : '';
+          return `${sq.name} [${hStr}${mStr}]`;
+        })
+        .join(', ');
+      myProperties.push(`- ${groupName} (${ownedInGroup.length}/${indices.length}${isMonopoly ? ' FULL MONOPOLY' : ''}): ${details}`);
+    }
+  }
+
+  // Opponents status
+  const oppSummaries = view.players
+    .filter((p) => p.id !== actorId && !p.bankrupt)
+    .map((p) => {
+      const owned = Object.entries(view.properties)
+        .filter(([, prop]) => prop.owner === p.id)
+        .map(([idx]) => propertyTycoonRules.squareAt(Number(idx)).name);
+      return `${p.id}: $${p.cash}, on square #${p.position} (${propertyTycoonRules.squareAt(p.position).name}), owns ${owned.length} properties (${owned.slice(0, 4).join(', ')}${owned.length > 4 ? '...' : ''})`;
+    })
+    .join('\n');
+
+  let decisionContext = '';
+
+  if (view.auction && view.auction.turn === actorId) {
+    const sq = propertyTycoonRules.squareAt(view.auction.propertyId);
+    const minNext = view.auction.highBid + 10;
+    decisionContext =
+      `Current Phase: AUCTION for ${sq.name} (${sq.group ?? sq.type}, base price $${sq.price})\n` +
+      `Current high bid: $${view.auction.highBid} (by ${view.auction.highBidder ?? 'none'})\n` +
+      `Minimum next bid: $${minNext}\n` +
+      `Legal actions: {"action": "bid", "amount": ${Math.max(minNext, Math.min(myCash, (sq.price ?? 100)))}}, or {"action": "passBid"}`;
+  } else if (view.debt.some((d) => d.playerId === actorId)) {
+    const myDebt = view.debt.find((d) => d.playerId === actorId)!;
+    decisionContext =
+      `Current Phase: DEBT SETTLEMENT. You owe $${myDebt.amount} (your cash is currently $${myCash}).\n` +
+      `You must sell buildings, mortgage properties, or declare bankruptcy.\n` +
+      `Legal actions: {"action": "sellHouse", "propertyId": <id>}, {"action": "mortgage", "propertyId": <id>}, or {"action": "declareBankruptcy"}`;
+  } else if (view.trades.some((t) => t.to === actorId)) {
+    const trade = view.trades.find((t) => t.to === actorId)!;
+    const giveNames = trade.give.properties.map((i) => propertyTycoonRules.squareAt(i).name).join(', ') || 'none';
+    const recvNames = trade.receive.properties.map((i) => propertyTycoonRules.squareAt(i).name).join(', ') || 'none';
+    decisionContext =
+      `Current Phase: TRADE OFFER from ${trade.from}.\n` +
+      `They offer: $${trade.give.cash} and properties: [${giveNames}]\n` +
+      `They request: $${trade.receive.cash} and properties: [${recvNames}]\n` +
+      `Legal actions: {"action": "respondTrade", "tradeId": "${trade.id}", "accept": true} or {"action": "respondTrade", "tradeId": "${trade.id}", "accept": false}`;
+  } else if (view.phase === 'in_jail_decision') {
+    decisionContext =
+      `Current Phase: IN JAIL (turns spent: ${me?.jailTurns ?? 0}/3).\n` +
+      `Legal actions:\n` +
+      `- {"action": "roll"} (try to roll doubles for free release)\n` +
+      (myCash >= 50 ? `- {"action": "payJailFine"} (pay $50 to get out and move)\n` : '') +
+      ((me?.jailCards.length ?? 0) > 0 ? `- {"action": "useJailCard"} (use Get Out of Jail Free card)\n` : '');
+  } else if (view.phase === 'awaiting_purchase_decision' && view.pendingPurchase !== null) {
+    const sq = propertyTycoonRules.squareAt(view.pendingPurchase);
+    const price = sq.price ?? 0;
+    decisionContext =
+      `Current Phase: PURCHASE DECISION. You landed on unowned property: ${sq.name} (${sq.group ?? sq.type}).\n` +
+      `Cost: $${price}. Your cash: $${myCash}.\n` +
+      `Legal actions: {"action": "buy"} (if you have >= $${price}) or {"action": "decline"} (sends to auction)`;
+  } else if (view.phase === 'awaiting_end_turn') {
+    // Find buildable properties
+    const buildable: { propertyId: number; name: string; cost: number; houses: number }[] = [];
+    for (const [groupName, indices] of Object.entries(propertyTycoonRules.GROUPS) as [string, number[]][]) {
+      if (indices.every((idx) => view.properties[idx]?.owner === actorId && !view.properties[idx]?.mortgaged)) {
+        const cost = propertyTycoonRules.HOUSE_COST[groupName] ?? 0;
+        for (const idx of indices) {
+          const p = view.properties[idx]!;
+          if (p.houses < 5 && myCash >= cost) {
+            buildable.push({ propertyId: idx, name: propertyTycoonRules.squareAt(idx).name, cost, houses: p.houses });
+          }
+        }
+      }
+    }
+    decisionContext =
+      `Current Phase: END OF TURN.\n` +
+      (buildable.length > 0
+        ? `Buildable properties: ${buildable.map((b) => `#${b.propertyId} ${b.name} ($${b.cost}, current houses: ${b.houses})`).join(', ')}\n` +
+          `Legal actions: {"action": "buildHouse", "propertyId": <id>} or {"action": "endTurn"}\n`
+        : `Legal actions: {"action": "endTurn"}\n`);
+  } else if (view.phase === 'awaiting_roll') {
+    decisionContext = `Current Phase: ROLL DICE.\nLegal actions: {"action": "roll"}`;
+  } else {
+    decisionContext = `Current Phase: ${view.phase}.\nLegal actions: {"action": "endTurn"}`;
+  }
+
+  const system =
+    'You are a Master Monopoly / Property Tycoon strategist AI. Your goal is to bankrupt your opponents and win the game. ' +
+    'Strategic guidelines:\n' +
+    '1. Priority #1: Acquire full colour group monopolies (especially Orange, Red, LightBlue, Yellow).\n' +
+    '2. Priority #2: Build houses up to 3 houses per property as fast as possible on your monopolies — 3 houses has the highest return on investment.\n' +
+    '3. Priority #3: Keep a reasonable cash safety reserve ($100-$200) to survive landing on opponent rents.\n' +
+    '4. Buy unowned properties that complete your monopolies or block opponents from completing theirs.\n' +
+    '5. In auctions, bid aggressively for monopoly-completing or blocking properties up to 1.3x - 1.5x face value if you have the cash reserve.\n' +
+    '6. When in jail in late game (when board is developed), stay in jail as long as possible by rolling. In early game, pay fine to claim unowned board.\n' +
+    'Reply with ONLY a valid JSON object matching the requested action. No extra markdown or conversational text.';
+
+  const user =
+    `=== PROPERTY TYCOON GAME STATE ===\n` +
+    `Your Player ID: ${actorId}\n` +
+    `Your Cash: $${myCash}\n` +
+    `Your Position: Square #${myPos} (${mySquare.name})\n` +
+    `Your Properties:\n${myProperties.length > 0 ? myProperties.join('\n') : '- None'}\n\n` +
+    `Opponents:\n${oppSummaries || 'None'}\n\n` +
+    `--- YOUR TURN DECISION ---\n` +
+    `${decisionContext}\n\n` +
+    `What action do you take? Return JSON.`;
+
+  return { system, user };
+}
+
+/* ------------------------------------------------------------------ */
 /* Dispatcher: Execute AI Bot Move                                    */
 /* ------------------------------------------------------------------ */
 
@@ -314,6 +506,53 @@ export async function getAiBotAction(req: AiBotMoveRequest): Promise<unknown> {
       if (v.pits && v.pits[chosenPit] !== undefined && v.pits[chosenPit] > 0) {
         return { type: 'sow', pitIndex: chosenPit };
       }
+      return fallbackAction;
+    }
+
+    if (gameId === 'property-tycoon') {
+      const v = view as PropertyTycoonPromptView;
+      const { system, user } = formatPropertyTycoonPrompt(v, actorId);
+      const fallbackObj = (typeof fallbackAction === 'object' && fallbackAction ? fallbackAction : { type: 'endTurn' }) as PropertyTycoonAction;
+
+      const res = await complete({
+        task: 'bot_move',
+        system,
+        user,
+        schema: propertyTycoonMoveSchema,
+        fallback: { action: (fallbackObj.type ?? 'endTurn') as never },
+        noCache: true,
+      });
+
+      const act = res.value.action;
+      if (act === 'roll') return { type: 'roll' };
+      if (act === 'buy') return { type: 'buy' };
+      if (act === 'decline') return { type: 'decline' };
+      if (act === 'passBid') return { type: 'passBid' };
+      if (act === 'bid') {
+        const amt = res.value.amount ?? (fallbackObj.type === 'bid' ? fallbackObj.amount : (v.auction ? v.auction.highBid + 10 : 10));
+        return { type: 'bid', amount: amt };
+      }
+      if (act === 'buildHouse' && res.value.propertyId !== undefined) {
+        return { type: 'buildHouse', propertyId: res.value.propertyId };
+      }
+      if (act === 'sellHouse' && res.value.propertyId !== undefined) {
+        return { type: 'sellHouse', propertyId: res.value.propertyId };
+      }
+      if (act === 'mortgage' && res.value.propertyId !== undefined) {
+        return { type: 'mortgage', propertyId: res.value.propertyId };
+      }
+      if (act === 'unmortgage' && res.value.propertyId !== undefined) {
+        return { type: 'unmortgage', propertyId: res.value.propertyId };
+      }
+      if (act === 'respondTrade') {
+        const tradeId = res.value.tradeId ?? (v.trades.find((t) => t.to === actorId)?.id ?? '');
+        return { type: 'respondTrade', tradeId, accept: Boolean(res.value.accept) };
+      }
+      if (act === 'payJailFine') return { type: 'payJailFine' };
+      if (act === 'useJailCard') return { type: 'useJailCard' };
+      if (act === 'declareBankruptcy') return { type: 'declareBankruptcy' };
+      if (act === 'endTurn') return { type: 'endTurn' };
+
       return fallbackAction;
     }
   } catch (err) {
