@@ -1,10 +1,12 @@
 import * as React from 'react';
+import { motion } from 'framer-motion';
 import { Crown, Trophy } from 'lucide-react';
-import type { CheckersView, CheckersPos } from '@puzzle-arena/games';
+import type { CheckersView, CheckersPos, CheckersSide } from '@puzzle-arena/games';
 import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard, PixelPanel } from '../ui/primitives.js';
+import { STEP_MS, useReducedMotion } from '../ui/motion.js';
 import { seatColor } from '../ui/seat.js';
 import { sfx, unlockAudioSession } from '../ui/sound.js';
 
@@ -23,11 +25,22 @@ function sameSquare(a: CheckersPos, b: CheckersPos): boolean {
   return a.row === b.row && a.col === b.col;
 }
 
+/** Visual centre of a square as a percentage, respecting board orientation. */
+function visualPercent(pos: CheckersPos, flipped: boolean): { left: number; top: number } {
+  const vr = flipped ? 9 - pos.row : pos.row;
+  const vc = flipped ? 9 - pos.col : pos.col;
+  return { left: (vc + 0.5) * 10, top: (vr + 0.5) * 10 };
+}
+
 export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: CheckersBoardProps) {
+  const reduced = useReducedMotion();
   const isMyTurn = view.current === youId;
   const mySide = view.you?.side ?? 0;
   const legalMoves = view.you?.legalMoves ?? [];
   const isGameOver = view.phase === 'game_over';
+  // Side 0 starts near the top of the raw grid; flip so each player's own
+  // pieces always render near the bottom of their own screen.
+  const flipped = mySide === 0;
 
   const [path, setPath] = React.useState<CheckersPos[]>([]);
 
@@ -36,9 +49,41 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
     setPath([]);
   }, [view.lastMove, isMyTurn]);
 
+  /* ---------------- last-move animation + highlight ---------------- */
+  const [ghost, setGhost] = React.useState<{ path: CheckersPos[]; side: CheckersSide; king: boolean } | null>(
+    null,
+  );
+  const [flash, setFlash] = React.useState<{ from: CheckersPos; to: CheckersPos; captured: CheckersPos[] } | null>(
+    null,
+  );
+  const seenMoveRef = React.useRef<CheckersView['lastMove']>(null);
+
   React.useEffect(() => {
-    if (view.lastMove?.promoted) sfx.crown();
-  }, [view.lastMove]);
+    const lm = view.lastMove;
+    if (!lm || lm === seenMoveRef.current) return;
+    seenMoveRef.current = lm;
+
+    const from = lm.path[0] as CheckersPos;
+    const to = lm.path[lm.path.length - 1] as CheckersPos;
+    const movedPiece = view.board[to.row * 10 + to.col];
+
+    if (lm.captured.length > 0) sfx.tembak();
+    else sfx.drop();
+    if (lm.promoted) sfx.crown();
+    setFlash({ from, to, captured: lm.captured });
+
+    if (!reduced && movedPiece) {
+      setGhost({ path: lm.path, side: movedPiece.side, king: movedPiece.king });
+    }
+
+    const hopMs = STEP_MS * 2.5;
+    const ghostTimer = setTimeout(() => setGhost(null), reduced ? 0 : (lm.path.length - 1) * hopMs + 40);
+    const flashTimer = setTimeout(() => setFlash(null), 1800);
+    return () => {
+      clearTimeout(ghostTimer);
+      clearTimeout(flashTimer);
+    };
+  }, [view.lastMove, view.board, reduced]);
 
   const candidates = React.useMemo(
     () => legalMoves.filter((m) => path.every((p, i) => sameSquare(p, m.path[i] as CheckersPos))),
@@ -64,6 +109,7 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
   const players1 = players.find((p) => p.id === view.players[1]?.id);
   const mePlayer = mySide === 0 ? players0 : players1;
   const oppPlayer = mySide === 0 ? players1 : players0;
+  const ghostOwner = ghost ? players.find((p) => p.id === view.players[ghost.side]?.id) : null;
 
   const handleTap = (row: number, col: number): void => {
     if (!isMyTurn || isGameOver) return;
@@ -93,9 +139,6 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
 
     if (fullMatch && !stillLonger) {
       unlockAudioSession();
-      const captured = fullMatch.captured.length > 0;
-      if (captured) sfx.tembak();
-      else sfx.drop();
       onAction({ type: 'move', path: fullMatch.path });
       setPath([]);
     } else {
@@ -104,12 +147,11 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
     }
   };
 
-  // Board rows/cols render bottom-up for the player on side 1, so each
-  // player's own pieces always sit near the bottom of their screen.
-  const rowOrder = mySide === 1 ? [...Array(10)].map((_, i) => 9 - i) : [...Array(10)].map((_, i) => i);
-  const colOrder = mySide === 1 ? [...Array(10)].map((_, i) => 9 - i) : [...Array(10)].map((_, i) => i);
+  const rowOrder = flipped ? [...Array(10)].map((_, i) => 9 - i) : [...Array(10)].map((_, i) => i);
+  const colOrder = flipped ? [...Array(10)].map((_, i) => 9 - i) : [...Array(10)].map((_, i) => i);
 
   const winnerPlayer = view.winner ? players.find((p) => p.id === view.winner) : null;
+  const ghostDest = ghost ? (ghost.path[ghost.path.length - 1] as CheckersPos) : null;
 
   return (
     <div className="flex flex-col gap-4 max-w-3xl mx-auto w-full">
@@ -140,51 +182,88 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
         <PlayerBadge player={mePlayer} label={`${SIDE_LABEL[mySide]} (you) · ${view.players[mySide]?.piecesRemaining ?? 0} left`} align="right" />
       </div>
 
-      <div
-        className="mx-auto grid border-4 border-pa-border w-full max-w-[520px] aspect-square"
-        style={{ gridTemplateColumns: 'repeat(10, 1fr)', gridTemplateRows: 'repeat(10, 1fr)' }}
-      >
-        {rowOrder.flatMap((row) =>
-          colOrder.map((col) => {
-            const dark = (row + col) % 2 === 1;
-            const piece = dark ? view.board[row * 10 + col] : null;
-            const isSelected = path.length > 0 && sameSquare(path[0] as CheckersPos, { row, col });
-            const isNextOption = dark && nextOptions.has(`${row},${col}`);
-            const isStartable = dark && path.length === 0 && isMyTurn && startOptions.has(`${row},${col}`);
-            const owner = piece ? players.find((p) => p.id === view.players[piece.side]?.id) : null;
+      <div className="relative mx-auto w-full max-w-[520px] aspect-square">
+        <div
+          className="absolute inset-0 grid border-4 border-pa-border"
+          style={{ gridTemplateColumns: 'repeat(10, 1fr)', gridTemplateRows: 'repeat(10, 1fr)' }}
+        >
+          {rowOrder.flatMap((row) =>
+            colOrder.map((col) => {
+              const dark = (row + col) % 2 === 1;
+              const hideForGhost = ghostDest && sameSquare(ghostDest, { row, col });
+              const piece = dark && !hideForGhost ? view.board[row * 10 + col] : null;
+              const isSelected = path.length > 0 && sameSquare(path[0] as CheckersPos, { row, col });
+              const isNextOption = dark && nextOptions.has(`${row},${col}`);
+              const isStartable = dark && path.length === 0 && isMyTurn && startOptions.has(`${row},${col}`);
+              const isLastFrom = flash && sameSquare(flash.from, { row, col });
+              const isLastTo = flash && sameSquare(flash.to, { row, col });
+              const isLastCaptured = flash?.captured.some((c) => sameSquare(c, { row, col }));
+              const owner = piece ? players.find((p) => p.id === view.players[piece.side]?.id) : null;
 
-            return (
-              <button
-                key={`${row}-${col}`}
-                type="button"
-                disabled={!dark}
-                onClick={() => handleTap(row, col)}
-                aria-label={dark ? `Square ${row},${col}` : undefined}
-                className={cn(
-                  'relative flex items-center justify-center',
-                  dark ? 'bg-pa-surface-2 cursor-pointer' : 'bg-pa-bg cursor-default',
-                  isSelected && 'ring-4 ring-pa-cyan ring-inset',
-                  isNextOption && 'ring-2 ring-pa-amber ring-inset',
-                )}
-              >
-                {isStartable && !piece && <span className="w-2 h-2 rounded-full bg-pa-cyan/60" />}
-                {isNextOption && !piece && (
-                  <span className="w-3 h-3 rounded-full bg-pa-amber animate-pulse" />
-                )}
-                {piece && (
-                  <span
-                    className="w-[76%] h-[76%] rounded-full border-2 flex items-center justify-center shadow-md"
-                    style={{
-                      backgroundColor: seatColor(owner?.seat ?? piece.side),
-                      borderColor: 'var(--color-pa-ink)',
-                    }}
-                  >
-                    {piece.king && <Crown size={16} className="text-pa-bg" strokeWidth={3} />}
-                  </span>
-                )}
-              </button>
-            );
-          }),
+              return (
+                <button
+                  key={`${row}-${col}`}
+                  type="button"
+                  disabled={!dark}
+                  onClick={() => handleTap(row, col)}
+                  aria-label={dark ? `Square ${row},${col}` : undefined}
+                  className={cn(
+                    'relative flex items-center justify-center',
+                    dark ? 'bg-pa-surface-2 cursor-pointer' : 'bg-pa-bg cursor-default',
+                    isSelected && 'ring-4 ring-pa-cyan ring-inset',
+                    isNextOption && 'ring-2 ring-pa-amber ring-inset',
+                    (isLastFrom || isLastTo) && 'ring-2 ring-pa-lime ring-inset',
+                    isLastCaptured && 'bg-pa-danger/25',
+                  )}
+                >
+                  {isStartable && !piece && <span className="w-2 h-2 rounded-full bg-pa-cyan/60" />}
+                  {isNextOption && !piece && (
+                    <span className="w-3 h-3 rounded-full bg-pa-amber animate-pulse" />
+                  )}
+                  {piece && (
+                    <span
+                      className="w-[76%] h-[76%] rounded-full border-2 flex items-center justify-center shadow-md"
+                      style={{
+                        backgroundColor: seatColor(owner?.seat ?? piece.side),
+                        borderColor: 'var(--color-pa-ink)',
+                      }}
+                    >
+                      {piece.king && <Crown size={16} className="text-pa-bg" strokeWidth={3} />}
+                    </span>
+                  )}
+                </button>
+              );
+            }),
+          )}
+        </div>
+
+        {/* The moved piece flies along its whole path (including multi-jump
+            hops) instead of the board just snapping to the new position —
+            without this a capture chain reads as pieces randomly vanishing. */}
+        {ghost && (
+          <motion.div
+            className="absolute pointer-events-none z-20"
+            style={{ width: '7.6%', height: '7.6%', translateX: '-50%', translateY: '-50%' }}
+            initial={{
+              left: `${visualPercent(ghost.path[0] as CheckersPos, flipped).left}%`,
+              top: `${visualPercent(ghost.path[0] as CheckersPos, flipped).top}%`,
+            }}
+            animate={{
+              left: ghost.path.map((p) => `${visualPercent(p, flipped).left}%`),
+              top: ghost.path.map((p) => `${visualPercent(p, flipped).top}%`),
+            }}
+            transition={{ duration: ((ghost.path.length - 1) * STEP_MS * 2.5) / 1000, ease: 'linear' }}
+          >
+            <span
+              className="w-full h-full rounded-full border-2 flex items-center justify-center shadow-lg"
+              style={{
+                backgroundColor: seatColor(ghostOwner?.seat ?? ghost.side),
+                borderColor: 'var(--color-pa-ink)',
+              }}
+            >
+              {ghost.king && <Crown size={16} className="text-pa-bg" strokeWidth={3} />}
+            </span>
+          </motion.div>
         )}
       </div>
 
