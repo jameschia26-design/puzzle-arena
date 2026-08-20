@@ -39,7 +39,7 @@ const NUMBER_COLORS: Record<number, string> = {
 export function MinesweeperBoard({
   puzzle,
   board,
-  solution,
+  solution: propsSolution,
   players,
   youId,
   turnEndsAt,
@@ -50,21 +50,54 @@ export function MinesweeperBoard({
   const totalCells = rows * cols;
   const totalNonMines = totalCells - totalMines;
 
+  // Derive solution locally from seed if available
+  const solution = React.useMemo(() => {
+    if (propsSolution) return propsSolution;
+    if (puzzle.seed !== undefined) {
+      return minesweeper.generate({
+        seed: puzzle.seed,
+        difficulty: puzzle.difficulty ?? (puzzle.rows === 9 ? 'easy' : puzzle.rows === 16 ? 'medium' : 'hard'),
+      }).solution;
+    }
+    return null;
+  }, [propsSolution, puzzle]);
+
   // Local private flags — strictly client-side, never exposed to other players!
   const [flags, setFlags] = React.useState<Set<number>>(new Set());
   const [flagMode, setFlagMode] = React.useState(false);
 
-  // Parse player state
-  const playerState = (board ?? {
-    revealed: new Array<boolean>(totalCells).fill(false),
-    detonated: false,
-    detonatedCell: null,
-  }) as MinesweeperPlayerState;
+  // Local revealed and detonated state for instant responsive visual feedback
+  const [localRevealed, setLocalRevealed] = React.useState<boolean[]>(() => {
+    if (board && typeof board === 'object' && 'revealed' in board && Array.isArray(board.revealed)) {
+      return (board.revealed as boolean[]).slice(0, totalCells);
+    }
+    return new Array<boolean>(totalCells).fill(false);
+  });
+  const [localDetonated, setLocalDetonated] = React.useState<boolean>(() => {
+    if (board && typeof board === 'object' && 'detonated' in board) {
+      return Boolean(board.detonated);
+    }
+    return false;
+  });
+  // Synchronize with incoming server state updates
+  React.useEffect(() => {
+    if (board && typeof board === 'object') {
+      const b = board as MinesweeperPlayerState;
+      if (Array.isArray(b.revealed)) {
+        setLocalRevealed((prev) => {
+          const next = [...prev];
+          for (let i = 0; i < totalCells; i++) {
+            if (b.revealed[i]) next[i] = true;
+          }
+          return next;
+        });
+      }
+      if (b.detonated) setLocalDetonated(true);
+    }
+  }, [board, totalCells]);
 
-  const revealed = Array.isArray(playerState.revealed)
-    ? playerState.revealed
-    : new Array<boolean>(totalCells).fill(false);
-  const isDetonated = Boolean(playerState.detonated);
+  const revealed = localRevealed;
+  const isDetonated = localDetonated;
 
   // Count revealed non-mines
   let revealedNonMines = 0;
@@ -97,7 +130,9 @@ export function MinesweeperBoard({
 
       if (solution) {
         const res = revealCell(solution, revealed, row, col);
+        setLocalRevealed(res.revealed);
         if (res.detonated) {
+          setLocalDetonated(true);
           sfx.bomb();
           onCommit(`${row},${col}`, 'detonated');
         } else {
@@ -113,7 +148,6 @@ export function MinesweeperBoard({
           }
         }
       } else {
-        // Safe fallback without client-side solution
         sfx.pop();
         onCommit(`${row},${col}`, 1);
       }
@@ -151,9 +185,12 @@ export function MinesweeperBoard({
   // Mobile Touch Long-Press Timer
   const longPressTimerRef = React.useRef<number | undefined>(undefined);
   const isLongPressRef = React.useRef(false);
+  const touchStartPosRef = React.useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const startLongPress = React.useCallback(
-    (row: number, col: number) => {
+    (row: number, col: number, e: React.TouchEvent) => {
+      const touch = e.touches[0];
+      if (touch) touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
       isLongPressRef.current = false;
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = window.setTimeout(() => {
@@ -162,7 +199,7 @@ export function MinesweeperBoard({
           navigator.vibrate?.(40);
         }
         handleToggleFlag(row, col);
-      }, 350);
+      }, 300);
     },
     [handleToggleFlag],
   );
@@ -170,6 +207,18 @@ export function MinesweeperBoard({
   const cancelLongPress = React.useCallback(() => {
     clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = undefined;
+  }, []);
+
+  const handleTouchMove = React.useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    if (touch) {
+      const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+      const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+      if (dx > 8 || dy > 8) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = undefined;
+      }
+    }
   }, []);
 
   // Handle chord click on revealed numbers
@@ -210,7 +259,10 @@ export function MinesweeperBoard({
           }
         }
 
+        setLocalRevealed(currentRevealed);
+
         if (anyDetonated) {
+          setLocalDetonated(true);
           sfx.bomb();
           onCommit(`${detonatedPos.r},${detonatedPos.c}`, 'detonated');
         } else {
@@ -261,14 +313,14 @@ export function MinesweeperBoard({
                 sfx.chip();
               }}
               className={cn(
-                'px-3 py-1.5 rounded border-2 text-[12px] font-display flex items-center gap-1.5 transition-all cursor-pointer',
+                'px-3 py-2 rounded border-2 text-[12px] font-display flex items-center gap-2 transition-all cursor-pointer select-none',
                 flagMode
-                  ? 'bg-pa-pink text-pa-bg border-pa-pink shadow-[0_0_10px_rgba(255,63,142,0.4)]'
-                  : 'bg-pa-bg-alt text-pa-pink border-pa-border hover:border-pa-pink',
+                  ? 'bg-pa-pink text-pa-bg border-pa-pink shadow-[0_0_10px_rgba(255,63,142,0.6)] font-bold'
+                  : 'bg-pa-cyan/20 text-pa-cyan border-pa-cyan hover:bg-pa-cyan/30 font-bold',
               )}
             >
-              <Flag size={14} className={flagMode ? 'fill-pa-bg' : ''} />
-              <span>{flagMode ? 'FLAG MODE' : 'DIG MODE'}</span>
+              <Flag size={14} className={flagMode ? 'fill-pa-bg text-pa-bg' : 'text-pa-cyan'} />
+              <span>{flagMode ? '🚩 FLAG MODE' : '⛏️ DIG MODE'}</span>
             </button>
 
             {turnEndsAt && (
@@ -280,10 +332,10 @@ export function MinesweeperBoard({
         </div>
       </PixelPanel>
 
-      {/* Grid Container — Horizontal scrollable on narrow screens without distortion */}
-      <div className="w-full overflow-x-auto overflow-y-hidden p-2 sm:p-4 bg-[#090d16] border-2 border-pa-border rounded-lg flex justify-start sm:justify-center">
+      {/* Grid Container — Horizontal scrollable on narrow screens, naturally scrollable vertically */}
+      <div className="w-full overflow-x-auto p-2 sm:p-4 bg-[#090d16] border-2 border-pa-border rounded-lg flex justify-start sm:justify-center">
         <div
-          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none m-auto shrink-0 touch-pan-x"
+          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none m-auto shrink-0"
           style={{
             gridTemplateColumns: `repeat(${cols}, 32px)`,
             width: 'max-content',
@@ -307,7 +359,7 @@ export function MinesweeperBoard({
                   e.stopPropagation();
                   handleToggleFlag(r, c, e);
                 }}
-                onTouchStart={() => startLongPress(r, c)}
+                onTouchStart={(e) => startLongPress(r, c, e)}
                 onTouchEnd={(e) => {
                   if (isLongPressRef.current) {
                     e.preventDefault();
@@ -315,7 +367,7 @@ export function MinesweeperBoard({
                   }
                   cancelLongPress();
                 }}
-                onTouchMove={cancelLongPress}
+                onTouchMove={handleTouchMove}
                 onTouchCancel={cancelLongPress}
                 onClick={(e) => {
                   if (isLongPressRef.current) {
@@ -362,8 +414,6 @@ export function MinesweeperBoard({
           })}
         </div>
       </div>
-
-      {/* Status Toasts / Banners */}
       {isCompleted && (
         <div className="p-3 bg-emerald-950/80 border-2 border-emerald-400 text-emerald-200 rounded flex items-center justify-center gap-2 font-display text-[14px] shadow-[0_0_20px_rgba(74,222,128,0.3)] animate-pulse">
           <Trophy size={18} className="text-pa-amber" />

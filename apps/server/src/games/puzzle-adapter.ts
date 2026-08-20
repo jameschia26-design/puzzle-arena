@@ -283,8 +283,8 @@ export function applyCommit(
         };
       }
 
-      if (typeof value === 'string' && value.includes(';')) {
-        const indices = value.split(';').map(Number);
+      if (typeof value === 'string' && (value.includes(';') || value.includes(','))) {
+        const indices = value.split(/[;,]/).map(Number).filter((n) => !Number.isNaN(n));
         for (const idx of indices) {
           if (idx >= 0 && idx < nextRevealed.length) nextRevealed[idx] = true;
         }

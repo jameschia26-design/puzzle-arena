@@ -22,6 +22,8 @@ export interface MinesweeperPuzzle {
   cols: number;
   totalMines: number;
   safeStart: { row: number; col: number };
+  seed?: number;
+  difficulty?: Difficulty;
 }
 
 export interface MinesweeperSolution {
@@ -124,6 +126,8 @@ export function generate(opts: {
       cols,
       totalMines,
       safeStart: { row: startR, col: startC },
+      seed,
+      difficulty,
     },
     solution: {
       rows,
