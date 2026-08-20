@@ -56,6 +56,30 @@ export type {
   BigTwoComboCategory,
 } from './big-two/state.js';
 export type { BigTwoView, BigTwoPublicPlayer, BigTwoLastPlay } from './big-two/state.js';
+export { reversi } from './reversi/index.js';
+export * as reversiRules from './reversi/index.js';
+export { reversiBot, type ReversiBotView } from './reversi/bot.js';
+export type {
+  ReversiState,
+  ReversiPlayer,
+  ReversiConfig,
+  ReversiAction,
+  ReversiSide,
+  ReversiLastMove,
+  ReversiView,
+} from './reversi/state.js';
+export { connect4 } from './connect4/index.js';
+export * as connect4Rules from './connect4/index.js';
+export { connect4Bot, type Connect4BotView } from './connect4/bot.js';
+export type {
+  Connect4State,
+  Connect4Player,
+  Connect4Config,
+  Connect4Action,
+  Connect4Side,
+  Connect4LastMove,
+  Connect4View,
+} from './connect4/state.js';
 
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
@@ -64,6 +88,8 @@ import { scrabble } from './scrabble/index.js';
 import { congkak } from './congkak/index.js';
 import { checkers } from './checkers/index.js';
 import { bigTwo } from './big-two/index.js';
+import { reversi } from './reversi/index.js';
+import { connect4 } from './connect4/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
@@ -74,4 +100,6 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   congkak: congkak as unknown as GameEngine<never, never>,
   checkers: checkers as unknown as GameEngine<never, never>,
   'big-two': bigTwo as unknown as GameEngine<never, never>,
+  reversi: reversi as unknown as GameEngine<never, never>,
+  connect4: connect4 as unknown as GameEngine<never, never>,
 };

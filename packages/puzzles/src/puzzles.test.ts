@@ -4,6 +4,7 @@ import * as sudoku from './sudoku.js';
 import * as killer from './killer-sudoku.js';
 import * as nonogram from './nonogram.js';
 import * as wordSearch from './word-search.js';
+import * as minesweeper from './minesweeper.js';
 import { fallbackWordsFor } from './word-lists.js';
 import {
   CELLS,
@@ -322,6 +323,84 @@ describe('word search generation', () => {
   it('falls back sensibly for an unknown theme', () => {
     expect(fallbackWordsFor('utterly unknown theme').length).toBeGreaterThan(0);
     expect(fallbackWordsFor('Deep Sea')).toContain('OCTOPUS');
+  });
+});
+/* ================================================================== */
+/* Minesweeper                                                         */
+/* ================================================================== */
+
+describe('minesweeper generation and solving', () => {
+  it.each(DIFFICULTIES)('generates valid board configuration for %s', (difficulty) => {
+    const { puzzle, solution } = minesweeper.generate({ difficulty, seed: 123 });
+    const cfg = minesweeper.DIFFICULTY_CONFIGS[difficulty];
+    expect(puzzle.rows).toBe(cfg.rows);
+    expect(puzzle.cols).toBe(cfg.cols);
+    expect(puzzle.totalMines).toBe(cfg.totalMines);
+
+    // Count actual mines in solution grid
+    const mineCount = solution.grid.filter((v) => v === minesweeper.MINE).length;
+    expect(mineCount).toBe(cfg.totalMines);
+
+    // Verify safe start is 0 and has no mines in its 3x3 neighborhood
+    const startIdx = puzzle.safeStart.row * puzzle.cols + puzzle.safeStart.col;
+    expect(solution.grid[startIdx]).toBe(0);
+    for (const n of minesweeper.getNeighbors(puzzle.safeStart.row, puzzle.safeStart.col, puzzle.rows, puzzle.cols)) {
+      expect(solution.grid[n.r * puzzle.cols + n.c]).not.toBe(minesweeper.MINE);
+    }
+
+    // Verify all number clues match exact neighbor mine counts
+    for (let r = 0; r < puzzle.rows; r++) {
+      for (let c = 0; c < puzzle.cols; c++) {
+        const idx = r * puzzle.cols + c;
+        const val = solution.grid[idx];
+        if (val === minesweeper.MINE) continue;
+        let neighbors = 0;
+        for (const n of minesweeper.getNeighbors(r, c, puzzle.rows, puzzle.cols)) {
+          if (solution.grid[n.r * puzzle.cols + n.c] === minesweeper.MINE) neighbors++;
+        }
+        expect(val).toBe(neighbors);
+      }
+    }
+  });
+
+  it('flood fills safe regions on reveal', () => {
+    const { puzzle, solution } = minesweeper.generate({ difficulty: 'easy', seed: 42 });
+    const revealed = new Array<boolean>(puzzle.rows * puzzle.cols).fill(false);
+    const res = minesweeper.revealCell(solution, revealed, puzzle.safeStart.row, puzzle.safeStart.col);
+    expect(res.detonated).toBe(false);
+    expect(res.countRevealed).toBeGreaterThan(1);
+
+    const g = minesweeper.grade({ revealed: res.revealed, detonated: false }, solution);
+    expect(g.cellsCorrect).toBe(res.countRevealed);
+    expect(g.complete).toBe(false);
+  });
+
+  it('grades complete solve when all non-mines are revealed', () => {
+    const { puzzle, solution } = minesweeper.generate({ difficulty: 'easy', seed: 99 });
+    const allRevealed = solution.grid.map((v) => v !== minesweeper.MINE);
+    const g = minesweeper.grade({ revealed: allRevealed, detonated: false }, solution);
+    expect(g.complete).toBe(true);
+    expect(g.cellsCorrect).toBe(puzzle.rows * puzzle.cols - puzzle.totalMines);
+  });
+
+  it('detects detonation on hitting a mine', () => {
+    const { puzzle, solution } = minesweeper.generate({ difficulty: 'easy', seed: 99 });
+    const mineIdx = solution.grid.indexOf(minesweeper.MINE);
+    const r = Math.floor(mineIdx / puzzle.cols);
+    const c = mineIdx % puzzle.cols;
+    const res = minesweeper.revealCell(solution, new Array(puzzle.rows * puzzle.cols).fill(false), r, c);
+    expect(res.detonated).toBe(true);
+    const g = minesweeper.grade({ revealed: res.revealed, detonated: true }, solution);
+    expect(g.complete).toBe(false);
+  });
+
+  it('provides helpful hints for unrevealed non-mines', () => {
+    const { puzzle, solution } = minesweeper.generate({ difficulty: 'easy', seed: 7 });
+    const revealed = new Array<boolean>(puzzle.rows * puzzle.cols).fill(false);
+    const h = minesweeper.hint(solution, { revealed, detonated: false }, mulberry32(1));
+    expect(h).not.toBeNull();
+    const [r, c] = h!.path.split(',').map(Number);
+    expect(solution.grid[r! * puzzle.cols + c!]).not.toBe(minesweeper.MINE);
   });
 });
 

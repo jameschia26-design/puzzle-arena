@@ -1,15 +1,19 @@
 import {
   bigTwoBot,
   checkersBot,
+  connect4Bot,
   congkakBot,
   manorMysteryBot,
   propertyTycoonBot,
+  reversiBot,
   scrabbleBot,
   type BigTwoBotView,
   type CheckersBotView,
+  type Connect4BotView,
   type CongkakBotView,
   type MMBotView,
   type PTBotView,
+  type ReversiBotView,
   type SCRBotView,
 } from '@puzzle-arena/games';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
@@ -113,6 +117,10 @@ export function scheduleBots(room: LiveRoom): void {
         action = checkersBot.chooseAction(view as CheckersBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'big-two') {
         action = bigTwoBot.chooseAction(view as BigTwoBotView, actorId, rng, difficulty);
+      } else if (room.gameId === 'reversi') {
+        action = reversiBot.chooseAction(view as ReversiBotView, actorId, rng, difficulty);
+      } else if (room.gameId === 'connect4') {
+        action = connect4Bot.chooseAction(view as Connect4BotView, actorId, rng, difficulty);
       } else {
         action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, difficulty);
       }
@@ -204,6 +212,11 @@ export function schedulePuzzleBots(room: LiveRoom): void {
         }
         return;
       }
+      if (room.gameId === 'minesweeper') {
+        const path = String(target);
+        room.commit(bot.id, path, 1);
+        return;
+      }
 
       const cell = Number(target);
       const path = pathFor(room, cell);
@@ -231,6 +244,10 @@ function pathFor(room: LiveRoom, cell: number): string {
     const size = (room.puzzle?.puzzle as { size: number }).size;
     return `${Math.floor(cell / size)},${cell % size}`;
   }
+  if (room.gameId === 'minesweeper') {
+    const cols = (room.puzzle?.puzzle as { cols: number }).cols;
+    return `${Math.floor(cell / cols)},${cell % cols}`;
+  }
   return `${Math.floor(cell / 9)},${cell % 9}`;
 }
 
@@ -241,6 +258,10 @@ function correctValueFor(room: LiveRoom, path: string): number | null {
   if (room.gameId === 'nonogram') {
     const size = (room.puzzle.puzzle as { size: number }).size;
     return (room.puzzle.solution as boolean[])[r * size + c] ? 1 : 2;
+  }
+  if (room.gameId === 'minesweeper') {
+    const sol = room.puzzle.solution as { cols: number; grid: number[] };
+    return sol.grid[(r as number) * sol.cols + (c as number)] === -1 ? null : 1;
   }
   return (room.puzzle.solution as number[])[r * 9 + c] ?? null;
 }

@@ -35,6 +35,9 @@ import { ScrabbleBoard } from '../games/ScrabbleBoard.js';
 import { CongkakBoard } from '../games/CongkakBoard.js';
 import { CheckersBoard } from '../games/CheckersBoard.js';
 import { BigTwoBoard } from '../games/BigTwoBoard.js';
+import { MinesweeperBoard } from '../games/MinesweeperBoard.js';
+import { ReversiBoard } from '../games/ReversiBoard.js';
+import { Connect4Board } from '../games/Connect4Board.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
@@ -647,6 +650,24 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
       </div>
     );
   }
+  if (gameId === 'minesweeper') {
+    return (
+      <div className="flex flex-col gap-3 items-start w-full">
+        <HintButton count={store.hintCount} onHint={handleHint} />
+        <MinesweeperBoard
+          puzzle={puzzle as never}
+          board={board}
+          solution={solution as never}
+          players={store.players}
+          youId={store.you?.playerId ?? null}
+          turnEndsAt={store.turnEndsAt}
+          onCommit={(path, value) => void handleCommit(path, value)}
+          onHint={handleHint}
+        />
+      </div>
+    );
+  }
+
 
   if (gameId === 'property-tycoon') {
     return (
@@ -712,6 +733,32 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
       />
     );
   }
+  if (gameId === 'reversi') {
+    return (
+      <ReversiBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'connect4') {
+    return (
+      <Connect4Board
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
 
   return (
     <ManorMysteryBoard

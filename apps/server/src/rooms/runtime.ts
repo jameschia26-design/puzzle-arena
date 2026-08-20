@@ -26,8 +26,12 @@ import {
   checkersRules,
   congkak,
   congkakRules,
+  connect4,
+  connect4Rules,
   manorMystery,
   manorMysteryRules,
+  reversi,
+  reversiRules,
   propertyTycoon,
   propertyTycoonRules,
   scrabble,
@@ -240,6 +244,8 @@ export class LiveRoom {
     if (this.gameId === 'congkak') return congkak as unknown as typeof propertyTycoon;
     if (this.gameId === 'checkers') return checkers as unknown as typeof propertyTycoon;
     if (this.gameId === 'big-two') return bigTwo as unknown as typeof propertyTycoon;
+    if (this.gameId === 'reversi') return reversi as unknown as typeof propertyTycoon;
+    if (this.gameId === 'connect4') return connect4 as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -251,6 +257,8 @@ export class LiveRoom {
     if (this.gameId === 'congkak') return congkakRules.actorToAct(this.gameState as never);
     if (this.gameId === 'checkers') return checkersRules.actorToAct(this.gameState as never);
     if (this.gameId === 'big-two') return bigTwoRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'reversi') return reversiRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'connect4') return connect4Rules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
   private armEndTimer(): void {
@@ -395,6 +403,11 @@ export class LiveRoom {
       const solution = this.puzzle.solution as boolean[];
       const want = solution[(r as number) * size + (c as number)] ? 1 : 2;
       return Number(value) === want;
+    }
+    if (this.gameId === 'minesweeper') {
+      const [r, c] = path.split(',').map(Number);
+      const solution = this.puzzle.solution as { cols: number; grid: number[] };
+      return solution.grid[(r as number) * solution.cols + (c as number)] !== -1;
     }
     return true;
   }

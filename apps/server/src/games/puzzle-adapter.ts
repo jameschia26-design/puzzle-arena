@@ -1,5 +1,6 @@
 import {
   killerSudoku,
+  minesweeper,
   nonogram,
   sudoku,
   wordSearch,
@@ -103,6 +104,21 @@ export async function generatePuzzle(
           .map((p) => p.word),
       };
     }
+    case 'minesweeper': {
+      const { puzzle, solution, meta } = minesweeper.generate({ difficulty, seed });
+      return {
+        puzzle,
+        solution,
+        meta,
+        initialState: {
+          revealed: new Array<boolean>(puzzle.rows * puzzle.cols).fill(false),
+          detonated: false,
+          detonatedCell: null,
+          moves: 0,
+        },
+        solveOrder: minesweeper.solveOrder(puzzle, solution),
+      };
+    }
     default:
       throw new Error(`${gameId} is not a puzzle`);
   }
@@ -150,6 +166,15 @@ export function gradePuzzle(
         filledFraction: g.wordsTotal > 0 ? g.wordsFound / g.wordsTotal : 0,
       };
     }
+    case 'minesweeper': {
+      const g = minesweeper.grade(playerState, solution as minesweeper.MinesweeperSolution);
+      return {
+        progress: g.cellsTotal > 0 ? g.cellsCorrect / g.cellsTotal : 0,
+        accuracy: g.cellsFilled > 0 ? g.cellsCorrect / g.cellsFilled : 1,
+        complete: g.complete,
+        filledFraction: g.cellsTotal > 0 ? Math.min(1, g.cellsFilled / g.cellsTotal) : 0,
+      };
+    }
     default:
       throw new Error(`${gameId} is not a puzzle`);
   }
@@ -178,6 +203,8 @@ export function puzzleHint(
     }
     case 'word-search':
       return wordSearch.hint(solution as { placements: never[] }, playerState, rng);
+    case 'minesweeper':
+      return minesweeper.hint(solution as minesweeper.MinesweeperSolution, playerState, rng);
     default:
       return null;
   }
@@ -227,6 +254,55 @@ export function applyCommit(
         selections: number;
       };
       return { found: [...st.found], selections: st.selections + 1 };
+    }
+    case 'minesweeper': {
+      const puz = puzzle as { rows: number; cols: number };
+      const st = (playerState ?? {
+        revealed: new Array<boolean>(puz.rows * puz.cols).fill(false),
+        detonated: false,
+        detonatedCell: null,
+        moves: 0,
+      }) as {
+        revealed: boolean[];
+        detonated: boolean;
+        detonatedCell: { row: number; col: number } | null;
+        moves: number;
+      };
+      if (st.detonated) return null;
+      const nextRevealed = Array.isArray(st.revealed)
+        ? [...st.revealed]
+        : new Array<boolean>(puz.rows * puz.cols).fill(false);
+
+      if (typeof value === 'string' && value.startsWith('detonated')) {
+        const [r, c] = path.split(',').map(Number);
+        return {
+          ...st,
+          detonated: true,
+          detonatedCell: { row: r ?? 0, col: c ?? 0 },
+          moves: st.moves + 1,
+        };
+      }
+
+      if (typeof value === 'string' && value.includes(';')) {
+        const indices = value.split(';').map(Number);
+        for (const idx of indices) {
+          if (idx >= 0 && idx < nextRevealed.length) nextRevealed[idx] = true;
+        }
+        return { ...st, revealed: nextRevealed, moves: st.moves + 1 };
+      }
+
+      const [r, c] = path.split(',').map(Number);
+      if (r !== undefined && c !== undefined && !Number.isNaN(r) && !Number.isNaN(c)) {
+        const idx = r * puz.cols + c;
+        if (idx >= 0 && idx < nextRevealed.length) {
+          nextRevealed[idx] = true;
+        }
+      }
+      return {
+        ...st,
+        revealed: nextRevealed,
+        moves: st.moves + 1,
+      };
     }
     default:
       return null;

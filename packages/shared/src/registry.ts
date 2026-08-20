@@ -5,11 +5,14 @@ export const GAME_IDS = [
   'killer-sudoku',
   'nonogram',
   'word-search',
+  'minesweeper',
   'property-tycoon',
   'manor-mystery',
   'scrabble',
   'congkak',
   'checkers',
+  'reversi',
+  'connect4',
   'big-two',
 ] as const;
 
@@ -41,6 +44,17 @@ export const wordSearchConfigSchema = z.object({
   ...basePuzzleConfig,
   size: z.number().int().min(12).max(18).default(14),
   theme: z.string().min(1).max(40).default('Space'),
+});
+export const minesweeperConfigSchema = z.object({
+  ...basePuzzleConfig,
+});
+
+export const reversiConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
+});
+
+export const connect4ConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
 });
 
 export const propertyTycoonConfigSchema = z.object({
@@ -129,6 +143,17 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     configSchema: wordSearchConfigSchema,
     blurb: 'Find every themed word hidden in eight directions.',
   },
+  minesweeper: {
+    id: 'minesweeper',
+    title: 'Minesweeper',
+    kind: 'puzzle',
+    minPlayers: 1,
+    maxPlayers: 200,
+    defaultTimeLimitSec: 900,
+    supportsBots: true,
+    configSchema: minesweeperConfigSchema,
+    blurb: 'Clear the minefield without detonating a single bomb. Flag hidden mines and chord numbers.',
+  },
   'property-tycoon': {
     id: 'property-tycoon',
     title: 'Property Tycoon',
@@ -183,6 +208,28 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: checkersConfigSchema,
     blurb: 'International draughts: flying kings, forced captures, and a race to clear the board.',
+  },
+  reversi: {
+    id: 'reversi',
+    title: 'Reversi',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 1800,
+    supportsBots: true,
+    configSchema: reversiConfigSchema,
+    blurb: 'Classic Othello / Reversi: flank and flip your opponent discs across an 8x8 grid.',
+  },
+  connect4: {
+    id: 'connect4',
+    title: 'Connect 4',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 1200,
+    supportsBots: true,
+    configSchema: connect4ConfigSchema,
+    blurb: 'Vertical gravity 4-in-a-row: drop discs to align four in a line before your opponent.',
   },
   'big-two': {
     id: 'big-two',

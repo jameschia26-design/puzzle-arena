@@ -10,6 +10,10 @@ import { checkers, type CheckersState } from './checkers/index.js';
 import { checkersBot, type CheckersBotView } from './checkers/bot.js';
 import { bigTwo, type BigTwoState } from './big-two/index.js';
 import { bigTwoBot, type BigTwoBotView } from './big-two/bot.js';
+import { reversi, type ReversiState } from './reversi/index.js';
+import { reversiBot, type ReversiBotView } from './reversi/bot.js';
+import { connect4, type Connect4State } from './connect4/index.js';
+import { connect4Bot, type Connect4BotView } from './connect4/bot.js';
 
 const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard'];
 
@@ -117,6 +121,38 @@ describe('bots only ever see the restricted view', () => {
       const view = bigTwo.view(state, starter) as BigTwoBotView;
       const action = bigTwoBot.chooseAction(view, starter, mulberry32(1), difficulty);
       const r = bigTwo.reduce(state, starter, action);
+      expect(r.ok).toBe(true);
+    }
+  });
+  it('never hands a Reversi bot the RNG stream', () => {
+    const state = reversi.setup(['a', 'b'], 42, {});
+    const view = reversi.view(state, 'a') as unknown as Record<string, unknown>;
+    expect(view['rng']).toBeUndefined();
+    expect(JSON.stringify(view)).not.toContain('"rng"');
+  });
+
+  it('a reversi bot policy produces legal actions across all difficulties', () => {
+    for (const difficulty of DIFFICULTIES) {
+      const state = reversi.setup(['a', 'b'], 42, {});
+      const view = reversi.view(state, 'a') as ReversiBotView;
+      const action = reversiBot.chooseAction(view, 'a', mulberry32(1), difficulty);
+      const r = reversi.reduce(state, 'a', action);
+      expect(r.ok).toBe(true);
+    }
+  });
+  it('never hands a Connect 4 bot the RNG stream', () => {
+    const state = connect4.setup(['a', 'b'], 42, {});
+    const view = connect4.view(state, 'a') as unknown as Record<string, unknown>;
+    expect(view['rng']).toBeUndefined();
+    expect(JSON.stringify(view)).not.toContain('"rng"');
+  });
+
+  it('a connect 4 bot policy produces legal actions across all difficulties', () => {
+    for (const difficulty of DIFFICULTIES) {
+      const state = connect4.setup(['a', 'b'], 42, {});
+      const view = connect4.view(state, 'a') as Connect4BotView;
+      const action = connect4Bot.chooseAction(view, 'a', mulberry32(1), difficulty);
+      const r = connect4.reduce(state, 'a', action);
       expect(r.ok).toBe(true);
     }
   });
@@ -421,6 +457,60 @@ describe('bot-only games replay identically', () => {
     expect(a.players).toEqual(b.players);
     expect(a.winner).toBe(b.winner);
     expect(a.seq).toBe(b.seq);
+  });
+  it('plays Reversi to the same final state twice', () => {
+    const play = (): ReversiState => {
+      let s = reversi.setup(['a', 'b'], 98765, {});
+      const rng = mulberry32(42);
+      for (let i = 0; i < 200 && s.phase !== 'game_over'; i++) {
+        const actor = reversi.view(s, null).players[s.turn].id;
+        const view = reversi.view(s, actor) as ReversiBotView;
+        const difficulty: BotDifficulty = actor === 'a' ? 'hard' : 'normal';
+        const action = reversiBot.chooseAction(view, actor, rng, difficulty);
+        const r = reversi.reduce(s, actor, action);
+        if (r.ok) {
+          s = r.state;
+          continue;
+        }
+        const fallback = reversi.reduce(s, actor, reversi.autoAction(s, actor));
+        if (!fallback.ok) throw new Error(`stuck for ${actor}`);
+        s = fallback.state;
+      }
+      return s;
+    };
+
+    const a = play();
+    const b = play();
+    expect(a.board).toEqual(b.board);
+    expect(a.players).toEqual(b.players);
+    expect(a.winner).toBe(b.winner);
+  });
+  it('plays Connect 4 to the same final state twice', () => {
+    const play = (): Connect4State => {
+      let s = connect4.setup(['a', 'b'], 77777, {});
+      const rng = mulberry32(42);
+      for (let i = 0; i < 60 && s.phase !== 'game_over'; i++) {
+        const actor = connect4.view(s, null).players[s.turn].id;
+        const view = connect4.view(s, actor) as Connect4BotView;
+        const difficulty: BotDifficulty = actor === 'a' ? 'hard' : 'normal';
+        const action = connect4Bot.chooseAction(view, actor, rng, difficulty);
+        const r = connect4.reduce(s, actor, action);
+        if (r.ok) {
+          s = r.state;
+          continue;
+        }
+        const fallback = connect4.reduce(s, actor, connect4.autoAction(s, actor));
+        if (!fallback.ok) throw new Error(`stuck for ${actor}`);
+        s = fallback.state;
+      }
+      return s;
+    };
+
+    const a = play();
+    const b = play();
+    expect(a.board).toEqual(b.board);
+    expect(a.players).toEqual(b.players);
+    expect(a.winner).toBe(b.winner);
   });
 
   it('lets a deducing bot eventually solve the mystery rather than guess', () => {

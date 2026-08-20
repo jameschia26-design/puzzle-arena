@@ -118,6 +118,21 @@ export const checkersActionSchema = z.object({
   path: z.array(checkersPosSchema).min(2).max(21),
 });
 export type CheckersAction = z.infer<typeof checkersActionSchema>;
+export const reversiActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('place'),
+    row: z.number().int().min(0).max(7),
+    col: z.number().int().min(0).max(7),
+  }),
+  z.object({ type: z.literal('pass') }),
+]);
+export type ReversiAction = z.infer<typeof reversiActionSchema>;
+
+export const connect4ActionSchema = z.object({
+  type: z.literal('drop'),
+  col: z.number().int().min(0).max(6),
+});
+export type Connect4Action = z.infer<typeof connect4ActionSchema>;
 
 export const bigTwoCardSchema = z.object({
   rank: z.number().int().min(0).max(12),
@@ -135,6 +150,8 @@ export const gameActionSchema = z.union([
   scrabbleActionSchema,
   congkakActionSchema,
   checkersActionSchema,
+  reversiActionSchema,
+  connect4ActionSchema,
   bigTwoActionSchema,
 ]);
 export type GameAction =
@@ -143,6 +160,8 @@ export type GameAction =
   | ScrabbleAction
   | CongkakAction
   | CheckersAction
+  | ReversiAction
+  | Connect4Action
   | BigTwoAction;
 /* ------------------------------------------------------------------ */
 /* Client -> server                                                    */

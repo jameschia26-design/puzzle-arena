@@ -1,0 +1,365 @@
+import React from 'react';
+import {
+  minesweeper,
+  type MinesweeperPlayerState,
+  type MinesweeperPuzzle,
+  type MinesweeperSolution,
+} from '@puzzle-arena/puzzles';
+import type { PlayerView } from '@puzzle-arena/shared';
+import { PixelPanel } from '../ui/primitives.js';
+import { Countdown, SeatAvatar } from '../ui/game-bits.js';
+import { cn } from '../ui/cn.js';
+import { bgm, sfx, unlockAudioSession } from '../ui/sound.js';
+import { Flag, Trophy, Bomb } from 'lucide-react';
+
+const { revealCell, getNeighbors, MINE } = minesweeper;
+
+export interface MinesweeperBoardProps {
+  puzzle: MinesweeperPuzzle;
+  board: unknown;
+  solution: MinesweeperSolution | null;
+  players: PlayerView[];
+  youId: string | null;
+  turnEndsAt?: number | null;
+  onCommit: (path: string, value: number | string | null) => void;
+  onHint?: () => void;
+}
+
+const NUMBER_COLORS: Record<number, string> = {
+  1: 'text-[#38bdf8]',
+  2: 'text-[#4ade80]',
+  3: 'text-[#f87171]',
+  4: 'text-[#818cf8]',
+  5: 'text-[#fb923c]',
+  6: 'text-[#2dd4bf]',
+  7: 'text-[#c084fc]',
+  8: 'text-[#94a3b8]',
+};
+
+export function MinesweeperBoard({
+  puzzle,
+  board,
+  solution,
+  players,
+  youId,
+  turnEndsAt,
+  onCommit,
+  onHint,
+}: MinesweeperBoardProps): React.ReactElement {
+  const { rows, cols, totalMines } = puzzle;
+  const totalCells = rows * cols;
+  const totalNonMines = totalCells - totalMines;
+
+  // Local private flags — strictly client-side, never exposed to other players!
+  const [flags, setFlags] = React.useState<Set<number>>(new Set());
+  const [flagMode, setFlagMode] = React.useState(false);
+
+  // Parse player state
+  const playerState = (board ?? {
+    revealed: new Array<boolean>(totalCells).fill(false),
+    detonated: false,
+    detonatedCell: null,
+  }) as MinesweeperPlayerState;
+
+  const revealed = Array.isArray(playerState.revealed)
+    ? playerState.revealed
+    : new Array<boolean>(totalCells).fill(false);
+  const isDetonated = Boolean(playerState.detonated);
+
+  // Count revealed non-mines
+  let revealedNonMines = 0;
+  if (solution) {
+    for (let i = 0; i < totalCells; i++) {
+      if (revealed[i] && solution.grid[i] !== MINE) revealedNonMines++;
+    }
+  } else {
+    revealedNonMines = revealed.filter(Boolean).length;
+  }
+
+  const isCompleted = !isDetonated && revealedNonMines >= totalNonMines;
+  const remainingMines = Math.max(0, totalMines - flags.size);
+
+  // Play background music
+  React.useEffect(() => {
+    bgm.play('puzzle');
+    return () => {
+      bgm.stop();
+    };
+  }, []);
+
+  // Handle cell reveal (Left-Click or Tap in dig mode)
+  const handleReveal = React.useCallback(
+    (row: number, col: number) => {
+      unlockAudioSession();
+      if (isDetonated || isCompleted) return;
+      const idx = row * cols + col;
+      if (flags.has(idx) || revealed[idx]) return;
+
+      if (solution) {
+        const res = revealCell(solution, revealed, row, col);
+        if (res.detonated) {
+          sfx.bomb();
+          onCommit(`${row},${col}`, 'detonated');
+        } else {
+          sfx.pop();
+          if (res.countRevealed > 1) sfx.turn();
+          // Send all newly revealed cell indices
+          const newIndices: number[] = [];
+          for (let i = 0; i < totalCells; i++) {
+            if (res.revealed[i] && !revealed[i]) newIndices.push(i);
+          }
+          if (newIndices.length > 0) {
+            onCommit(`${row},${col}`, newIndices.join(';'));
+          }
+        }
+      } else {
+        // Safe fallback without client-side solution
+        sfx.pop();
+        onCommit(`${row},${col}`, 1);
+      }
+    },
+    [cols, flags, isCompleted, isDetonated, onCommit, revealed, solution, totalCells],
+  );
+
+  // Handle cell flag (Right-Click or Tap in flag mode)
+  const handleToggleFlag = React.useCallback(
+    (row: number, col: number, e?: React.MouseEvent) => {
+      if (e) e.preventDefault();
+      unlockAudioSession();
+      if (isDetonated || isCompleted) return;
+      const idx = row * cols + col;
+      if (revealed[idx]) return;
+
+      setFlags((prev) => {
+        const next = new Set(prev);
+        if (next.has(idx)) {
+          next.delete(idx);
+          sfx.chip();
+        } else {
+          next.add(idx);
+          sfx.deal();
+        }
+        return next;
+      });
+    },
+    [cols, isCompleted, isDetonated, revealed],
+  );
+
+  // Handle chord click on revealed numbers
+  const handleChord = React.useCallback(
+    (row: number, col: number) => {
+      unlockAudioSession();
+      if (isDetonated || isCompleted || !solution) return;
+      const idx = row * cols + col;
+      if (!revealed[idx]) return;
+
+      const num = solution.grid[idx];
+      if (num === undefined || num <= 0 || num === MINE) return;
+
+      // Count surrounding flags
+      const neighbors = getNeighbors(row, col, rows, cols);
+      let flagCount = 0;
+      for (const n of neighbors) {
+        if (flags.has(n.r * cols + n.c)) flagCount++;
+      }
+
+      if (flagCount === num) {
+        // Reveal all unflagged unrevealed neighbors
+        let currentRevealed = [...revealed];
+        let anyDetonated = false;
+        let detonatedPos = { r: row, c: col };
+        const newIndices: number[] = [];
+
+        for (const n of neighbors) {
+          const nIdx = n.r * cols + n.c;
+          if (!flags.has(nIdx) && !currentRevealed[nIdx]) {
+            const res = revealCell(solution, currentRevealed, n.r, n.c);
+            currentRevealed = res.revealed;
+            if (res.detonated) {
+              anyDetonated = true;
+              detonatedPos = n;
+              break;
+            }
+          }
+        }
+
+        if (anyDetonated) {
+          sfx.bomb();
+          onCommit(`${detonatedPos.r},${detonatedPos.c}`, 'detonated');
+        } else {
+          for (let i = 0; i < totalCells; i++) {
+            if (currentRevealed[i] && !revealed[i]) newIndices.push(i);
+          }
+          if (newIndices.length > 0) {
+            sfx.turn();
+            onCommit(`${row},${col}`, newIndices.join(';'));
+          }
+        }
+      }
+    },
+    [cols, flags, isCompleted, isDetonated, onCommit, revealed, rows, solution, totalCells],
+  );
+
+  return (
+    <div className="flex flex-col gap-4 max-w-5xl mx-auto w-full px-2 sm:px-4">
+      {/* Header HUD with digital displays and retro smiley */}
+      <PixelPanel className="p-3 bg-[#0d1117] border-2 border-pa-border shadow-[0_0_15px_rgba(34,224,255,0.08)]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Mine Counter */}
+          <div className="flex items-center gap-2 bg-[#05070d] px-3 py-1.5 rounded border border-pa-border/60">
+            <Bomb size={18} className="text-pa-pink animate-pulse" />
+            <div className="font-mono font-bold text-[18px] text-pa-pink tracking-widest">
+              {String(remainingMines).padStart(3, '0')}
+            </div>
+          </div>
+
+          {/* Smiley Status Face Button */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="w-10 h-10 rounded border-2 border-pa-border bg-pa-bg-alt hover:bg-pa-border/40 text-[22px] flex items-center justify-center shadow-inner transition-transform active:scale-95 cursor-pointer"
+              title="Status"
+            >
+              {isCompleted ? '😎' : isDetonated ? '😵' : '🙂'}
+            </button>
+          </div>
+
+          {/* Flag Mode Mobile Toggle & Timer */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                unlockAudioSession();
+                setFlagMode((prev) => !prev);
+                sfx.chip();
+              }}
+              className={cn(
+                'px-3 py-1.5 rounded border-2 text-[12px] font-display flex items-center gap-1.5 transition-all cursor-pointer',
+                flagMode
+                  ? 'bg-pa-pink text-pa-bg border-pa-pink shadow-[0_0_10px_rgba(255,63,142,0.4)]'
+                  : 'bg-pa-bg-alt text-pa-pink border-pa-border hover:border-pa-pink',
+              )}
+            >
+              <Flag size={14} className={flagMode ? 'fill-pa-bg' : ''} />
+              <span>{flagMode ? 'FLAG MODE' : 'DIG MODE'}</span>
+            </button>
+
+            {turnEndsAt && (
+              <div className="bg-[#05070d] px-3 py-1.5 rounded border border-pa-border/60">
+                <Countdown endsAt={turnEndsAt} className="text-[16px] text-pa-amber font-mono font-bold" />
+              </div>
+            )}
+          </div>
+        </div>
+      </PixelPanel>
+
+      {/* Grid Container */}
+      <div className="flex justify-center overflow-auto p-2 bg-[#090d16] border-2 border-pa-border rounded-lg">
+        <div
+          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            width: 'max-content',
+          }}
+        >
+          {Array.from({ length: totalCells }).map((_, idx) => {
+            const r = Math.floor(idx / cols);
+            const c = idx % cols;
+            const isRev = revealed[idx];
+            const isFlg = flags.has(idx);
+            const val = solution ? solution.grid[idx] : 0;
+            const isMine = val === MINE;
+
+            return (
+              <button
+                key={idx}
+                type="button"
+                onContextMenu={(e) => handleToggleFlag(r, c, e)}
+                onClick={() => {
+                  if (flagMode) {
+                    handleToggleFlag(r, c);
+                  } else if (isRev) {
+                    handleChord(r, c);
+                  } else {
+                    handleReveal(r, c);
+                  }
+                }}
+                className={cn(
+                  'w-8 h-8 sm:w-9 sm:h-9 text-[14px] sm:text-[16px] font-bold font-mono flex items-center justify-center transition-all cursor-pointer',
+                  isRev
+                    ? isMine
+                      ? 'bg-red-950 border border-red-500 text-pa-pink shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+                      : 'bg-[#121826] border border-[#1f293d]/50 shadow-inner'
+                    : isFlg
+                      ? 'bg-pa-bg-alt border-2 border-t-pa-pink/80 border-l-pa-pink/80 border-b-pa-pink/30 border-r-pa-pink/30 shadow'
+                      : 'bg-[#1b2333] hover:bg-[#253047] border-2 border-t-[#3b4b6b] border-l-[#3b4b6b] border-b-[#0b101b] border-r-[#0b101b] active:border-[#121826]',
+                )}
+              >
+                {isRev ? (
+                  isMine ? (
+                    <Bomb size={18} className="text-red-400 animate-bounce" />
+                  ) : val && val > 0 ? (
+                    <span className={cn('drop-shadow-[0_0_4px_currentColor]', NUMBER_COLORS[val])}>
+                      {val}
+                    </span>
+                  ) : (
+                    ''
+                  )
+                ) : isFlg ? (
+                  <Flag size={16} className="text-pa-pink fill-pa-pink animate-pulse" />
+                ) : (
+                  ''
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Status Toasts / Banners */}
+      {isCompleted && (
+        <div className="p-3 bg-emerald-950/80 border-2 border-emerald-400 text-emerald-200 rounded flex items-center justify-center gap-2 font-display text-[14px] shadow-[0_0_20px_rgba(74,222,128,0.3)] animate-pulse">
+          <Trophy size={18} className="text-pa-amber" />
+          <span>MINEFIELD CLEARED! PERFECT RUN!</span>
+        </div>
+      )}
+
+      {isDetonated && (
+        <div className="p-3 bg-red-950/80 border-2 border-red-500 text-red-200 rounded flex items-center justify-center gap-2 font-display text-[14px] shadow-[0_0_20px_rgba(239,68,68,0.3)]">
+          <Bomb size={18} className="text-pa-pink" />
+          <span>DETONATION! A MINE EXPLODED!</span>
+        </div>
+      )}
+
+      {/* Opponents Progress List */}
+      {players.length > 1 && (
+        <PixelPanel title="Competitors" className="p-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {players.map((p) => {
+              const isYou = p.id === youId;
+              return (
+                <div
+                  key={p.id}
+                  className={cn(
+                    'p-2 rounded border flex items-center gap-2 bg-pa-bg-alt',
+                    isYou ? 'border-pa-cyan bg-pa-cyan/10' : 'border-pa-border',
+                  )}
+                >
+                  <SeatAvatar seat={p.seat} displayName={p.displayName} avatar={p.avatar} isBot={p.isBot} size={28} />
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="font-display text-[11px] truncate">
+                      {p.displayName} {isYou ? '(You)' : ''}
+                    </span>
+                    <span className="text-[10px] text-pa-muted">
+                      {p.isBot ? 'Bot' : 'Player'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </PixelPanel>
+      )}
+    </div>
+  );
+}

@@ -226,6 +226,84 @@ export const sfx = {
     osc.start(t);
     osc.stop(t + 0.07);
   },
+  /** Bubble pop / tile reveal */
+  pop() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, t);
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.05);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.06);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.07);
+  },
+
+  /** Disc / chip placement click */
+  chip() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(700, t);
+    osc.frequency.exponentialRampToValueAtTime(300, t + 0.04);
+    gain.gain.setValueAtTime(0.5, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.05);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  },
+
+  /** Turn change / chord sweep chime */
+  turn() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t0 = ctx.currentTime + 0.01;
+    [587.33, 880].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = t0 + i * 0.05;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.1);
+      osc.connect(gain);
+      gain.connect(sfxGain!);
+      osc.start(t);
+      osc.stop(t + 0.11);
+    });
+  },
+
+  /** Explosion boom for mine detonation */
+  bomb() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.4);
+    gain.gain.setValueAtTime(0.8, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.45);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.46);
+  },
+
 
   /** Correct entry / tile placement */
   correct() {
