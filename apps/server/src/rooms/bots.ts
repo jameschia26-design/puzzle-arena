@@ -16,6 +16,7 @@ import {
   type ReversiBotView,
   type SCRBotView,
 } from '@puzzle-arena/games';
+import { getAiBotAction } from '../ai/bot-moves.js';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
 import { env } from '../env.js';
 import { logger } from '../logger.js';
@@ -92,7 +93,7 @@ export function scheduleBots(room: LiveRoom): void {
   const rng = rngFor(room);
   const delay = thinkDelay(rng);
 
-  const timer = setTimeout(() => {
+  const timer = setTimeout(async () => {
     timers.delete(room.id);
     if (room.status !== 'running') return;
     // The seat may have moved on while we waited.
@@ -106,29 +107,42 @@ export function scheduleBots(room: LiveRoom): void {
     const view = room.engine().view(room.gameState as never, actorId);
 
     let action: unknown;
+    const effectiveDifficulty: BotDifficulty = difficulty === 'ai' ? 'hard' : difficulty;
+
     try {
       if (room.gameId === 'property-tycoon') {
-        action = propertyTycoonBot.chooseAction(view as PTBotView, actorId, rng, difficulty);
+        action = propertyTycoonBot.chooseAction(view as PTBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'scrabble') {
-        action = scrabbleBot.chooseAction(view as SCRBotView, actorId, rng, difficulty);
+        action = scrabbleBot.chooseAction(view as SCRBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'congkak') {
-        action = congkakBot.chooseAction(view as CongkakBotView, actorId, rng, difficulty);
+        action = congkakBot.chooseAction(view as CongkakBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'checkers') {
-        action = checkersBot.chooseAction(view as CheckersBotView, actorId, rng, difficulty);
+        action = checkersBot.chooseAction(view as CheckersBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'big-two') {
-        action = bigTwoBot.chooseAction(view as BigTwoBotView, actorId, rng, difficulty);
+        action = bigTwoBot.chooseAction(view as BigTwoBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'reversi') {
-        action = reversiBot.chooseAction(view as ReversiBotView, actorId, rng, difficulty);
+        action = reversiBot.chooseAction(view as ReversiBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'connect4') {
-        action = connect4Bot.chooseAction(view as Connect4BotView, actorId, rng, difficulty);
+        action = connect4Bot.chooseAction(view as Connect4BotView, actorId, rng, effectiveDifficulty);
       } else {
-        action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, difficulty);
+        action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, effectiveDifficulty);
+      }
+
+      // If bot difficulty is 'ai', consult the LLM provider with fallback
+      if (difficulty === 'ai') {
+        action = await getAiBotAction({
+          gameId: room.gameId,
+          view,
+          actorId,
+          fallbackAction: action,
+        });
       }
     } catch (err) {
       logger.error({ err, roomId: room.id }, 'bot policy threw; using autoAction');
       action = room.engine().autoAction(room.gameState as never, actorId);
     }
 
+    if (room.status !== 'running') return;
     room.consecutiveBotActions += 1;
     const result = room.applyGameAction(actorId, action);
     if (!result.accepted) {
@@ -147,8 +161,8 @@ export function scheduleBots(room: LiveRoom): void {
 /* ------------------------------------------------------------------ */
 
 /** How much of the time limit each difficulty takes to finish. */
-const PACE: Record<BotDifficulty, number> = { easy: 1.8, normal: 0.95, hard: 0.6 };
-const ERROR_RATE: Record<BotDifficulty, number> = { easy: 0.08, normal: 0.04, hard: 0.01 };
+const PACE: Record<BotDifficulty, number> = { easy: 1.8, normal: 0.95, hard: 0.6, ai: 0.5 };
+const ERROR_RATE: Record<BotDifficulty, number> = { easy: 0.08, normal: 0.04, hard: 0.01, ai: 0.0 };
 
 /**
  * A puzzle bot replays the solver's own solve path at a human-plausible pace,

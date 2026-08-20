@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Copy, Cpu, Link2, Plus } from 'lucide-react';
-import { GAME_IDS, GAME_REGISTRY, type GameId } from '@puzzle-arena/shared';
+import { GAME_IDS, GAME_REGISTRY, WORD_SEARCH_THEMES, type GameId } from '@puzzle-arena/shared';
 import {
   PixelBadge,
   PixelButton,
@@ -28,7 +28,7 @@ export default function AdminDashboard(): React.ReactElement {
   const [difficulty, setDifficulty] = React.useState('medium');
   const [minutes, setMinutes] = React.useState<number | string>(15);
   const [instantFeedback, setInstantFeedback] = React.useState(false);
-  const [theme, setTheme] = React.useState('Deep Sea');
+  const [theme, setTheme] = React.useState<string>(WORD_SEARCH_THEMES[0]);
   const [size, setSize] = React.useState('10');
   const [rooms, setRooms] = React.useState<RoomRow[]>([]);
   const [error, setError] = React.useState<string | null>(null);
@@ -145,10 +145,11 @@ export default function AdminDashboard(): React.ReactElement {
             />
           )}
           {gameId === 'word-search' && (
-            <PixelInput
-              label="Theme (sent to the AI provider)"
+            <PixelSelect
+              label="Theme"
               value={theme}
-              onChange={(e) => setTheme(e.target.value)}
+              onValueChange={setTheme}
+              options={WORD_SEARCH_THEMES.map((t) => ({ value: t, label: t }))}
             />
           )}
         </div>

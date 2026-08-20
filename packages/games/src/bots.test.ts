@@ -15,7 +15,7 @@ import { reversiBot, type ReversiBotView } from './reversi/bot.js';
 import { connect4, type Connect4State } from './connect4/index.js';
 import { connect4Bot, type Connect4BotView } from './connect4/bot.js';
 
-const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard'];
+const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard', 'ai'];
 
 /* ================================================================== */
 /* The no-cheat invariant — the thing most likely to be got wrong      */

@@ -33,7 +33,7 @@ export const connect4Bot: BotPolicy<Connect4BotView, Connect4Action> = {
     const selfSide: Connect4Side = selfIdx >= 0 ? view.players[selfIdx]!.side : view.turn;
     const oppSide: Connect4Side = selfSide === 0 ? 1 : 0;
 
-    // Check immediate winning move
+    // 1. Immediate Win check (always take the win if available)
     for (const c of view.legalCols) {
       const r = getLowestEmptyRow(view.board, c);
       if (r !== null) {
@@ -45,15 +45,15 @@ export const connect4Bot: BotPolicy<Connect4BotView, Connect4Action> = {
       }
     }
 
-    // Check immediate opponent block
+    // 2. Immediate Block check (block opponent win)
     for (const c of view.legalCols) {
       const r = getLowestEmptyRow(view.board, c);
       if (r !== null) {
         const nextBoard = [...view.board];
         nextBoard[r * COLS + c] = oppSide;
         if (checkWinningLine(nextBoard, r, c, oppSide)) {
-          // Easy bots have 30% chance to miss the block
-          if (difficulty !== 'easy' || rng.next() < 0.7) {
+          // Easy bots have 25% chance to blunder/miss
+          if (difficulty !== 'easy' || rng.next() < 0.75) {
             return { type: 'drop', col: c };
           }
         }
@@ -65,13 +65,37 @@ export const connect4Bot: BotPolicy<Connect4BotView, Connect4Action> = {
       return { type: 'drop', col: pick };
     }
 
-    const depth = difficulty === 'normal' ? 3 : 6;
+    // 3. Filter out "Handover / Suicide Moves" (dropping here lets opponent win directly on top)
+    const safeCols: number[] = [];
+    for (const c of view.legalCols) {
+      const r = getLowestEmptyRow(view.board, c);
+      if (r !== null) {
+        // If there is a cell above, check if opponent could win on it
+        if (r > 0) {
+          const simBoard = [...view.board];
+          simBoard[r * COLS + c] = selfSide;
+          simBoard[(r - 1) * COLS + c] = oppSide;
+          if (checkWinningLine(simBoard, r - 1, c, oppSide)) {
+            // It's a suicide handover move! Avoid unless no safe columns exist
+            continue;
+          }
+        }
+        safeCols.push(c);
+      }
+    }
+
+    // Candidates to search: prefer safe non-blunder columns
+    const candidates = safeCols.length > 0 ? safeCols : view.legalCols;
+
+    // 4. Minimax with Alpha-Beta Pruning
+    // Normal: depth 5, Hard/AI: depth 7
+    const depth = difficulty === 'normal' ? 5 : 7;
     let bestScore = Number.NEGATIVE_INFINITY;
-    let bestCol = view.legalCols[0]!;
+    let bestCol = candidates[0]!;
 
-    const orderedCols = COLUMN_ORDER.filter((c) => view.legalCols.includes(c));
+    const orderedCandidates = COLUMN_ORDER.filter((c) => candidates.includes(c));
 
-    for (const c of orderedCols) {
+    for (const c of orderedCandidates) {
       const r = getLowestEmptyRow(view.board, c);
       if (r !== null) {
         const nextBoard = [...view.board];
@@ -97,6 +121,10 @@ export const connect4Bot: BotPolicy<Connect4BotView, Connect4Action> = {
   },
 };
 
+const get = (board: readonly (Connect4Side | null)[], r: number, c: number): Connect4Side | null => {
+  return board[r * COLS + c] ?? null;
+};
+
 function scoreWindow(window: (Connect4Side | null)[], mySide: Connect4Side): number {
   const oppSide: Connect4Side = mySide === 0 ? 1 : 0;
   let myCount = 0;
@@ -110,24 +138,22 @@ function scoreWindow(window: (Connect4Side | null)[], mySide: Connect4Side): num
   }
 
   if (myCount === 4) return 100000;
-  if (myCount === 3 && emptyCount === 1) return 100;
-  if (myCount === 2 && emptyCount === 2) return 10;
-  if (oppCount === 3 && emptyCount === 1) return -90;
-  if (oppCount === 2 && emptyCount === 2) return -8;
+  if (myCount === 3 && emptyCount === 1) return 300;
+  if (myCount === 2 && emptyCount === 2) return 40;
+  if (oppCount === 3 && emptyCount === 1) return -2500; // Strong penalty to block opponent 3-in-a-row!
+  if (oppCount === 2 && emptyCount === 2) return -30;
   return 0;
 }
-
-const get = (board: readonly (Connect4Side | null)[], r: number, c: number): Connect4Side | null => {
-  return board[r * COLS + c] ?? null;
-};
 
 function evaluateBoard(board: readonly (Connect4Side | null)[], mySide: Connect4Side): number {
   let score = 0;
 
-  // Center column preference
+  // Center column and adjacent column preference
   const centerCol = 3;
   for (let r = 0; r < ROWS; r++) {
-    if (get(board, r, centerCol) === mySide) score += 6;
+    if (get(board, r, centerCol) === mySide) score += 12;
+    if (get(board, r, centerCol - 1) === mySide) score += 6;
+    if (get(board, r, centerCol + 1) === mySide) score += 6;
   }
 
   // Horizontal windows

@@ -141,19 +141,22 @@ export function generate(opts: {
 }): { puzzle: WordSearchPuzzle; solution: WordSearchSolution; meta: PuzzleMeta } {
   const started = Date.now();
   const size = opts.size ?? (opts.difficulty === 'easy' ? 12 : opts.difficulty === 'medium' ? 14 : 18);
+  const targetCount =
+    opts.difficulty === 'easy' ? 8 : opts.difficulty === 'medium' ? 12 : opts.difficulty === 'hard' ? 16 : 18;
 
   // Normalise: uppercase, letters only, 4..9 chars, deduped, must fit the grid.
-  const words = [...new Set(opts.words.map((w) => w.toUpperCase().replace(/[^A-Z]/g, '')))]
-    .filter((w) => w.length >= 4 && w.length <= 9 && w.length <= size)
-    .slice(0, 18);
+  const pool = [...new Set(opts.words.map((w) => w.toUpperCase().replace(/[^A-Z]/g, '')))]
+    .filter((w) => w.length >= 4 && w.length <= 9 && w.length <= size);
 
-  if (words.length === 0) throw new Error('word-search: no usable words');
+  if (pool.length === 0) throw new Error('word-search: no usable words');
 
   for (let attempt = 0; attempt < 60; attempt++) {
     const rng = mulberry32(opts.seed + attempt * 5347);
+    const candidatePool = [...pool];
+    rng.shuffle(candidatePool);
+    const words = candidatePool.slice(0, Math.min(candidatePool.length, targetCount));
     const placed = placeWords(size, words, rng);
     if (!placed) continue;
-
     // Fill the gaps, then re-scan. A filler letter can accidentally spell a
     // target word a second time, which would make the puzzle ambiguous.
     for (let fillTry = 0; fillTry < 50; fillTry++) {

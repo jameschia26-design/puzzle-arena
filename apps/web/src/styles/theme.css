@@ -82,7 +82,11 @@
     shape-rendering: crispEdges;
   }
 
-  /* Chunky square scrollbars. */
+  /* Chunky square scrollbars across desktop and mobile browsers. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-pa-border) var(--color-pa-bg);
+  }
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;

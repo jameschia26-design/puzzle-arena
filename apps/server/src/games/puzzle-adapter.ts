@@ -6,10 +6,10 @@ import {
   wordSearch,
   solvePath,
   cageConstraint,
+  getWordsForTheme,
   type Grid,
 } from '@puzzle-arena/puzzles';
 import type { Difficulty, GameId, Rng } from '@puzzle-arena/shared';
-import { getThemeWords } from '../ai/tasks.js';
 
 /**
  * One uniform interface over the four puzzle games, so the room runtime never
@@ -85,7 +85,7 @@ export async function generatePuzzle(
     case 'word-search': {
       const theme = (config['theme'] as string) ?? 'Space';
       const size = (config['size'] as number) ?? 14;
-      const { words } = await getThemeWords(theme);
+      const words = getWordsForTheme(theme);
       const { puzzle, solution, meta } = wordSearch.generate({
         difficulty,
         seed,

@@ -24,7 +24,21 @@ export const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 export const difficultySchema = z.enum(DIFFICULTIES);
 
-export const BOT_DIFFICULTIES = ['easy', 'normal', 'hard'] as const;
+export const BOT_DIFFICULTIES = ['easy', 'normal', 'hard', 'ai'] as const;
+export const WORD_SEARCH_THEMES = [
+  'Space',
+  'Animals',
+  'Ocean & Deep Sea',
+  'Food & Cooking',
+  'Computing & Tech',
+  'Mythology & Fantasy',
+  'Sports & Games',
+  'Music & Audio',
+  'Weather & Seasons',
+  'World & Travel',
+] as const;
+export type WordSearchTheme = (typeof WORD_SEARCH_THEMES)[number];
+
 export type BotDifficulty = (typeof BOT_DIFFICULTIES)[number];
 export const botDifficultySchema = z.enum(BOT_DIFFICULTIES);
 

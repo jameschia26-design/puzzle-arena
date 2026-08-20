@@ -4,11 +4,10 @@ import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { Bot, Copy, Lightbulb, Link2, Send, Settings, Trash2, X } from 'lucide-react';
 import {
-  AVATAR_EMOJI,
-  EV,
+  BOT_DIFFICULTIES,
   GAME_REGISTRY,
+  type BotDifficulty,
   type GameId,
-  type PlayerView,
 } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -398,16 +397,16 @@ function Lobby({
               Add a computer player
             </span>
             <div className="flex flex-wrap gap-2">
-              {(['easy', 'normal', 'hard'] as const).map((difficulty) => (
+              {BOT_DIFFICULTIES.map((difficulty) => (
                 <PixelButton
                   key={difficulty}
                   size="sm"
-                  variant="ghost"
+                  variant={difficulty === 'ai' ? 'primary' : 'ghost'}
                   disabled={busy || seated >= meta.maxPlayers}
                   onClick={() => void addBot(difficulty)}
                 >
                   <Bot size={14} strokeWidth={3} className="lucide" />
-                  {difficulty}
+                  {difficulty.toUpperCase()}
                 </PixelButton>
               ))}
             </div>

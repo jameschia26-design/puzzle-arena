@@ -5,7 +5,7 @@ import * as Select from '@radix-ui/react-select';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { motion } from 'framer-motion';
-import { Check, ChevronDown, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { Toaster as SonnerToaster } from 'sonner';
 import { cn } from './cn.js';
 import { snapIn, useReducedMotion } from './motion.js';
@@ -195,15 +195,23 @@ export function PixelSelect({
           <Select.Content
             position="popper"
             sideOffset={4}
-            className="bg-pa-surface border-2 border-pa-border pa-shadow z-50"
+            className={cn(
+              'bg-pa-surface border-2 border-pa-border pa-shadow z-[60]',
+              'max-h-[var(--radix-select-content-available-height,320px)] max-h-[65vh]',
+              'min-w-[var(--radix-select-trigger-width)] w-[var(--radix-select-trigger-width)]',
+              'overflow-hidden flex flex-col',
+            )}
           >
-            <Select.Viewport className="p-1">
+            <Select.ScrollUpButton className="flex items-center justify-center h-6 bg-pa-surface-2 text-pa-cyan cursor-default select-none border-b border-pa-border">
+              <ChevronUp size={14} strokeWidth={3} className="lucide" />
+            </Select.ScrollUpButton>
+            <Select.Viewport className="p-1 overflow-y-auto max-h-[50vh] overscroll-contain focus:outline-none touch-pan-y">
               {options.map((option) => (
                 <Select.Item
                   key={option.value}
                   value={option.value}
                   className={cn(
-                    'font-display text-[10px] uppercase px-3 py-3 cursor-pointer outline-none',
+                    'font-display text-[10px] uppercase px-3 py-3 cursor-pointer outline-none select-none',
                     'data-[highlighted]:bg-pa-surface-2 data-[highlighted]:text-pa-cyan',
                     'flex items-center justify-between gap-3',
                   )}
@@ -215,6 +223,9 @@ export function PixelSelect({
                 </Select.Item>
               ))}
             </Select.Viewport>
+            <Select.ScrollDownButton className="flex items-center justify-center h-6 bg-pa-surface-2 text-pa-cyan cursor-default select-none border-t border-pa-border">
+              <ChevronDown size={14} strokeWidth={3} className="lucide" />
+            </Select.ScrollDownButton>
           </Select.Content>
         </Select.Portal>
       </Select.Root>

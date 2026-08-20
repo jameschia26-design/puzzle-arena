@@ -60,13 +60,13 @@ export const reversiBot: BotPolicy<ReversiBotView, ReversiAction> = {
       return { type: 'place', row: pick.row, col: pick.col };
     }
 
-    // difficulty === 'hard': Minimax with Alpha-Beta pruning (depth 4)
+    // difficulty === 'hard': Minimax with Alpha-Beta pruning (depth 5)
     let bestScore = Number.NEGATIVE_INFINITY;
     let bestMove = view.legalMoves[0]!;
 
     for (const m of view.legalMoves) {
       const simBoard = applySimulatedMove(view.board, m.row, m.col, selfSide);
-      const score = minimax(simBoard, 3, false, selfSide, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY);
+      const score = minimax(simBoard, 4, false, selfSide, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY);
       if (score > bestScore) {
         bestScore = score;
         bestMove = m;
@@ -111,23 +111,40 @@ function evaluateBoard(board: readonly (ReversiSide | null)[], mySide: ReversiSi
     }
   }
 
-  // Corner stability bonus
+  // Corner stability bonus & dangerous adjacent squares
   const corners = [
-    [0, 0],
-    [0, 7],
-    [7, 0],
-    [7, 7],
+    { r: 0, c: 0, adj: [{ r: 0, c: 1 }, { r: 1, c: 0 }, { r: 1, c: 1 }] },
+    { r: 0, c: 7, adj: [{ r: 0, c: 6 }, { r: 1, c: 7 }, { r: 1, c: 6 }] },
+    { r: 7, c: 0, adj: [{ r: 6, c: 0 }, { r: 7, c: 1 }, { r: 6, c: 1 }] },
+    { r: 7, c: 7, adj: [{ r: 6, c: 7 }, { r: 7, c: 6 }, { r: 6, c: 6 }] },
   ];
-  for (const [cr, cc] of corners) {
-    const val = board[cr! * BOARD_SIZE + cc!]!;
-    if (val === mySide) score += 200;
-    else if (val === oppSide) score -= 200;
+
+  for (const { r, c, adj } of corners) {
+    const cornerVal = board[r * BOARD_SIZE + c];
+    if (cornerVal === mySide) {
+      score += 400;
+      // Adjacent squares are safe and stable for owner
+      for (const a of adj) {
+        if (board[a.r * BOARD_SIZE + a.c] === mySide) score += 60;
+      }
+    } else if (cornerVal === oppSide) {
+      score -= 400;
+      for (const a of adj) {
+        if (board[a.r * BOARD_SIZE + a.c] === oppSide) score -= 60;
+      }
+    } else {
+      // Corner is OPEN: severe penalty for giving opponent corner access
+      for (const a of adj) {
+        if (board[a.r * BOARD_SIZE + a.c] === mySide) score -= 150;
+        else if (board[a.r * BOARD_SIZE + a.c] === oppSide) score += 150;
+      }
+    }
   }
 
-  // Mobility
+  // Mobility (number of choices available)
   const myMoves = getLegalMoves(board, mySide).length;
   const oppMoves = getLegalMoves(board, oppSide).length;
-  score += (myMoves - oppMoves) * 15;
+  score += (myMoves - oppMoves) * 20;
 
   // Endgame disc parity
   const totalDiscs = myDiscs + oppDiscs;
