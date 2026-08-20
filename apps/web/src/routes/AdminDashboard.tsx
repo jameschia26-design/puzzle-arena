@@ -26,7 +26,7 @@ export default function AdminDashboard(): React.ReactElement {
   const navigate = useNavigate();
   const [gameId, setGameId] = React.useState<GameId>('sudoku');
   const [difficulty, setDifficulty] = React.useState('medium');
-  const [minutes, setMinutes] = React.useState(15);
+  const [minutes, setMinutes] = React.useState<number | string>(15);
   const [instantFeedback, setInstantFeedback] = React.useState(false);
   const [theme, setTheme] = React.useState('Deep Sea');
   const [size, setSize] = React.useState('10');
@@ -68,9 +68,10 @@ export default function AdminDashboard(): React.ReactElement {
       config['size'] = 14;
     }
 
+    const effectiveMinutes = Math.min(240, Math.max(1, Math.round(Number(minutes)) || 1));
     const res = await api<{ code?: string; error?: string }>('/api/rooms', {
       method: 'POST',
-      body: JSON.stringify({ gameId, config, timeLimitSec: minutes * 60 }),
+      body: JSON.stringify({ gameId, config, timeLimitSec: effectiveMinutes * 60 }),
     });
     setBusy(false);
     if (res.status !== 200 || !res.body.code) {
@@ -109,7 +110,13 @@ export default function AdminDashboard(): React.ReactElement {
             min={1}
             max={240}
             value={minutes}
-            onChange={(e) => setMinutes(Math.max(1, Number(e.target.value)))}
+            onChange={(e) => setMinutes(e.target.value)}
+            onBlur={() => {
+              const n = Number(minutes);
+              if (!n || n < 1) setMinutes(1);
+              else if (n > 240) setMinutes(240);
+              else setMinutes(Math.round(n));
+            }}
           />
 
           {isPuzzle && (
