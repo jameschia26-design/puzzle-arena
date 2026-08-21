@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Copy, Cpu, Link2, Plus } from 'lucide-react';
+import { BarChart2, Copy, Cpu, Link2, Plus, Trash2, XCircle } from 'lucide-react';
 import { GAME_IDS, GAME_REGISTRY, WORD_SEARCH_THEMES, type GameId } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -82,6 +82,29 @@ export default function AdminDashboard(): React.ReactElement {
     navigate(`/r/${res.body.code}`);
   };
 
+  const closeRoom = async (roomId: string): Promise<void> => {
+    const res = await api<{ ok?: boolean; error?: string }>(`/api/rooms/${roomId}/close`, {
+      method: 'POST',
+    });
+    if (res.status === 200) {
+      toast('ROOM CLOSED');
+      void refresh();
+    } else {
+      toast(res.body?.error ?? 'Could not close room');
+    }
+  };
+
+  const deleteRoom = async (roomId: string): Promise<void> => {
+    const res = await api<{ ok?: boolean; error?: string }>(`/api/rooms/${roomId}`, {
+      method: 'DELETE',
+    });
+    if (res.status === 200) {
+      toast('ROOM DELETED');
+      void refresh();
+    } else {
+      toast(res.body?.error ?? 'Could not delete room');
+    }
+  };
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -185,62 +208,97 @@ export default function AdminDashboard(): React.ReactElement {
         </div>
       </PixelPanel>
 
-      <PixelPanel title="Your rooms">
+      <PixelPanel title="Your rooms (last 10)">
         {rooms.length === 0 ? (
           <p className="text-pa-ink-dim text-[13px]">Nothing yet — create a room above.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {rooms.map((room) => (
-              <li key={room.id}>
-                <PixelCard className="flex flex-wrap items-center justify-between gap-3 p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="font-display text-[14px] tabular">{room.code}</span>
-                    <span className="text-[13px] text-pa-ink-dim">
-                      {GAME_REGISTRY[room.gameId as GameId]?.title ?? room.gameId}
-                    </span>
-                    <PixelBadge
-                      tone={
-                        room.status === 'running'
-                          ? 'success'
-                          : room.status === 'lobby'
-                            ? 'cyan'
-                            : 'default'
-                      }
-                    >
-                      {room.status}
-                    </PixelBadge>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <PixelButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(room.code);
-                        toast('CODE COPIED');
-                      }}
-                    >
-                      <Copy size={14} strokeWidth={3} className="lucide" />
-                      Code
-                    </PixelButton>
-                    <PixelButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const url = `${window.location.origin}/r/${room.code}`;
-                        void navigator.clipboard.writeText(url);
-                        toast('LINK COPIED');
-                      }}
-                    >
-                      <Link2 size={14} strokeWidth={3} className="lucide" />
-                      Link
-                    </PixelButton>
-                    <PixelButton size="sm" onClick={() => navigate(`/r/${room.code}`)}>
-                      Open
-                    </PixelButton>
-                  </div>
-                </PixelCard>
-              </li>
-            ))}
+            {rooms.map((room) => {
+              const isActive = room.status === 'lobby' || room.status === 'running';
+              return (
+                <li key={room.id}>
+                  <PixelCard className="flex flex-wrap items-center justify-between gap-3 p-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="font-display text-[14px] tabular tracking-wider">{room.code}</span>
+                      <span className="text-[13px] text-pa-ink-dim">
+                        {GAME_REGISTRY[room.gameId as GameId]?.title ?? room.gameId}
+                      </span>
+                      <PixelBadge
+                        tone={
+                          room.status === 'running'
+                            ? 'success'
+                            : room.status === 'lobby'
+                              ? 'cyan'
+                              : 'default'
+                        }
+                      >
+                        {room.status}
+                      </PixelBadge>
+                    </div>
+                    <div className="flex gap-2 flex-wrap items-center">
+                      <PixelButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(room.code);
+                          toast('CODE COPIED');
+                        }}
+                      >
+                        <Copy size={14} strokeWidth={3} className="lucide" />
+                        Code
+                      </PixelButton>
+                      <PixelButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const url = `${window.location.origin}/r/${room.code}`;
+                          void navigator.clipboard.writeText(url);
+                          toast('LINK COPIED');
+                        }}
+                      >
+                        <Link2 size={14} strokeWidth={3} className="lucide" />
+                        Link
+                      </PixelButton>
+                      {isActive ? (
+                        <>
+                          <PixelButton size="sm" onClick={() => navigate(`/r/${room.code}`)}>
+                            Open
+                          </PixelButton>
+                          <PixelButton
+                            variant="danger"
+                            size="sm"
+                            onClick={() => void closeRoom(room.id)}
+                          >
+                            <XCircle size={14} strokeWidth={3} className="lucide" />
+                            Close
+                          </PixelButton>
+                        </>
+                      ) : (
+                        <>
+                          <PixelButton
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => navigate(`/r/${room.code}/results`)}
+                          >
+                            <BarChart2 size={14} strokeWidth={3} className="lucide" />
+                            Results
+                          </PixelButton>
+                          <PixelButton
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void deleteRoom(room.id)}
+                            className="text-pa-danger hover:bg-pa-danger/10"
+                          >
+                            <Trash2 size={14} strokeWidth={3} className="lucide" />
+                            Delete
+                          </PixelButton>
+                        </>
+                      )}
+                    </div>
+                  </PixelCard>
+                </li>
+              );
+            })}
           </ul>
         )}
       </PixelPanel>

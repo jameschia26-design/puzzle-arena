@@ -68,6 +68,26 @@ const createRoomSchema = z.object({
   timeLimitSec: z.number().int().min(30).max(14_400).optional(),
 });
 
+export async function pruneHostRooms(userId: string, keepCount = 10): Promise<void> {
+  const rows = await db
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(eq(rooms.hostUserId, userId))
+    .orderBy(desc(rooms.createdAt));
+
+  if (rows.length > keepCount) {
+    const toDelete = rows.slice(keepCount).map((r) => r.id);
+    for (const id of toDelete) {
+      const live = getRoom(id);
+      if (live) {
+        void live.finish('host');
+        rooms_registry.delete(id);
+      }
+    }
+    await db.delete(rooms).where(inArray(rooms.id, toDelete));
+  }
+}
+
 export function registerRoomRoutes(app: FastifyInstance): void {
   /* -------- create a room (admin only) -------- */
   app.post('/api/rooms', async (req, reply) => {
@@ -122,6 +142,9 @@ export function registerRoomRoutes(app: FastifyInstance): void {
         room.attach(app.io);
         registerRoom(room);
 
+        // Enforce maximum 10 rooms per host
+        await pruneHostRooms(userId, 10);
+
         return reply.send({ id: inserted.id, code: inserted.code, gameId, timeLimitSec, config });
       } catch (err) {
         if (attempt === 4) {
@@ -153,17 +176,57 @@ export function registerRoomRoutes(app: FastifyInstance): void {
     });
   });
 
-  /* -------- rooms this admin hosts -------- */
+  /* -------- rooms this admin hosts (last 10) -------- */
   app.get('/api/rooms', async (req, reply) => {
     const userId = await requireAdmin(req, reply);
     if (!userId) return;
+    await pruneHostRooms(userId, 10);
     const rows = await db
       .select()
       .from(rooms)
       .where(eq(rooms.hostUserId, userId))
       .orderBy(desc(rooms.createdAt))
-      .limit(50);
+      .limit(10);
     return reply.send({ rooms: rows });
+  });
+
+  /* -------- close/end an active room (host only) -------- */
+  app.post('/api/rooms/:id/close', async (req, reply) => {
+    const userId = await requireAdmin(req, reply);
+    if (!userId) return;
+    const id = String((req.params as { id: string }).id);
+    const row = (await db.select().from(rooms).where(and(eq(rooms.id, id), eq(rooms.hostUserId, userId))).limit(1))[0];
+    if (!row) return reply.code(404).send({ error: 'No such room' });
+
+    const live = getRoom(id);
+    if (live) {
+      await live.finish('host');
+    } else if (row.status === 'lobby' || row.status === 'running') {
+      await db
+        .update(rooms)
+        .set({ status: 'finished', finishedAt: new Date() })
+        .where(eq(rooms.id, id));
+    }
+
+    return reply.send({ ok: true, status: 'finished' });
+  });
+
+  /* -------- delete a room (host only) -------- */
+  app.delete('/api/rooms/:id', async (req, reply) => {
+    const userId = await requireAdmin(req, reply);
+    if (!userId) return;
+    const id = String((req.params as { id: string }).id);
+    const row = (await db.select().from(rooms).where(and(eq(rooms.id, id), eq(rooms.hostUserId, userId))).limit(1))[0];
+    if (!row) return reply.code(404).send({ error: 'No such room' });
+
+    const live = getRoom(id);
+    if (live) {
+      await live.finish('host');
+      rooms_registry.delete(id);
+    }
+
+    await db.delete(rooms).where(eq(rooms.id, id));
+    return reply.send({ ok: true });
   });
 
   /* -------- results -------- */
