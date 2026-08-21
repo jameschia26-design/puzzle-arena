@@ -128,14 +128,23 @@ export function scheduleBots(room: LiveRoom): void {
         action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, effectiveDifficulty);
       }
 
-      // If bot difficulty is 'ai', consult the LLM provider with fallback
+      // If bot difficulty is 'ai', consult the LLM provider with fallback.
+      // The local bot has already produced a strong 'hard' move above; the LLM
+      // is only useful when it responds quickly. A reasoning model on a
+      // Connect 4 prompt can blow past the provider's own 30s timeout, which
+      // leaves the user staring at an empty board — cap the user-perceived
+      // wait at 2s and let the LLM finish in the background. The pending
+      // promise is harmless: its result is just discarded.
       if (difficulty === 'ai') {
-        action = await getAiBotAction({
-          gameId: room.gameId,
-          view,
-          actorId,
-          fallbackAction: action,
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        const timeoutPromise = new Promise<unknown>((resolve) => {
+          timeoutHandle = setTimeout(() => resolve(action), 2000);
         });
+        action = await Promise.race([
+          getAiBotAction({ gameId: room.gameId, view, actorId, fallbackAction: action }),
+          timeoutPromise,
+        ]);
+        if (timeoutHandle) clearTimeout(timeoutHandle);
       }
     } catch (err) {
       logger.error({ err, roomId: room.id }, 'bot policy threw; using autoAction');
