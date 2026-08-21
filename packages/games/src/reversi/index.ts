@@ -132,11 +132,14 @@ function score(s: ReversiState, playerId: string): ScoreInput {
   const isWinner = s.phase === 'game_over' && s.winner === playerId;
   const isDraw = s.phase === 'game_over' && s.winReason === 'draw';
 
+  // Use the runtime-stamped winnerAtMs for the winner's completion time so
+  // the speed bonus is proportional to how fast they actually won — every
+  // other board game (property-tycoon, scrabble, ...) does it this way.
   return {
     progress: isWinner ? 1 : progress,
     accuracy: isWinner ? 1 : isDraw ? 0.8 : progress,
     completed: isWinner,
-    completedAtMs: isWinner ? 0 : null,
+    completedAtMs: isWinner ? s.winnerAtMs : null,
     penalties: 0,
   };
 }

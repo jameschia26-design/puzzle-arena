@@ -121,11 +121,16 @@ function score(s: Connect4State, playerId: string): ScoreInput {
   const isWinner = s.phase === 'game_over' && s.winner === playerId;
   const isDraw = s.phase === 'game_over' && s.winReason === 'draw';
 
+  // Use the runtime-stamped winnerAtMs for the winner's completion time so
+  // the speed bonus is proportional to how fast they actually won. Property
+  // Tycoon does this in property-tycoon/index.ts and is the right pattern;
+  // hardcoding 0 here meant every win earned a perfect speed bonus regardless
+  // of when it happened.
   return {
     progress: isWinner ? 1 : isDraw ? 0.5 : 0.2,
     accuracy: isWinner ? 1 : isDraw ? 0.8 : 0.4,
     completed: isWinner,
-    completedAtMs: isWinner ? 0 : null,
+    completedAtMs: isWinner ? s.winnerAtMs : null,
     penalties: 0,
   };
 }
