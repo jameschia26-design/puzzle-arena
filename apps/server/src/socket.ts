@@ -83,11 +83,24 @@ export function attachSocket(app: FastifyInstance): IOServer {
         const isHostUser = socket.data.userId === row.hostUserId;
         const guestId = (socket.data.guestId as string | undefined) ?? null;
 
-        // Reconnect to an existing seat where possible.
+        // Reconnect to an existing seat where possible (by guestId, hostId, or matching displayName for disconnected human).
         let player =
           (guestId ? room.playerByGuest(guestId) : undefined) ??
           (isHostUser ? room.players.find((p) => p.isHost && !p.left) : undefined);
 
+        if (!player && parsed.data.displayName) {
+          const nameNorm = parsed.data.displayName.trim().toLowerCase();
+          const candidate = room.players.find(
+            (p) => !p.isBot && !p.left && p.displayName.trim().toLowerCase() === nameNorm,
+          );
+          if (candidate) {
+            player = candidate;
+            if (guestId) {
+              player.guestId = guestId;
+              void db.update(roomPlayers).set({ guestId }).where(eq(roomPlayers.id, player.id));
+            }
+          }
+        }
         if (!player) {
           if (room.status !== 'lobby') {
             return respond(ack, { error: 'That game has already started' });
@@ -171,6 +184,37 @@ export function attachSocket(app: FastifyInstance): IOServer {
       if (!player?.isHost) return respond(ack, { error: 'Only the host can end the room' });
       await room.finish('host');
       respond(ack, { ok: true });
+    });
+
+    socket.on(EV.roomPause, async (_payload, ack) => {
+      const room = roomOf(socket);
+      if (!room) return respond(ack, { error: 'Not in a room' });
+      const player = room.player(socket.data.playerId as string);
+      if (!player?.isHost) return respond(ack, { error: 'Only the host can pause the room' });
+      room.pause();
+      respond(ack, { ok: true });
+    });
+
+    socket.on(EV.roomResume, async (_payload, ack) => {
+      const room = roomOf(socket);
+      if (!room) return respond(ack, { error: 'Not in a room' });
+      const player = room.player(socket.data.playerId as string);
+      if (!player?.isHost) return respond(ack, { error: 'Only the host can resume the room' });
+      room.resume();
+      respond(ack, { ok: true });
+    });
+
+    socket.on(EV.roomRestart, async (_payload, ack) => {
+      const room = roomOf(socket);
+      if (!room) return respond(ack, { error: 'Not in a room' });
+      const player = room.player(socket.data.playerId as string);
+      if (!player?.isHost) return respond(ack, { error: 'Only the host can restart the game' });
+      try {
+        await room.restart();
+        respond(ack, { ok: true });
+      } catch (err) {
+        respond(ack, { error: String(err instanceof Error ? err.message : err) });
+      }
     });
 
     socket.on(EV.roomKick, async (payload, ack) => {

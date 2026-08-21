@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import { Bot, Copy, Lightbulb, Link2, Send, Settings, Trash2, X } from 'lucide-react';
+import { Bot, Copy, Lightbulb, Link2, Pause, Play, RotateCcw, Send, Settings, Trash2, User, X } from 'lucide-react';
 import {
   AVATAR_EMOJI,
   BOT_DIFFICULTIES,
@@ -43,6 +43,51 @@ import { Connect4Board } from '../games/Connect4Board.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
+
+/* ------------------------------------------------------------------ */
+/* Game Surface Error Boundary                                         */
+/* ------------------------------------------------------------------ */
+
+class GameErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Game board error caught by boundary:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <PixelPanel title="Game Surface Error" className="p-4">
+          <div className="flex flex-col gap-3">
+            <p className="text-pa-danger text-[13px]">
+              A rendering error occurred in this game board ({this.state.error?.message ?? 'Unknown error'}).
+            </p>
+            <PixelButton
+              variant="secondary"
+              size="sm"
+              onClick={() => this.setState({ hasError: false, error: null })}
+            >
+              <RotateCcw size={14} strokeWidth={3} className="lucide" />
+              Reload game surface
+            </PixelButton>
+          </div>
+        </PixelPanel>
+      );
+    }
+    return this.props.children;
+  }
+}
 export default function RoomPage(): React.ReactElement {
   const { code = '' } = useParams();
   const navigate = useNavigate();
@@ -188,16 +233,58 @@ export default function RoomPage(): React.ReactElement {
     <main className="min-h-screen flex flex-col">
       <StartOverlay startsAt={store.startsAt} />
 
+      {/* Obscuring Pause Overlay — hides board and cards while paused */}
+      {store.paused && (
+        <div className="fixed inset-0 z-50 bg-pa-bg/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center select-none">
+          <div className="border-4 border-pa-amber bg-pa-surface p-8 pa-shadow max-w-md w-full flex flex-col items-center gap-6">
+            <div className="flex items-center gap-3">
+              <Pause size={24} className="text-pa-amber animate-pulse" />
+              <h2 className="font-display text-[20px] text-pa-amber">GAME PAUSED</h2>
+            </div>
+            <p className="text-[13px] text-pa-ink-dim leading-relaxed">
+              The game is currently paused. The board and pieces are hidden until the host resumes play.
+            </p>
+            {isHost ? (
+              <PixelButton size="lg" onClick={() => void emit(EV.roomResume)}>
+                <Play size={16} strokeWidth={3} className="lucide" />
+                Resume Game
+              </PixelButton>
+            ) : (
+              <p className="font-display text-[11px] text-pa-amber">Waiting for host to resume…</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ------------------------------ header ------------------------------ */}
       <header className="flex items-center justify-between gap-3 border-b-2 border-pa-border bg-pa-surface px-4 py-3 sticky top-0 z-40">
         <div className="flex items-center gap-3 min-w-0">
           <h1 className="font-display text-[12px] md:text-[14px] truncate">{meta.title}</h1>
-          <PixelBadge tone={running ? 'success' : finished ? 'default' : 'cyan'}>
-            {room.status}
+          <PixelBadge tone={running ? (store.paused ? 'danger' : 'success') : finished ? 'default' : 'cyan'}>
+            {store.paused ? 'paused' : room.status}
           </PixelBadge>
         </div>
         <div className="flex items-center gap-3">
           {running && <Countdown endsAt={store.endsAt} className="text-[16px] md:text-[24px]" />}
+          {isHost && running && (
+            <PixelButton
+              size="sm"
+              variant={store.paused ? 'primary' : 'ghost'}
+              onClick={() => void emit(store.paused ? EV.roomResume : EV.roomPause)}
+            >
+              {store.paused ? (
+                <>
+                  <Play size={14} strokeWidth={3} className="lucide" />
+                  Resume
+                </>
+              ) : (
+                <>
+                  <Pause size={14} strokeWidth={3} className="lucide" />
+                  Pause
+                </>
+              )}
+            </PixelButton>
+          )}
           <SoundControlButtons />
           <PixelPopover
             trigger={
@@ -210,8 +297,45 @@ export default function RoomPage(): React.ReactElement {
               </button>
             }
           >
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 min-w-[240px]">
               <CrtToggle />
+              <div className="border-t-2 border-pa-border pt-4 flex flex-col gap-3">
+                <span className="font-display text-[10px] uppercase text-pa-ink-dim flex items-center gap-1.5">
+                  <User size={12} strokeWidth={3} className="lucide" />
+                  Your profile
+                </span>
+                <PixelInput
+                  label="Display name"
+                  value={name}
+                  maxLength={20}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    localStorage.setItem('pa:name', e.target.value);
+                  }}
+                  onBlur={() => {
+                    if (name.trim()) void join(name.trim(), avatar);
+                  }}
+                />
+                <div className="flex flex-wrap gap-1">
+                  {AVATAR_EMOJI.slice(0, 12).map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        const next = emoji === avatar ? null : emoji;
+                        setAvatar(next);
+                        if (name.trim()) void join(name.trim(), next);
+                      }}
+                      className={cn(
+                        'w-8 h-8 border text-[14px] cursor-pointer flex items-center justify-center',
+                        avatar === emoji ? 'border-pa-cyan bg-pa-cyan/10' : 'border-pa-border',
+                      )}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {isHost && running && (
                 <PixelButton
                   size="sm"
@@ -225,7 +349,6 @@ export default function RoomPage(): React.ReactElement {
           </PixelPopover>
         </div>
       </header>
-
       <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4">
         {/* ------------------------------ main ------------------------------ */}
         <section
@@ -238,10 +361,16 @@ export default function RoomPage(): React.ReactElement {
               player actually sees the winning line and the winner banner
               before being dropped into the results table. Puzzle games don't
               need this — the solution is shown inside the Results panel. */}
-          {running && <GameSurface gameId={gameId} />}
+          {running && (
+            <GameErrorBoundary>
+              <GameSurface gameId={gameId} />
+            </GameErrorBoundary>
+          )}
           {finished && GAME_REGISTRY[gameId].kind === 'board' && (
             <div className="mb-4">
-              <GameSurface gameId={gameId} />
+              <GameErrorBoundary>
+                <GameSurface gameId={gameId} />
+              </GameErrorBoundary>
             </div>
           )}
           {finished && store.results && (
@@ -251,6 +380,19 @@ export default function RoomPage(): React.ReactElement {
               {/* A finished room is a dead end without this: the only way out
                   used to be the browser's back button or editing the URL. */}
               <div className="mt-6 flex flex-wrap gap-2 border-t-2 border-pa-border pt-4">
+                {isHost && (
+                  <PixelButton
+                    variant="primary"
+                    onClick={async () => {
+                      const res = await emit<{ ok?: boolean; error?: string }>(EV.roomRestart);
+                      if (res.error) toast(res.error);
+                      else toast('REMATCH STARTED!');
+                    }}
+                  >
+                    <RotateCcw size={14} strokeWidth={3} className="lucide" />
+                    Play Again (Rematch)
+                  </PixelButton>
+                )}
                 <PixelButton
                   onClick={() => {
                     store.reset();

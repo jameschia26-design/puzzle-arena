@@ -217,6 +217,7 @@ export const roomMetaSchema = z.object({
   startedAt: z.number().nullable(),
   endsAt: z.number().nullable(),
   hostPlayerId: z.string().nullable(),
+  paused: z.boolean().default(false),
 });
 export type RoomMeta = z.infer<typeof roomMetaSchema>;
 
@@ -299,6 +300,7 @@ export interface RoomSnapshot {
   leaderboard: LeaderboardEntry[];
   log: LogEntry[];
   results: ResultRow[] | null;
+  paused?: boolean;
 }
 
 export interface PuzzleCommitAck {
@@ -327,6 +329,9 @@ export const EV = {
   roomStart: 'room:start',
   roomKick: 'room:kick',
   roomEndEarly: 'room:endEarly',
+  roomPause: 'room:pause',
+  roomResume: 'room:resume',
+  roomRestart: 'room:restart',
   puzzleCommit: 'puzzle:commit',
   puzzleHint: 'puzzle:hint',
   gameAction: 'game:action',
@@ -336,6 +341,8 @@ export const EV = {
   roomPlayers: 'room:players',
   roomStarted: 'room:started',
   roomEnded: 'room:ended',
+  roomPaused: 'room:paused',
+  roomResumed: 'room:resumed',
   leaderboard: 'leaderboard',
   gameState: 'game:state',
   gameLog: 'game:log',

@@ -60,9 +60,9 @@ export function generateFullGrid(rng: Rng): Grid {
  * but is not a puzzle. An easy Sudoku still has to be a Sudoku.
  */
 const MIN_HOLES: Record<Difficulty, number> = {
-  easy: 40,
-  medium: 46,
-  hard: 50,
+  easy: 36,
+  medium: 42,
+  hard: 48,
   expert: 52,
 };
 

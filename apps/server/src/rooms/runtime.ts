@@ -10,6 +10,7 @@ import {
   rankResults,
   speedComponent,
   type BotDifficulty,
+  type ChatMessage,
   type GameId,
   type LeaderboardEntry,
   type LogEntry,
@@ -99,31 +100,27 @@ export class LiveRoom {
   status: 'lobby' | 'running' | 'finished' | 'abandoned';
   startedAt: number | null = null;
   endsAt: number | null = null;
+  turnEndsAt: number | null = null;
 
   players: LivePlayer[] = [];
   seq = 0;
 
   /** Puzzle rooms. `solution` must never be serialised to a client. */
   puzzle: GeneratedPuzzle | null = null;
-  /** Board rooms. */
-  gameState: unknown = null;
+  paused = false;
+  private remainingEndMs: number | null = null;
+  private remainingTurnMs: number | null = null;
 
+  gameState: unknown | null = null;
   results: ResultRow[] | null = null;
   log: LogEntry[] = [];
-  chat: { id: string; playerId: string; displayName: string; seat: number; text: string; at: number }[] = [];
-
-  private endTimer: NodeJS.Timeout | null = null;
-  private turnTimer: NodeJS.Timeout | null = null;
-  /**
-   * Absolute deadline for the current actor, or null when nobody human is on
-   * the clock. Broadcast so the client can show the same countdown the server
-   * will act on, rather than being auto-declined out of nowhere.
-   */
-  private turnEndsAt: number | null = null;
-  private io: IOServer | null = null;
-  /** Guards against an engine bug spinning the bot scheduler forever. */
+  chat: ChatMessage[] = [];
   consecutiveBotActions = 0;
-
+  private io: IOServer | null = null;
+  private endTimer: ReturnType<typeof setTimeout> | null = null;
+  private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  private eventBuffer: { roomId: string; seq: number; actorPlayerId: string | null; action: object }[] = [];
+  private eventFlushTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(row: {
     id: string;
     code: string;
@@ -261,9 +258,83 @@ export class LiveRoom {
     if (this.gameId === 'connect4') return connect4Rules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
+  pause(): void {
+    if (this.status !== 'running' || this.paused) return;
+    this.paused = true;
+    this.remainingEndMs = this.endsAt ? Math.max(0, this.endsAt - Date.now()) : null;
+    if (this.endTimer) clearTimeout(this.endTimer);
+    this.remainingTurnMs = this.turnEndsAt ? Math.max(0, this.turnEndsAt - Date.now()) : null;
+    if (this.turnTimer) clearTimeout(this.turnTimer);
+    stopBots(this.id);
+    this.pushLog('Game paused by host');
+    this.io?.to(this.id).emit(EV.roomPaused, { paused: true });
+    this.broadcastSnapshot();
+  }
+
+  resume(): void {
+    if (this.status !== 'running' || !this.paused) return;
+    this.paused = false;
+    if (this.remainingEndMs !== null) {
+      this.endsAt = Date.now() + this.remainingEndMs;
+      this.armEndTimer();
+    }
+    if (this.remainingTurnMs !== null) {
+      this.turnEndsAt = Date.now() + this.remainingTurnMs;
+      this.armTurnTimer();
+    }
+    if (this.kind === 'board') {
+      scheduleBots(this);
+    } else if (this.kind === 'puzzle') {
+      schedulePuzzleBots(this);
+    }
+    this.pushLog('Game resumed');
+    this.io?.to(this.id).emit(EV.roomResumed, { paused: false, endsAt: this.endsAt, turnEndsAt: this.turnEndsAt });
+    this.broadcastSnapshot();
+  }
+
+  async restart(): Promise<void> {
+    if (this.endTimer) clearTimeout(this.endTimer);
+    if (this.turnTimer) clearTimeout(this.turnTimer);
+    stopBots(this.id);
+
+    this.status = 'lobby';
+    this.startedAt = null;
+    this.endsAt = null;
+    this.turnEndsAt = null;
+    this.paused = false;
+    this.remainingEndMs = null;
+    this.remainingTurnMs = null;
+    this.results = null;
+    this.gameState = null;
+    this.puzzle = null;
+    this.consecutiveBotActions = 0;
+
+    // Reset all seated players
+    for (const p of this.players) {
+      p.state = null;
+      p.penalties = 0;
+      p.completed = false;
+      p.completedAtMs = null;
+    }
+
+    await db
+      .update(rooms)
+      .set({
+        status: 'lobby',
+        startedAt: null,
+        endsAt: null,
+        finishedAt: null,
+      })
+      .where(eq(rooms.id, this.id));
+
+    this.pushLog('Host restarted the room for a rematch!');
+    this.broadcastPlayers();
+    this.broadcastSnapshot();
+  }
+
   private armEndTimer(): void {
     if (this.endTimer) clearTimeout(this.endTimer);
-    if (!this.endsAt) return;
+    if (!this.endsAt || this.paused) return;
     const delay = Math.max(0, this.endsAt - Date.now());
     this.endTimer = setTimeout(() => {
       void this.finish('time');
@@ -310,10 +381,12 @@ export class LiveRoom {
     if (!player || this.status !== 'running' || !this.puzzle) {
       return { accepted: false, progress: 0, error: 'Room is not running' };
     }
+    if (this.paused) {
+      return { accepted: false, progress: 0, error: 'Game is currently paused' };
+    }
     if (this.endsAt && Date.now() > this.endsAt) {
       return { accepted: false, progress: 0, error: 'Time is up' };
     }
-    // Play begins simultaneously for everyone when the 3-2-1-GO overlay clears.
     // Without this, an early mover both gets a head start and records a
     // negative completion time, which would inflate their speed bonus past 1.
     if (this.startedAt && Date.now() < this.startedAt) {
@@ -441,14 +514,15 @@ export class LiveRoom {
     if (this.kind !== 'board' || !this.gameState || this.status !== 'running') {
       return { accepted: false, error: 'Room is not running' };
     }
+    if (this.paused) {
+      return { accepted: false, error: 'Game is currently paused' };
+    }
     if (this.endsAt && Date.now() > this.endsAt) {
       return { accepted: false, error: 'Time is up' };
     }
-    // Board actions wait for the countdown too, so play starts level.
     if (this.startedAt && Date.now() < this.startedAt) {
       return { accepted: false, error: 'The game has not started yet' };
     }
-
     const engine = this.engine();
     const result = engine.reduce(this.gameState as never, playerId, action as never);
     if (!result.ok) {
@@ -652,6 +726,7 @@ export class LiveRoom {
       startedAt: this.startedAt,
       endsAt: this.endsAt,
       hostPlayerId: this.host?.id ?? null,
+      paused: this.paused,
     };
   }
 

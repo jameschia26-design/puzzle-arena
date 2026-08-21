@@ -53,6 +53,10 @@ export function ScrabbleBoard({
   turnEndsAt?: number | null;
   onAction: (action: unknown) => void;
 }) {
+  if (!view || !view.board || !Array.isArray(view.board)) {
+    return <p className="text-pa-ink-dim text-[13px]">Waiting for Scrabble board…</p>;
+  }
+
   const [staged, setStaged] = React.useState<StagedTile[]>([]);
   const [selectedRackIndex, setSelectedRackIndex] = React.useState<number | null>(null);
   const [blankPrompt, setBlankPrompt] = React.useState<{ row: number; col: number } | null>(null);
@@ -62,7 +66,6 @@ export function ScrabbleBoard({
   const can = (action: string): boolean => legalActions.includes(action);
   const isMyTurn = view.current === youId;
   const rack = view.you?.rack ?? [];
-
   const nameOf = (id: string): string =>
     players.find((p) => p.id === id)?.displayName ?? id.slice(0, 6);
   const seatOf = (id: string): number => players.find((p) => p.id === id)?.seat ?? 0;
@@ -163,6 +166,28 @@ export function ScrabbleBoard({
                 type="button"
                 disabled={!clickable && !pending}
                 onClick={() => onCellClick(row, col)}
+                onDragOver={(e) => {
+                  if (clickable || pending) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!isMyTurn) return;
+                  const idxStr = e.dataTransfer.getData('text/plain');
+                  const rackIdx = Number(idxStr);
+                  if (!Number.isNaN(rackIdx) && rackIdx >= 0 && rackIdx < rack.length && !usedRackIndexes.has(rackIdx)) {
+                    if (view.board[i] !== null) return;
+                    if (rack[rackIdx] === BLANK) {
+                      setSelectedRackIndex(rackIdx);
+                      setBlankPrompt({ row, col });
+                      return;
+                    }
+                    setStaged((prev) => [
+                      ...prev.filter((t) => !(t.row === row && t.col === col)),
+                      { row, col, letter: rack[rackIdx] as string, isBlank: false, rackIndex: rackIdx },
+                    ]);
+                    setSelectedRackIndex(null);
+                  }
+                }}
                 className={cn(
                   'relative flex items-center justify-center border border-pa-border/50',
                   clickable || pending ? 'cursor-pointer' : 'cursor-default',
@@ -354,12 +379,12 @@ export function ScrabbleBoard({
 /* Pieces                                                              */
 /* ------------------------------------------------------------------ */
 
-function Tile({ letter, isBlank, pending }: { letter: string; isBlank: boolean; pending: boolean }) {
-  const value = letterValue(letter, isBlank);
+function Tile({ letter = '', isBlank = false, pending = false }: { letter?: string; isBlank?: boolean; pending?: boolean }) {
+  const safeLetter = letter || '?';
+  const value = letterValue(safeLetter, isBlank);
   return (
     <span
       className={cn(
-        // pa-shadow is the darkest token; using it for glyph colour on the
         // amber tile maximises contrast on a busy board on mobile-sized
         // viewports. bg-pa-surface stays as a fallback for the rare case the
         // --color-pa-amber custom property is missing.
@@ -414,17 +439,21 @@ function Rack({
             key={i}
             type="button"
             disabled={disabled || used}
+            draggable={!disabled && !used}
+            onDragStart={(e) => {
+              e.dataTransfer.setData('text/plain', String(i));
+              onSelect(i);
+            }}
             onClick={() => onSelect(selected === i ? null : i)}
             className={cn(
-              'h-11 w-11 border-2 pa-press disabled:cursor-not-allowed',
-              used ? 'opacity-25 border-pa-border' : selected === i ? 'border-pa-cyan' : 'border-pa-border',
+              'h-11 w-11 border-2 pa-press disabled:cursor-not-allowed cursor-grab active:cursor-grabbing select-none',
+              used ? 'opacity-25 border-pa-border' : selected === i ? 'border-pa-cyan shadow-[0_0_8px_rgba(34,224,255,0.6)]' : 'border-pa-border',
             )}
           >
             {!used && <Tile letter={letter} isBlank={letter === BLANK} pending={false} />}
           </button>
         );
       })}
-      {rack.length === 0 && <span className="text-[12px] text-pa-ink-dim py-2">Empty rack</span>}
     </div>
   );
 }

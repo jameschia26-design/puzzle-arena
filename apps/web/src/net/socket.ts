@@ -47,6 +47,7 @@ export interface RoomStore {
   chat: ChatMessage[];
   results: ResultRow[] | null;
   error: string | null;
+  paused: boolean;
 
   applySnapshot(snapshot: RoomSnapshot): void;
   reset(): void;
@@ -68,7 +69,7 @@ export const useRoom = create<RoomStore>((set) => ({
   chat: [],
   results: null,
   error: null,
-
+  paused: false,
   applySnapshot(snapshot) {
     set({
       room: snapshot.room,
@@ -81,6 +82,7 @@ export const useRoom = create<RoomStore>((set) => ({
       leaderboard: snapshot.leaderboard,
       log: snapshot.log,
       results: snapshot.results,
+      paused: snapshot.room?.paused ?? false,
     });
   },
   reset() {
@@ -98,6 +100,7 @@ export const useRoom = create<RoomStore>((set) => ({
       chat: [],
       results: null,
       error: null,
+      paused: false,
     });
   },
   setError(message) {
@@ -121,6 +124,20 @@ function wire(s: Socket): void {
   });
   s.on(EV.roomEnded, (payload: { results: ResultRow[] }) => {
     useRoom.setState({ results: payload.results });
+  });
+  s.on(EV.roomPaused, () => {
+    useRoom.setState((prev) => ({
+      paused: true,
+      room: prev.room ? { ...prev.room, paused: true } : null,
+    }));
+  });
+  s.on(EV.roomResumed, (payload: { endsAt?: number | null; turnEndsAt?: number | null }) => {
+    useRoom.setState((prev) => ({
+      paused: false,
+      room: prev.room ? { ...prev.room, paused: false } : null,
+      endsAt: payload.endsAt !== undefined ? payload.endsAt : prev.endsAt,
+      turnEndsAt: payload.turnEndsAt !== undefined ? payload.turnEndsAt : prev.turnEndsAt,
+    }));
   });
   s.on(EV.leaderboard, (payload: { entries: LeaderboardEntry[] }) => {
     useRoom.setState({ leaderboard: payload.entries });
