@@ -234,7 +234,16 @@ export default function RoomPage(): React.ReactElement {
           {room.status === 'lobby' && (
             <Lobby code={room.code} roomId={room.id} isHost={isHost} players={store.players} gameId={gameId} />
           )}
+          {/* Board games: keep the board visible after the game ends so the
+              player actually sees the winning line and the winner banner
+              before being dropped into the results table. Puzzle games don't
+              need this — the solution is shown inside the Results panel. */}
           {running && <GameSurface gameId={gameId} />}
+          {finished && GAME_REGISTRY[gameId].kind === 'board' && (
+            <div className="mb-4">
+              <GameSurface gameId={gameId} />
+            </div>
+          )}
           {finished && store.results && (
             <PixelPanel title="Results">
               <ResultsTable results={store.results} />
