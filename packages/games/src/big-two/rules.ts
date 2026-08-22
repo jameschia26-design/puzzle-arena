@@ -118,9 +118,23 @@ function bombPower(c: BigTwoCombo): number | null {
   return null;
 }
 
+/** Standard Big Two 5-card ladder: straight < flush < full-house, so any of
+ *  these three categories may beat any other so long as its rung is higher. */
+const FIVE_CARD_RUNG: Record<'straight' | 'flush' | 'full-house', number> = {
+  straight: 0,
+  flush: 1,
+  'full-house': 2,
+};
+
+function fivePower(c: BigTwoCombo): number | null {
+  if (c.category !== 'straight' && c.category !== 'flush' && c.category !== 'full-house') return null;
+  return FIVE_CARD_RUNG[c.category] * 100 + c.value;
+}
+
 /** True when `a` may legally be played over `b` (the current lead, or null
  *  for a free lead). Bombs beat any weaker combo of any category or size;
- *  non-bomb combos must match category and size exactly and exceed value. */
+ *  5-card straight/flush/full-house rank on one shared ladder; singles/pairs/
+ *  triples must match category and size exactly and exceed value. */
 export function beats(a: BigTwoCombo, b: BigTwoCombo | null): boolean {
   if (!b) return true;
   const aBomb = bombPower(a);
@@ -131,6 +145,9 @@ export function beats(a: BigTwoCombo, b: BigTwoCombo | null): boolean {
   }
   if (bBomb !== null) return false;
   if (a.cards.length !== b.cards.length) return false;
+  const aFive = fivePower(a);
+  const bFive = fivePower(b);
+  if (aFive !== null && bFive !== null) return aFive > bFive;
   if (a.category !== b.category) return false;
   return a.value > b.value;
 }

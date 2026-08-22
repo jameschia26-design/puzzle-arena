@@ -42,12 +42,22 @@ describe('big two combo classification', () => {
 });
 
 describe('big two combo comparison', () => {
-  it('requires same category and size for non-bomb combos', () => {
+  it('requires same category and size for singles/pairs/triples', () => {
     const straight = classifyCombo([c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)])!;
     const flush = classifyCombo([c(0, 0), c(2, 0), c(4, 0), c(6, 0), c(9, 0)])!;
-    expect(beats(flush, straight)).toBe(false); // different category, even though flush "outranks" straight normally
+    expect(beats(flush, straight)).toBe(true); // 5-card hands rank on one ladder: straight < flush < full house
     const higherStraight = classifyCombo([c(1, 0), c(2, 1), c(3, 2), c(4, 3), c(5, 0)])!;
     expect(beats(higherStraight, straight)).toBe(true);
+  });
+
+  it('ranks 5-card hands on one ladder: straight < flush < full house', () => {
+    const straight = classifyCombo([c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)])!;
+    const fullHouse = classifyCombo([c(0, 0), c(0, 1), c(0, 2), c(1, 0), c(1, 1)])!;
+    expect(beats(fullHouse, straight)).toBe(true);
+    expect(beats(straight, fullHouse)).toBe(false);
+    const flush = classifyCombo([c(0, 0), c(2, 0), c(4, 0), c(6, 0), c(9, 0)])!;
+    expect(beats(fullHouse, flush)).toBe(true);
+    expect(beats(flush, fullHouse)).toBe(false);
   });
 
   it('lets a bomb beat any weaker combo of any size', () => {
