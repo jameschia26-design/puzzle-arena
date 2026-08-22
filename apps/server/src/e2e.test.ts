@@ -715,6 +715,61 @@ describe('event log', () => {
     const { roomEvents } = await import('./db/schema.js');
     const events = await db.select().from(roomEvents).where(eq(roomEvents.roomId, roomId));
     expect(events.length).toBe(5);
+    await emit(hostSocket, EV.roomEndEarly);
+    hostSocket.close();
+  }, 60_000);
+
+  it('keeps the room in memory after a rematch restart and accepts moves', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'checkers', config: {}, timeLimitSec: 300 }),
+    });
+    const { id: roomId, code } = created.body;
+
+    const hostSocket = connect(adminCookie);
+    await connected(hostSocket);
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    await api(`/api/rooms/${roomId}/bots`, {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ difficulty: 'easy' }),
+    });
+
+    // Start game 1
+    await emit(hostSocket, EV.roomStart);
+    await awaitStart(roomId);
+
+    const room = getRoom(roomId)!;
+    expect(room).toBeDefined();
+
+    // Finish game 1 (triggers finish cleanup timer)
+    await room.finish('completed');
+    expect(room.status).toBe('finished');
+
+    // Host restarts for a rematch
+    const restartRes = await emit<{ ok?: boolean; error?: string }>(hostSocket, EV.roomRestart);
+    expect(restartRes.ok).toBe(true);
+    expect(room.status).toBe('lobby');
+
+    // Start game 2
+    const start2Res = await emit<{ ok?: boolean; error?: string }>(hostSocket, EV.roomStart);
+    expect(start2Res.ok).toBe(true);
+    await awaitStart(roomId);
+    expect(room.status).toBe('running');
+
+    // Room must still be in registry
+    expect(getRoom(roomId)).toBeDefined();
+
+    // The host should be able to submit a valid action without "Not in a room" error
+    const legal = room.engine().view(room.gameState as never, room.host!.id).you?.legalMoves ?? [];
+    if (legal.length > 0) {
+      const actionRes = await emit<{ accepted?: boolean; error?: string }>(hostSocket, EV.gameAction, {
+        type: 'move',
+        path: legal[0]!.path,
+      });
+      expect(actionRes.error).not.toBe('Not in a room');
+    }
 
     await emit(hostSocket, EV.roomEndEarly);
     hostSocket.close();

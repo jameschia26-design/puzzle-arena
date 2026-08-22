@@ -137,6 +137,8 @@ export class LiveRoom {
   private io: IOServer | null = null;
   private endTimer: ReturnType<typeof setTimeout> | null = null;
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  private startTimer: ReturnType<typeof setTimeout> | null = null;
+  private cleanupTimer: ReturnType<typeof setTimeout> | null = null;
   /** Chess-clock games: fires the "still thinking?" prompts every 60s of idling on one move. */
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private idleStrikes = 0;
@@ -191,6 +193,10 @@ export class LiveRoom {
 
   async start(): Promise<void> {
     if (this.status !== 'lobby') throw new Error('Room already started');
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
     const active = this.players.filter((p) => !p.left);
     const meta = GAME_REGISTRY[this.gameId];
     if (active.length < meta.minPlayers) {
@@ -245,9 +251,10 @@ export class LiveRoom {
     // Board games need their per-player legal actions immediately, or the first
     // player sits in front of a board with every button disabled.
     if (this.kind === 'board') this.broadcastGameState();
-
     // Bots only begin once play actually starts.
-    setTimeout(() => {
+    if (this.startTimer) clearTimeout(this.startTimer);
+    this.startTimer = setTimeout(() => {
+      this.startTimer = null;
       if (this.status !== 'running') return;
       if (this.kind === 'board') {
         this.armTurnTimer();
@@ -333,6 +340,14 @@ export class LiveRoom {
   }
 
   async restart(): Promise<void> {
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    if (this.startTimer) {
+      clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
     if (this.endTimer) clearTimeout(this.endTimer);
     if (this.turnTimer) clearTimeout(this.turnTimer);
     if (this.idleTimer) {
@@ -804,6 +819,14 @@ export class LiveRoom {
   async finish(reason: 'time' | 'completed' | 'host'): Promise<void> {
     if (this.status === 'finished') return;
     this.status = 'finished';
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+    if (this.startTimer) {
+      clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
     if (this.endTimer) clearTimeout(this.endTimer);
     if (this.turnTimer) clearTimeout(this.turnTimer);
     if (this.idleTimer) {
@@ -811,7 +834,6 @@ export class LiveRoom {
       this.idleTimer = null;
     }
     stopBots(this.id);
-
     const rowsToRank = this.players
       .filter((p) => !p.left || p.isBot)
       .map((p) => {
@@ -883,7 +905,13 @@ export class LiveRoom {
     this.broadcastSnapshot();
 
     // Keep the room in memory for a grace period so late clients still get it.
-    setTimeout(() => rooms_registry.delete(this.id), 60_000);
+    if (this.cleanupTimer) clearTimeout(this.cleanupTimer);
+    this.cleanupTimer = setTimeout(() => {
+      this.cleanupTimer = null;
+      if (this.status === 'finished') {
+        rooms_registry.delete(this.id);
+      }
+    }, 60_000);
   }
 
   /* ---------------- views and broadcasting ---------------- */
