@@ -48,6 +48,11 @@ export interface RoomStore {
   results: ResultRow[] | null;
   error: string | null;
   paused: boolean;
+  /** Chess-clock games only (Chess, Xiangqi); null for every other game. */
+  clocks: { playerId: string; remainingMs: number }[] | null;
+  clockActor: string | null;
+  clockRunningSince: number | null;
+  moveDeadline: number | null;
 
   applySnapshot(snapshot: RoomSnapshot): void;
   reset(): void;
@@ -70,6 +75,10 @@ export const useRoom = create<RoomStore>((set) => ({
   results: null,
   error: null,
   paused: false,
+  clocks: null,
+  clockActor: null,
+  clockRunningSince: null,
+  moveDeadline: null,
   applySnapshot(snapshot) {
     set({
       room: snapshot.room,
@@ -83,6 +92,10 @@ export const useRoom = create<RoomStore>((set) => ({
       log: snapshot.log,
       results: snapshot.results,
       paused: snapshot.room?.paused ?? false,
+      clocks: snapshot.clocks ?? null,
+      clockActor: snapshot.clockActor ?? null,
+      clockRunningSince: snapshot.clockRunningSince ?? null,
+      moveDeadline: snapshot.moveDeadline ?? null,
     });
   },
   reset() {
@@ -101,6 +114,10 @@ export const useRoom = create<RoomStore>((set) => ({
       results: null,
       error: null,
       paused: false,
+      clocks: null,
+      clockActor: null,
+      clockRunningSince: null,
+      moveDeadline: null,
     });
   },
   setError(message) {
@@ -144,14 +161,29 @@ function wire(s: Socket): void {
   });
   s.on(
     EV.gameState,
-    (payload: { publicState: unknown; legalActions: string[]; turnEndsAt?: number | null }) => {
+    (payload: {
+      publicState: unknown;
+      legalActions: string[];
+      turnEndsAt?: number | null;
+      clocks?: { playerId: string; remainingMs: number }[] | null;
+      clockActor?: string | null;
+      clockRunningSince?: number | null;
+      moveDeadline?: number | null;
+    }) => {
       useRoom.setState({
         state: payload.publicState,
         legalActions: payload.legalActions ?? [],
         turnEndsAt: payload.turnEndsAt ?? null,
+        clocks: payload.clocks ?? null,
+        clockActor: payload.clockActor ?? null,
+        clockRunningSince: payload.clockRunningSince ?? null,
+        moveDeadline: payload.moveDeadline ?? null,
       });
     },
   );
+  s.on(EV.stillThinking, (payload: { playerId: string; strike: number; deadline: number }) => {
+    window.dispatchEvent(new CustomEvent('pa:stillThinking', { detail: payload }));
+  });
   s.on(EV.gameLog, (payload: { entries: LogEntry[] }) => {
     useRoom.setState({ log: payload.entries });
   });

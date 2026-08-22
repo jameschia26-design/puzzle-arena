@@ -40,6 +40,8 @@ import { BigTwoBoard } from '../games/BigTwoBoard.js';
 import { MinesweeperBoard } from '../games/MinesweeperBoard.js';
 import { ReversiBoard } from '../games/ReversiBoard.js';
 import { Connect4Board } from '../games/Connect4Board.js';
+import ChessBoard from '../games/ChessBoard.js';
+import XiangqiBoard from '../games/XiangqiBoard.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
@@ -148,6 +150,8 @@ export default function RoomPage(): React.ReactElement {
       if (gameId === 'congkak') bgm.play('congkak');
       else if (gameId === 'checkers') bgm.play('checkers');
       else if (gameId === 'big-two') bgm.play('bigtwo');
+      else if (gameId === 'chess') bgm.play('chess');
+      else if (gameId === 'xiangqi') bgm.play('xiangqi');
       else if (GAME_REGISTRY[gameId].kind === 'puzzle') bgm.play('puzzle');
       else bgm.play('board');
     } else if (room.status === 'finished') {
@@ -921,6 +925,32 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'connect4') {
     return (
       <Connect4Board
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'chess') {
+    return (
+      <ChessBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'xiangqi') {
+    return (
+      <XiangqiBoard
         view={state}
         players={store.players}
         youId={store.you?.playerId ?? null}

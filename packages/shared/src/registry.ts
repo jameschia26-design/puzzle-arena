@@ -14,6 +14,8 @@ export const GAME_IDS = [
   'reversi',
   'connect4',
   'big-two',
+  'chess',
+  'xiangqi',
 ] as const;
 
 export type GameId = (typeof GAME_IDS)[number];
@@ -99,6 +101,28 @@ export const checkersConfigSchema = z.object({
 export const bigTwoConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
 });
+
+/**
+ * Chess and Xiangqi are the only two board games that use a real chess-clock
+ * (total time bank per player) instead of `turnTimeLimitSec`. The runtime
+ * dispatches on `usesChessClock()` rather than a config field, so leaving
+ * `turnTimeLimitSec` off these two schemas is deliberate and load-bearing.
+ */
+const chessClockConfig = {
+  /** Total per-player time bank, in minutes. */
+  clockMinutes: z.number().int().min(1).max(120).default(10),
+  /** Fischer increment added to the mover's bank after each accepted move. */
+  incrementSec: z.number().int().min(0).max(60).default(0),
+  allowTakeback: z.boolean().default(true),
+};
+
+export const chessConfigSchema = z.object({ ...chessClockConfig });
+export const xiangqiConfigSchema = z.object({ ...chessClockConfig });
+
+/** No single move may take longer than this, even if the bank has more left. */
+export const CHESS_MOVE_CAP_MS = 240_000;
+/** "Still thinking?" prompts fire every this-many ms while idling on a move. */
+export const CHESS_IDLE_PROMPT_MS = 60_000;
 
 export interface GameMeta {
   id: GameId;
@@ -255,6 +279,28 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: bigTwoConfigSchema,
     blurb: 'Shed your hand first — beat the last combo or pass, bombs beat anything.',
+  },
+  chess: {
+    id: 'chess',
+    title: 'Chess',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 3600,
+    supportsBots: true,
+    configSchema: chessConfigSchema,
+    blurb: 'International chess: full FIDE rules on a per-player clock, castling and all.',
+  },
+  xiangqi: {
+    id: 'xiangqi',
+    title: 'Xiangqi',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 3600,
+    supportsBots: true,
+    configSchema: xiangqiConfigSchema,
+    blurb: 'Chinese chess: generals, chariots and cannons battle across the river.',
   },
 };
 

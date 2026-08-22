@@ -160,6 +160,161 @@ function formatCheckersPrompt(view: CheckersPromptView, actorId: string): { syst
 }
 
 /* ------------------------------------------------------------------ */
+/* Chess AI Prompt & Parser                                           */
+/* ------------------------------------------------------------------ */
+
+interface ChessPromptMove {
+  from: number;
+  to: number;
+  promotion?: 'q' | 'r' | 'b' | 'n';
+}
+interface ChessPromptView {
+  board: ({ type: string; side: 0 | 1 } | null)[];
+  players: { id: string; side: 0 | 1 }[];
+  you?: { side: 0 | 1; legalMoves: ChessPromptMove[]; inCheck?: boolean } | null;
+}
+
+const chessMoveSchema = z.object({
+  moveIndex: z.number().int().min(0),
+  reasoning: z.string().optional(),
+});
+
+const CHESS_FILES = 'abcdefgh';
+function chessSquareName(sq: number): string {
+  const file = CHESS_FILES[sq % 8] ?? '?';
+  const rank = Math.floor(sq / 8) + 1;
+  return `${file}${rank}`;
+}
+const CHESS_PIECE_LETTER: Record<string, string> = { p: 'P', n: 'N', b: 'B', r: 'R', q: 'Q', k: 'K' };
+
+function formatChessPrompt(view: ChessPromptView, actorId: string): { system: string; user: string } {
+  const pIdx = view.players.findIndex((p) => p.id === actorId);
+  const mySide = pIdx >= 0 ? view.players[pIdx]!.side : 0;
+  const myColor = mySide === 0 ? 'White' : 'Black';
+
+  let boardStr = '   a b c d e f g h\n';
+  for (let rank = 8; rank >= 1; rank--) {
+    boardStr += `${rank}  `;
+    for (let file = 0; file < 8; file++) {
+      const sq = (rank - 1) * 8 + file;
+      const piece = view.board[sq];
+      if (!piece) {
+        boardStr += '. ';
+        continue;
+      }
+      const letter = CHESS_PIECE_LETTER[piece.type] ?? '?';
+      boardStr += (piece.side === 0 ? letter : letter.toLowerCase()) + ' ';
+    }
+    boardStr += `${rank}\n`;
+  }
+  boardStr += '   a b c d e f g h\n';
+
+  const legalMoves = view.you?.legalMoves ?? [];
+  const moveOptions = legalMoves
+    .map(
+      (m, idx) =>
+        `Index ${idx}: ${chessSquareName(m.from)}-${chessSquareName(m.to)}${m.promotion ? `=${m.promotion.toUpperCase()}` : ''}`,
+    )
+    .join('\n');
+
+  const system =
+    'You are a strong International Chess (FIDE rules) AI. Uppercase letters are White pieces, lowercase are Black; K/Q/R/B/N/P. ' +
+    'Play sound opening principles, look for tactics (forks, pins, skewers), and prioritize king safety. ' +
+    'Choose the BEST move by its moveIndex from the legal moves list — you may ONLY choose from this list. ' +
+    (view.you?.inCheck ? 'You are currently IN CHECK and must resolve it. ' : '') +
+    'Reply with ONLY a JSON object: {"moveIndex": <number>, "reasoning": "<short>"}. No other text.';
+
+  const user =
+    `Board (rank 8 at top, White = uppercase, Black = lowercase):\n${boardStr}\n` +
+    `You are: ${myColor}\n` +
+    `Legal moves:\n${moveOptions || 'No legal moves'}\n` +
+    'Which moveIndex do you choose?';
+
+  return { system, user };
+}
+
+/* ------------------------------------------------------------------ */
+/* Xiangqi AI Prompt & Parser                                         */
+/* ------------------------------------------------------------------ */
+
+interface XiangqiPromptMove {
+  from: number;
+  to: number;
+}
+interface XiangqiPromptView {
+  board: ({ type: string; side: 0 | 1 } | null)[];
+  players: { id: string; side: 0 | 1 }[];
+  you?: { side: 0 | 1; legalMoves: XiangqiPromptMove[]; inCheck?: boolean } | null;
+}
+
+const xiangqiMoveSchema = z.object({
+  moveIndex: z.number().int().min(0),
+  reasoning: z.string().optional(),
+});
+
+/** row*9+col -> "col,row", row 0 = Black's back rank, row 9 = Red's. */
+function xiangqiPointName(pt: number): string {
+  const row = Math.floor(pt / 9);
+  const col = pt % 9;
+  return `(${col},${row})`;
+}
+// Matches XiangqiPieceType in packages/games/src/xiangqi/state.ts. Purely
+// cosmetic for the board render — the AI still only ever picks from the
+// enumerated legal-move index list below, so a mismatch here would only
+// affect prompt readability, never legality.
+const XIANGQI_PIECE_LETTER: Record<string, string> = {
+  general: 'G',
+  advisor: 'A',
+  elephant: 'E',
+  horse: 'H',
+  chariot: 'R',
+  cannon: 'C',
+  soldier: 'S',
+};
+
+function formatXiangqiPrompt(view: XiangqiPromptView, actorId: string): { system: string; user: string } {
+  const pIdx = view.players.findIndex((p) => p.id === actorId);
+  const mySide = pIdx >= 0 ? view.players[pIdx]!.side : 0;
+  const myColor = mySide === 0 ? 'Red (moves first, bottom of board)' : 'Black (top of board)';
+
+  let boardStr = '    ' + Array.from({ length: 9 }, (_, c) => c).join(' ') + '  (col)\n';
+  for (let row = 0; row < 10; row++) {
+    boardStr += `${String(row).padStart(2, ' ')}  `;
+    for (let col = 0; col < 9; col++) {
+      const piece = view.board[row * 9 + col];
+      if (!piece) {
+        boardStr += '. ';
+        continue;
+      }
+      const letter = XIANGQI_PIECE_LETTER[piece.type] ?? '?';
+      boardStr += (piece.side === 0 ? letter : letter.toLowerCase()) + ' ';
+    }
+    boardStr += '\n';
+  }
+
+  const legalMoves = view.you?.legalMoves ?? [];
+  const moveOptions = legalMoves
+    .map((m, idx) => `Index ${idx}: ${xiangqiPointName(m.from)} -> ${xiangqiPointName(m.to)}`)
+    .join('\n');
+
+  const system =
+    'You are a strong Xiangqi (Chinese Chess) AI on a 9x10 point grid (row 0 = top/Black back rank, row 9 = bottom/Red back rank; row/col given as (col,row)). ' +
+    'Uppercase = Red pieces (G=General A=Advisor E=Elephant H=Horse R=Chariot C=Cannon S=Soldier), lowercase = Black pieces, same letters. ' +
+    'Remember: soldiers only advance/sideways after crossing the river, elephants never cross the river, cannons need a screen piece to capture, and the two generals may never face each other on an open file. ' +
+    'Choose the BEST move by its moveIndex from the legal moves list — you may ONLY choose from this list. ' +
+    (view.you?.inCheck ? 'Your general is currently IN CHECK and must resolve it. ' : '') +
+    'Reply with ONLY a JSON object: {"moveIndex": <number>, "reasoning": "<short>"}. No other text.';
+
+  const user =
+    `Board:\n${boardStr}\n` +
+    `You are: ${myColor}\n` +
+    `Legal moves:\n${moveOptions || 'No legal moves'}\n` +
+    'Which moveIndex do you choose?';
+
+  return { system, user };
+}
+
+/* ------------------------------------------------------------------ */
 /* Congkak AI Prompt & Parser                                         */
 /* ------------------------------------------------------------------ */
 
@@ -482,6 +637,44 @@ export async function getAiBotAction(req: AiBotMoveRequest): Promise<unknown> {
       });
       if (v.legalMoves && v.legalMoves[res.value.pathIndex]) {
         return { type: 'move', path: v.legalMoves[res.value.pathIndex]!.path };
+      }
+      return fallbackAction;
+    }
+
+    if (gameId === 'chess') {
+      const v = view as ChessPromptView;
+      const { system, user } = formatChessPrompt(v, actorId);
+      const res = await complete({
+        task: 'bot_move',
+        system,
+        user,
+        schema: chessMoveSchema,
+        fallback: { moveIndex: 0 },
+        noCache: true,
+      });
+      const move = v.you?.legalMoves?.[res.value.moveIndex];
+      if (move) {
+        logger.info({ gameId, ...move, source: res.source }, 'AI Bot played Chess move');
+        return { type: 'move', from: move.from, to: move.to, ...(move.promotion ? { promotion: move.promotion } : {}) };
+      }
+      return fallbackAction;
+    }
+
+    if (gameId === 'xiangqi') {
+      const v = view as XiangqiPromptView;
+      const { system, user } = formatXiangqiPrompt(v, actorId);
+      const res = await complete({
+        task: 'bot_move',
+        system,
+        user,
+        schema: xiangqiMoveSchema,
+        fallback: { moveIndex: 0 },
+        noCache: true,
+      });
+      const move = v.you?.legalMoves?.[res.value.moveIndex];
+      if (move) {
+        logger.info({ gameId, ...move, source: res.source }, 'AI Bot played Xiangqi move');
+        return { type: 'move', from: move.from, to: move.to };
       }
       return fallbackAction;
     }

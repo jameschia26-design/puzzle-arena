@@ -551,7 +551,7 @@ export const sfx = {
 /* Retro Chiptune / MIDI Background Music Generator (BGM)             */
 /* ------------------------------------------------------------------ */
 
-export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title' | 'checkers' | 'bigtwo';
+export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title' | 'checkers' | 'bigtwo' | 'chess' | 'xiangqi';
 
 interface NoteEvent {
   note: number;
@@ -652,6 +652,38 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
     bass: [
       { note: 38, duration: 4 }, { note: 43, duration: 4 }, { note: 41, duration: 4 }, { note: 45, duration: 4 },
       { note: 38, duration: 4 }, { note: 43, duration: 4 }, { note: 36, duration: 4 }, { note: 43, duration: 4 },
+    ],
+  },
+  chess: {
+    tempo: 84,
+    lead: [
+      { note: 55, duration: 4 }, { note: 59, duration: 4 }, { note: 62, duration: 4 }, { note: 66, duration: 4 },
+      { note: 67, duration: 6 }, { note: 66, duration: 2 }, { note: 62, duration: 8 },
+      { note: 60, duration: 4 }, { note: 64, duration: 4 }, { note: 67, duration: 4 }, { note: 71, duration: 4 },
+      { note: 69, duration: 8 }, { note: 62, duration: 8 },
+    ],
+    bass: [
+      { note: 43, duration: 8 }, { note: 47, duration: 8 },
+      { note: 41, duration: 8 }, { note: 45, duration: 8 },
+      { note: 40, duration: 8 }, { note: 47, duration: 8 },
+      { note: 38, duration: 8 }, { note: 45, duration: 8 },
+    ],
+  },
+  xiangqi: {
+    // Pentatonic (C D E G A), evoking a guzheng/gong feel within the
+    // engine's plain-oscillator synthesis.
+    tempo: 96,
+    lead: [
+      { note: 60, duration: 3 }, { note: 62, duration: 1 }, { note: 64, duration: 4 }, { note: 67, duration: 4 },
+      { note: 69, duration: 4 }, { note: 67, duration: 2 }, { note: 64, duration: 2 }, { note: 62, duration: 4 },
+      { note: 60, duration: 3 }, { note: 62, duration: 1 }, { note: 64, duration: 4 }, { note: 69, duration: 4 },
+      { note: 72, duration: 6 }, { note: 69, duration: 2 }, { note: 64, duration: 8 },
+    ],
+    bass: [
+      { note: 36, duration: 8 }, { note: 43, duration: 8 },
+      { note: 38, duration: 8 }, { note: 45, duration: 8 },
+      { note: 36, duration: 8 }, { note: 40, duration: 8 },
+      { note: 33, duration: 8 }, { note: 40, duration: 8 },
     ],
   },
 };

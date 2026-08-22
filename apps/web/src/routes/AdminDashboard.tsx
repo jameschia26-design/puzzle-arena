@@ -30,6 +30,9 @@ export default function AdminDashboard(): React.ReactElement {
   const [instantFeedback, setInstantFeedback] = React.useState(false);
   const [theme, setTheme] = React.useState<string>(WORD_SEARCH_THEMES[0]);
   const [size, setSize] = React.useState('10');
+  const [clockMinutes, setClockMinutes] = React.useState<number | string>(10);
+  const [incrementSec, setIncrementSec] = React.useState<number | string>(0);
+  const [allowTakeback, setAllowTakeback] = React.useState(true);
   const [rooms, setRooms] = React.useState<RoomRow[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -66,6 +69,11 @@ export default function AdminDashboard(): React.ReactElement {
     if (gameId === 'word-search') {
       config['theme'] = theme;
       config['size'] = 14;
+    }
+    if (gameId === 'chess' || gameId === 'xiangqi') {
+      config['clockMinutes'] = Math.min(120, Math.max(1, Math.round(Number(clockMinutes)) || 1));
+      config['incrementSec'] = Math.min(60, Math.max(0, Math.round(Number(incrementSec)) || 0));
+      config['allowTakeback'] = allowTakeback;
     }
 
     const effectiveMinutes = Math.min(240, Math.max(1, Math.round(Number(minutes)) || 1));
@@ -175,9 +183,61 @@ export default function AdminDashboard(): React.ReactElement {
               options={WORD_SEARCH_THEMES.map((t) => ({ value: t, label: t }))}
             />
           )}
+          {(gameId === 'chess' || gameId === 'xiangqi') && (
+            <>
+              <PixelInput
+                label="Clock (minutes per player)"
+                type="number"
+                min={1}
+                max={120}
+                value={clockMinutes}
+                onChange={(e) => setClockMinutes(e.target.value)}
+                onBlur={() => {
+                  const n = Number(clockMinutes);
+                  if (!n || n < 1) setClockMinutes(1);
+                  else if (n > 120) setClockMinutes(120);
+                  else setClockMinutes(Math.round(n));
+                }}
+              />
+              <PixelInput
+                label="Increment (seconds per move)"
+                type="number"
+                min={0}
+                max={60}
+                value={incrementSec}
+                onChange={(e) => setIncrementSec(e.target.value)}
+                onBlur={() => {
+                  const n = Number(incrementSec);
+                  if (Number.isNaN(n) || n < 0) setIncrementSec(0);
+                  else if (n > 60) setIncrementSec(60);
+                  else setIncrementSec(Math.round(n));
+                }}
+              />
+            </>
+          )}
         </div>
 
-        <p className="mt-4 text-[13px] text-pa-ink-dim">{meta.blurb}</p>
+        {(gameId === 'chess' || gameId === 'xiangqi') && (
+          <label className="mt-4 flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={allowTakeback}
+              onChange={(e) => setAllowTakeback(e.target.checked)}
+              className="w-5 h-5 accent-[var(--color-pa-cyan)]"
+            />
+            <span className="text-[13px]">
+              Allow takeback requests
+              <span className="text-pa-ink-dim"> (time already spent is not refunded)</span>
+            </span>
+          </label>
+        )}
+
+        <p className="mt-4 text-[13px] text-pa-ink-dim">
+          {(gameId === 'chess' || gameId === 'xiangqi')
+            ? `Each move also has a hard 4-minute cap regardless of the clock — the player is warned at 1/2/3 minutes of idling and forfeits the move at 4.`
+            : ''}
+          {meta.blurb}
+        </p>
 
         {isPuzzle && (
           <label className="mt-4 flex items-center gap-3 cursor-pointer">

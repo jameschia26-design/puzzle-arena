@@ -178,10 +178,11 @@ describe('rooms', () => {
   });
 
   it('rejects an unknown game', async () => {
+    // 'chess' used to be the sentinel here, back when it wasn't a real game id.
     const res = await api('/api/rooms', {
       method: 'POST',
       cookie: adminCookie,
-      body: JSON.stringify({ gameId: 'chess' }),
+      body: JSON.stringify({ gameId: 'go' }),
     });
     expect(res.status).toBe(400);
   });

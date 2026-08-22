@@ -5,6 +5,8 @@ import {
   GAME_REGISTRY,
   RECONNECT_GRACE_SEC,
   START_COUNTDOWN_MS,
+  CHESS_MOVE_CAP_MS,
+  CHESS_IDLE_PROMPT_MS,
   computeScore,
   mulberry32,
   rankResults,
@@ -25,6 +27,8 @@ import {
   bigTwoRules,
   checkers,
   checkersRules,
+  chess,
+  chessRules,
   congkak,
   congkakRules,
   connect4,
@@ -37,6 +41,8 @@ import {
   propertyTycoonRules,
   scrabble,
   scrabbleRules,
+  xiangqi,
+  xiangqiRules,
 } from '@puzzle-arena/games';
 import { wordSearch } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -116,9 +122,22 @@ export class LiveRoom {
   log: LogEntry[] = [];
   chat: ChatMessage[] = [];
   consecutiveBotActions = 0;
+  /**
+   * Chess-clock games only (Chess, Xiangqi): each human player's remaining
+   * time bank, keyed by playerId. Null for every other game. Bots are never
+   * keyed here — their own scheduler already paces them.
+   */
+  clocks: Map<string, number> | null = null;
+  /** Whoever's bank is currently draining, or null when no human is on the clock. */
+  clockActor: string | null = null;
+  /** Epoch ms `clockActor`'s bank started draining. */
+  private clockSince: number | null = null;
   private io: IOServer | null = null;
   private endTimer: ReturnType<typeof setTimeout> | null = null;
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Chess-clock games: fires the "still thinking?" prompts every 60s of idling on one move. */
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private idleStrikes = 0;
   private eventBuffer: { roomId: string; seq: number; actorPlayerId: string | null; action: object }[] = [];
   private eventFlushTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(row: {
@@ -198,6 +217,10 @@ export class LiveRoom {
         seed,
         this.config,
       );
+      if (this.usesChessClock()) {
+        const minutes = Number((this.config as { clockMinutes?: number }).clockMinutes ?? 10);
+        this.clocks = new Map(active.filter((p) => !p.isBot).map((p) => [p.id, minutes * 60_000]));
+      }
     }
 
     const startsAt = Date.now() + START_COUNTDOWN_MS;
@@ -243,6 +266,8 @@ export class LiveRoom {
     if (this.gameId === 'big-two') return bigTwo as unknown as typeof propertyTycoon;
     if (this.gameId === 'reversi') return reversi as unknown as typeof propertyTycoon;
     if (this.gameId === 'connect4') return connect4 as unknown as typeof propertyTycoon;
+    if (this.gameId === 'chess') return chess as unknown as typeof propertyTycoon;
+    if (this.gameId === 'xiangqi') return xiangqi as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -256,7 +281,14 @@ export class LiveRoom {
     if (this.gameId === 'big-two') return bigTwoRules.actorToAct(this.gameState as never);
     if (this.gameId === 'reversi') return reversiRules.actorToAct(this.gameState as never);
     if (this.gameId === 'connect4') return connect4Rules.actorToAct(this.gameState as never);
+    if (this.gameId === 'chess') return chessRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'xiangqi') return xiangqiRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
+  }
+
+  /** Chess and Xiangqi run a per-player time bank instead of `turnTimeLimitSec`. */
+  usesChessClock(): boolean {
+    return this.gameId === 'chess' || this.gameId === 'xiangqi';
   }
   pause(): void {
     if (this.status !== 'running' || this.paused) return;
@@ -265,6 +297,10 @@ export class LiveRoom {
     if (this.endTimer) clearTimeout(this.endTimer);
     this.remainingTurnMs = this.turnEndsAt ? Math.max(0, this.turnEndsAt - Date.now()) : null;
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    if (this.idleTimer) {
+      clearInterval(this.idleTimer);
+      this.idleTimer = null;
+    }
     stopBots(this.id);
     this.pushLog('Game paused by host');
     this.io?.to(this.id).emit(EV.roomPaused, { paused: true });
@@ -295,6 +331,10 @@ export class LiveRoom {
   async restart(): Promise<void> {
     if (this.endTimer) clearTimeout(this.endTimer);
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    if (this.idleTimer) {
+      clearInterval(this.idleTimer);
+      this.idleTimer = null;
+    }
     stopBots(this.id);
 
     this.status = 'lobby';
@@ -308,6 +348,10 @@ export class LiveRoom {
     this.gameState = null;
     this.puzzle = null;
     this.consecutiveBotActions = 0;
+    this.clocks = null;
+    this.clockActor = null;
+    this.clockSince = null;
+    this.idleStrikes = 0;
 
     // Reset all seated players
     for (const p of this.players) {
@@ -341,16 +385,35 @@ export class LiveRoom {
     }, delay);
   }
 
-  /** Board games auto-play the minimal legal action when a turn times out. */
+  /**
+   * Board games auto-play the minimal legal action when a turn times out.
+   * Chess and Xiangqi instead run a per-player time bank (see `armChessClock`)
+   * and forfeit on expiry rather than auto-playing a move for the player.
+   */
   armTurnTimer(): void {
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    if (this.idleTimer) {
+      clearInterval(this.idleTimer);
+      this.idleTimer = null;
+    }
     this.turnEndsAt = null;
     if (this.kind !== 'board' || this.status !== 'running') return;
 
     const actorId = this.actorToAct();
-    if (!actorId) return;
+    if (!actorId) {
+      this.clockActor = null;
+      this.clockSince = null;
+      return;
+    }
     const actor = this.player(actorId);
-    if (!actor || actor.isBot) return; // bots have their own scheduler
+    if (!actor) return;
+
+    if (this.usesChessClock()) {
+      this.armChessClock(actorId, actor);
+      return;
+    }
+
+    if (actor.isBot) return; // bots have their own scheduler
 
     const limit = Number(this.config['turnTimeLimitSec'] ?? 90) * 1000;
     // A disconnected player does not get to stall the table.
@@ -368,6 +431,95 @@ export class LiveRoom {
         logger.error({ roomId: this.id, actorId, err: applied.error }, 'auto-action rejected');
       }
     }, delay);
+  }
+
+  /**
+   * Chess-clock games: arm the mover's per-move deadline as
+   * `min(remaining bank, CHESS_MOVE_CAP_MS)`. Whichever is smaller decides
+   * the forfeit reason — a bank running out is 'time', the 4-minute
+   * per-move cap firing while the bank still has room left is 'idle'. A
+   * disconnected player's bank keeps draining like a real chess clock
+   * (unlike the classic per-move timer, which insta-forfeits them) — the
+   * reconnect grace period still applies to their SEAT, not their clock.
+   */
+  private armChessClock(actorId: string, actor: LivePlayer): void {
+    if (actor.isBot || !this.clocks) {
+      this.clockActor = null;
+      this.clockSince = null;
+      return;
+    }
+    const bank = Math.max(0, this.clocks.get(actorId) ?? 0);
+    const cap = Math.min(bank, CHESS_MOVE_CAP_MS);
+    const capReason: 'time' | 'idle' = bank <= CHESS_MOVE_CAP_MS ? 'time' : 'idle';
+
+    this.clockActor = actorId;
+    this.clockSince = Date.now();
+    this.idleStrikes = 0;
+    this.turnEndsAt = this.clockSince + cap;
+
+    this.turnTimer = setTimeout(() => {
+      if (this.status !== 'running') return;
+      if (this.actorToAct() !== actorId) return;
+      this.forfeitChessPlayer(actorId, capReason);
+    }, cap);
+
+    // "Still thinking?" prompts at 1/2/3 minutes of idling on this move. The
+    // 4th minute is not prompted again — the move-cap timer above forfeits
+    // the move at that point regardless of how the player answered.
+    if (cap > CHESS_IDLE_PROMPT_MS) {
+      this.idleTimer = setInterval(() => {
+        if (this.status !== 'running' || this.actorToAct() !== actorId) {
+          if (this.idleTimer) clearInterval(this.idleTimer);
+          this.idleTimer = null;
+          return;
+        }
+        this.idleStrikes += 1;
+        if (this.idleStrikes >= 4) {
+          if (this.idleTimer) clearInterval(this.idleTimer);
+          this.idleTimer = null;
+          return; // the move-cap timer above fires the actual forfeit
+        }
+        this.io?.to(this.id).emit(EV.stillThinking, {
+          playerId: actorId,
+          strike: this.idleStrikes,
+          deadline: this.turnEndsAt,
+        });
+      }, CHESS_IDLE_PROMPT_MS);
+    }
+  }
+
+  /**
+   * Applies a runtime-only forfeit for the chess clock. This is the ONLY
+   * caller of the engine's `forfeit` action — it is deliberately not part of
+   * `gameActionSchema`, so a client can never forfeit an opponent by
+   * crafting the action themselves; only this method (driven by the
+   * `armChessClock` timer above) can produce one.
+   */
+  private forfeitChessPlayer(actorId: string, reason: 'time' | 'idle'): void {
+    if (this.status !== 'running' || !this.gameState) return;
+    const engine = this.engine();
+    const result = engine.reduce(this.gameState as never, actorId, { type: 'forfeit', reason } as never);
+    if (!result.ok) {
+      logger.error({ roomId: this.id, actorId, reason, err: result.error }, 'chess-clock forfeit rejected');
+      return;
+    }
+    this.gameState = result.state;
+    for (const entry of result.log) this.log.push(this.humanise(entry));
+    this.log = this.log.slice(-300);
+    void this.appendEvent(actorId, { type: 'forfeit', reason });
+
+    const over = engine.isOver(this.gameState as never);
+    if (over.over) {
+      const st = this.gameState as { winner?: string | null; winnerAtMs?: number | null };
+      if (st.winner && st.winnerAtMs == null) {
+        st.winnerAtMs = Math.max(0, Date.now() - (this.startedAt ?? Date.now()));
+      }
+      void this.finish('completed');
+      return;
+    }
+    this.armTurnTimer();
+    this.broadcastGameState();
+    this.broadcastLeaderboard();
   }
 
   /* ---------------- puzzle moves ---------------- */
@@ -545,6 +697,19 @@ export class LiveRoom {
 
     void this.appendEvent(playerId, action as object);
 
+    // Chess-clock games: charge the elapsed time against the mover's bank
+    // and apply the increment, now that their move has been accepted.
+    // `armTurnTimer()` below re-arms the deadline for the *new* actor from
+    // whatever remains in their own bank.
+    if (this.usesChessClock() && this.clocks && this.clockActor === playerId && this.clockSince !== null) {
+      const elapsed = Date.now() - this.clockSince;
+      const remaining = Math.max(0, (this.clocks.get(playerId) ?? 0) - elapsed);
+      const incrementMs = Number((this.config as { incrementSec?: number }).incrementSec ?? 0) * 1000;
+      this.clocks.set(playerId, remaining + incrementMs);
+      this.clockActor = null;
+      this.clockSince = null;
+    }
+
     const over = engine.isOver(this.gameState as never);
     if (over.over) {
       // Stamp the winner's finish time from the runtime's clock — engines are
@@ -637,6 +802,10 @@ export class LiveRoom {
     this.status = 'finished';
     if (this.endTimer) clearTimeout(this.endTimer);
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    if (this.idleTimer) {
+      clearInterval(this.idleTimer);
+      this.idleTimer = null;
+    }
     stopBots(this.id);
 
     const rowsToRank = this.players
@@ -824,7 +993,25 @@ export class LiveRoom {
   stateFor(playerId: string | null): unknown {
     if (this.kind === 'board') {
       if (!this.gameState) return null;
-      return this.engine().view(this.gameState as never, playerId);
+      const view = this.engine().view(this.gameState as never, playerId);
+      // Engines log by player id because they have no idea what anyone is
+      // called (see `humanise()`), and that raw log is embedded directly in
+      // the view they return (e.g. checkers/index.ts's `s.log`). humanise()
+      // is otherwise only ever applied to the copy kept on `this.log` (the
+      // sidebar Match Log) — without this, every board's in-game move log
+      // renders raw player ids instead of display names. Funnel every view
+      // through here rather than patching each engine, since `stateFor` is
+      // the single point both `snapshotFor()` and `broadcastGameState()` go
+      // through.
+      if (
+        view &&
+        typeof view === 'object' &&
+        Array.isArray((view as { log?: unknown }).log)
+      ) {
+        const v = view as { log: LogEntry[] };
+        v.log = v.log.map((entry) => this.humanise(entry));
+      }
+      return view;
     }
     if (!this.puzzle) return null;
     const player = playerId ? this.player(playerId) : null;
@@ -835,6 +1022,12 @@ export class LiveRoom {
       // The solution is revealed at exactly one moment: after the room ends.
       solution: this.status === 'finished' ? this.puzzle.solution : null,
     };
+  }
+
+  /** Chess-clock games only: the wire-shaped `clocks` array, or null. */
+  private clockPayload(): { playerId: string; remainingMs: number }[] | null {
+    if (!this.usesChessClock() || !this.clocks) return null;
+    return [...this.clocks.entries()].map(([playerId, remainingMs]) => ({ playerId, remainingMs }));
   }
 
   snapshotFor(playerId: string | null): RoomSnapshot {
@@ -853,6 +1046,10 @@ export class LiveRoom {
       leaderboard: this.leaderboard(),
       log: this.log.slice(-100),
       results: this.results,
+      clocks: this.clockPayload(),
+      clockActor: this.usesChessClock() ? this.clockActor : null,
+      clockRunningSince: this.usesChessClock() ? this.clockSince : null,
+      moveDeadline: this.usesChessClock() ? this.turnEndsAt : null,
     };
   }
 
@@ -879,6 +1076,10 @@ export class LiveRoom {
             ? this.engine().legalActions(this.gameState as never, pid)
             : [],
         turnEndsAt: this.turnEndsAt,
+        clocks: this.clockPayload(),
+        clockActor: this.usesChessClock() ? this.clockActor : null,
+        clockRunningSince: this.usesChessClock() ? this.clockSince : null,
+        moveDeadline: this.usesChessClock() ? this.turnEndsAt : null,
       });
     }
     this.io.to(this.id).emit(EV.gameLog, { entries: this.log.slice(-50) });
@@ -1101,6 +1302,42 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
         await room.finish('time');
         logger.info({ roomId: row.id }, 'expired room finalised on boot');
         continue;
+      }
+
+      // Chess-clock games: `clocks` (the live per-player time bank) is
+      // runtime-only bookkeeping, not part of engine state, so it doesn't
+      // come back from the `reduce` replay above. Reconstruct it from the
+      // gaps between consecutive `room_events` timestamps — each gap was
+      // spent by whoever was on the clock, i.e. the actor of the event that
+      // closed it. This needs the FULL event history from room start, not
+      // just the post-snapshot tail already loaded into `events`.
+      if (room.kind === 'board' && room.usesChessClock()) {
+        const minutes = Number((room.config as { clockMinutes?: number }).clockMinutes ?? 10);
+        const bankMs = minutes * 60_000;
+        const clocks = new Map<string, number>(
+          room.players.filter((p) => !p.isBot).map((p) => [p.id, bankMs]),
+        );
+        const allEvents = await db
+          .select()
+          .from(roomEvents)
+          .where(eq(roomEvents.roomId, row.id))
+          .orderBy(asc(roomEvents.seq));
+        let prevAt = room.startedAt !== null ? new Date(room.startedAt) : null;
+        for (const ev of allEvents) {
+          const actorId = ev.actorPlayerId;
+          if (prevAt && actorId && clocks.has(actorId)) {
+            const spent = ev.at.getTime() - prevAt.getTime();
+            if (spent > 0) clocks.set(actorId, Math.max(0, (clocks.get(actorId) ?? 0) - spent));
+          }
+          prevAt = ev.at;
+        }
+        // Whoever's turn it is now has been thinking since the last event.
+        const nowActor = room.actorToAct();
+        if (nowActor && prevAt && clocks.has(nowActor)) {
+          const spent = Date.now() - prevAt.getTime();
+          if (spent > 0) clocks.set(nowActor, Math.max(0, (clocks.get(nowActor) ?? 0) - spent));
+        }
+        room.clocks = clocks;
       }
 
       room.armTurnTimer();

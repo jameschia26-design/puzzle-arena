@@ -1,20 +1,24 @@
 import {
   bigTwoBot,
   checkersBot,
+  chessBot,
   connect4Bot,
   congkakBot,
   manorMysteryBot,
   propertyTycoonBot,
   reversiBot,
   scrabbleBot,
+  xiangqiBot,
   type BigTwoBotView,
   type CheckersBotView,
+  type ChessBotView,
   type Connect4BotView,
   type CongkakBotView,
   type MMBotView,
   type PTBotView,
   type ReversiBotView,
   type SCRBotView,
+  type XiangqiBotView,
 } from '@puzzle-arena/games';
 import { getAiBotAction } from '../ai/bot-moves.js';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
@@ -124,6 +128,10 @@ export function scheduleBots(room: LiveRoom): void {
         action = reversiBot.chooseAction(view as ReversiBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'connect4') {
         action = connect4Bot.chooseAction(view as Connect4BotView, actorId, rng, effectiveDifficulty);
+      } else if (room.gameId === 'chess') {
+        action = chessBot.chooseAction(view as ChessBotView, actorId, rng, effectiveDifficulty);
+      } else if (room.gameId === 'xiangqi') {
+        action = xiangqiBot.chooseAction(view as XiangqiBotView, actorId, rng, effectiveDifficulty);
       } else {
         action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, effectiveDifficulty);
       }

@@ -144,6 +144,37 @@ export const bigTwoActionSchema = z.discriminatedUnion('type', [
 ]);
 export type BigTwoAction = z.infer<typeof bigTwoActionSchema>;
 
+/** 0..63, a1=0 .. h8=63 (standard little-endian rank-file mapping). */
+const chessSquareSchema = z.number().int().min(0).max(63);
+export const chessActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('move'),
+    from: chessSquareSchema,
+    to: chessSquareSchema,
+    promotion: z.enum(['q', 'r', 'b', 'n']).optional(),
+  }),
+  z.object({ type: z.literal('resign') }),
+  z.object({ type: z.literal('offer_draw') }),
+  z.object({ type: z.literal('respond_draw'), accept: z.boolean() }),
+  z.object({ type: z.literal('offer_takeback') }),
+  z.object({ type: z.literal('respond_takeback'), accept: z.boolean() }),
+  z.object({ type: z.literal('claim_draw') }),
+]);
+export type ChessAction = z.infer<typeof chessActionSchema>;
+
+/** 0..89, point = row*9+col; row 0 is Black's back rank, row 9 is Red's. */
+const xiangqiPointSchema = z.number().int().min(0).max(89);
+export const xiangqiActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('move'), from: xiangqiPointSchema, to: xiangqiPointSchema }),
+  z.object({ type: z.literal('resign') }),
+  z.object({ type: z.literal('offer_draw') }),
+  z.object({ type: z.literal('respond_draw'), accept: z.boolean() }),
+  z.object({ type: z.literal('offer_takeback') }),
+  z.object({ type: z.literal('respond_takeback'), accept: z.boolean() }),
+  z.object({ type: z.literal('claim_draw') }),
+]);
+export type XiangqiAction = z.infer<typeof xiangqiActionSchema>;
+
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
   manorMysteryActionSchema,
@@ -153,6 +184,8 @@ export const gameActionSchema = z.union([
   reversiActionSchema,
   connect4ActionSchema,
   bigTwoActionSchema,
+  chessActionSchema,
+  xiangqiActionSchema,
 ]);
 export type GameAction =
   | PropertyTycoonAction
@@ -162,7 +195,20 @@ export type GameAction =
   | CheckersAction
   | ReversiAction
   | Connect4Action
-  | BigTwoAction;
+  | BigTwoAction
+  | ChessAction
+  | XiangqiAction;
+
+/**
+ * `forfeit` is deliberately NOT part of `gameActionSchema` — it is produced
+ * only by the runtime's chess-clock logic (time-out / 4-minute idle cap),
+ * never accepted from a client, so a player can never forfeit an opponent.
+ */
+export const chessClockForfeitSchema = z.object({
+  type: z.literal('forfeit'),
+  reason: z.enum(['time', 'idle']),
+});
+export type ChessClockForfeitAction = z.infer<typeof chessClockForfeitSchema>;
 /* ------------------------------------------------------------------ */
 /* Client -> server                                                    */
 /* ------------------------------------------------------------------ */
@@ -301,6 +347,17 @@ export interface RoomSnapshot {
   log: LogEntry[];
   results: ResultRow[] | null;
   paused?: boolean;
+  /**
+   * Chess-clock games only (Chess, Xiangqi): each human player's remaining
+   * time bank. Null for every other game. `clockRunningSince` is the epoch
+   * ms the current actor's bank started draining — the client subtracts
+   * locally and resyncs from the next snapshot, same pattern as `endsAt`.
+   */
+  clocks?: { playerId: string; remainingMs: number }[] | null;
+  clockActor?: string | null;
+  clockRunningSince?: number | null;
+  /** The hard per-move deadline (min(bank, 4 minutes)), epoch ms. */
+  moveDeadline?: number | null;
 }
 
 export interface PuzzleCommitAck {
@@ -336,6 +393,8 @@ export const EV = {
   puzzleHint: 'puzzle:hint',
   gameAction: 'game:action',
   chatSend: 'chat:send',
+  /** Chess-clock games only: dismisses the "still thinking?" modal client-side. */
+  stillThinkingAck: 'game:stillThinkingAck',
   // server -> client
   roomSnapshot: 'room:snapshot',
   roomPlayers: 'room:players',
@@ -348,4 +407,9 @@ export const EV = {
   gameLog: 'game:log',
   chatMessage: 'chat:message',
   error: 'error',
+  /**
+   * Chess-clock games only: fired at 1/2/3 minutes of idling on the same
+   * move (strike 1-3). A 4th minute forfeits the move without a 4th prompt.
+   */
+  stillThinking: 'game:stillThinking',
 } as const;

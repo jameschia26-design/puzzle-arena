@@ -26,6 +26,13 @@
 
   --font-display: 'Press Start 2P', monospace;
   --font-body: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  /**
+   * Xiangqi piece glyphs. `--font-display` (Press Start 2P) and `--font-body`
+   * (Space Grotesk) are both Latin-only bitmap/variable fonts with no CJK
+   * coverage, so this falls through to whatever CJK font the platform ships
+   * — there is no bundled CJK webfont and no i18n layer in this app.
+   */
+  --font-cjk: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Heiti SC', sans-serif;
   --radius-pa: 0px;
 }
 
@@ -104,6 +111,11 @@
   .font-display {
     font-family: var(--font-display);
     letter-spacing: 0.05em;
+  }
+
+  /** Xiangqi piece glyphs — see the token comment above. */
+  .font-cjk {
+    font-family: var(--font-cjk);
   }
 
   .tabular {

@@ -81,6 +81,38 @@ export type {
   Connect4View,
 } from './connect4/state.js';
 
+export { chess } from './chess/index.js';
+export * as chessRules from './chess/rules.js';
+export { chessBot, type ChessBotView, type ChessBotAction } from './chess/bot.js';
+export type {
+  ChessState,
+  ChessPlayer,
+  ChessConfig,
+  ChessAction,
+  ChessPiece,
+  Side as ChessSide,
+  PieceType as ChessPieceType,
+  CastlingRights as ChessCastlingRights,
+  MoveRecord as ChessMoveRecord,
+} from './chess/state.js';
+export type { ChessView, ChessPublicPlayer } from './chess/state.js';
+export type { ChessMove } from './chess/movegen.js';
+
+export { xiangqi } from './xiangqi/index.js';
+export * as xiangqiRules from './xiangqi/index.js';
+export { xiangqiBot, type XiangqiBotView, type XiangqiBotAction } from './xiangqi/bot.js';
+export type {
+  XiangqiState,
+  XiangqiPlayer,
+  XiangqiConfig,
+  XiangqiAction,
+  XiangqiPiece,
+  XiangqiPieceType,
+  XiangqiSide,
+  MoveRecord as XiangqiMoveRecord,
+} from './xiangqi/state.js';
+export type { XiangqiView, XiangqiPublicPlayer, XiangqiLegalMove } from './xiangqi/state.js';
+
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
 import { manorMystery } from './manor-mystery/index.js';
@@ -90,6 +122,8 @@ import { checkers } from './checkers/index.js';
 import { bigTwo } from './big-two/index.js';
 import { reversi } from './reversi/index.js';
 import { connect4 } from './connect4/index.js';
+import { chess } from './chess/index.js';
+import { xiangqi } from './xiangqi/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
@@ -102,4 +136,6 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   'big-two': bigTwo as unknown as GameEngine<never, never>,
   reversi: reversi as unknown as GameEngine<never, never>,
   connect4: connect4 as unknown as GameEngine<never, never>,
+  chess: chess as unknown as GameEngine<never, never>,
+  xiangqi: xiangqi as unknown as GameEngine<never, never>,
 };

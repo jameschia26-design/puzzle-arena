@@ -262,6 +262,13 @@ export function attachSocket(app: FastifyInstance): IOServer {
       respond(ack, room.applyGameAction(playerId, parsed.data));
     });
 
+    socket.on(EV.stillThinkingAck, (_payload, ack) => {
+      // Chess-clock games only: purely a client-side dismissal of the "still
+      // thinking?" modal. It does NOT extend the 4-minute-per-move cap — the
+      // clock keeps running regardless, per the room's chosen semantics.
+      respond(ack, { ok: true });
+    });
+
     socket.on(EV.chatSend, (payload, ack) => {
       const room = roomOf(socket);
       const playerId = socket.data.playerId as string | undefined;
