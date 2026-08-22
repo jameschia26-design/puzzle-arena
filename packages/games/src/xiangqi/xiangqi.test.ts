@@ -6,6 +6,7 @@ import {
   isInCheck,
   legalMovesForSide,
   pieceMoves,
+  positionKey,
   toIndex,
   xiangqi as engine,
 } from './index.js';
@@ -215,47 +216,158 @@ describe('xiangqi game engine', () => {
     expect(r.state.drawReason).toBe('sixty_move');
   });
 
-  it('perpetual check (simplified rule): 3 consecutive checking moves forfeits the checker', () => {
-    // Red chariot slides onto column 4 delivering check to Black's general
-    // at (0,4); Black still has a legal reply (retreat to (0,3)), so this
-    // is not checkmate. We seed checkStreak to 2 for Red to simulate this
-    // being Red's third consecutive checking move, per the documented
-    // simplified approximation (see state.ts / index.ts comments).
+  it('consecutive checks across distinct positions do NOT cause forfeit', () => {
+    // Consecutive checking moves in different positions is normal attacking play and should not forfeit
     const s = engine.setup(['alice', 'bob'], 1, {});
     s.board = emptyBoard();
-    s.board[toIndex(0, 4)] = { side: 1, type: 'general' };
-    s.board[toIndex(0, 3)] = null;
-    s.board[toIndex(9, 4)] = { side: 0, type: 'general' };
-    s.board[toIndex(5, 0)] = { side: 0, type: 'chariot' };
-    s.current = 0;
-    s.checkStreak = { 0: 2, 1: 0 };
+    s.board[toIndex(0, 5)] = { side: 1, type: 'general' }; // Black general on col 5
+    s.board[toIndex(9, 3)] = { side: 0, type: 'general' }; // Red general on col 3
+    s.board[toIndex(6, 5)] = { side: 0, type: 'chariot' }; // Red chariot on (6,5) checking (0,5)
+    s.current = 1; // Black to move out of check
+    s.repetition = { [positionKey(s)]: 1 };
 
-    const r = engine.reduce(s, 'alice', { type: 'move', from: toIndex(5, 0), to: toIndex(5, 4) });
+    // 1. Black General moves (0,5) -> (0,4) sideways
+    let cur: XiangqiState = s;
+    let r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 5), to: toIndex(0, 4) });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(isInCheck(r.state.board, 1)).toBe(true);
-    expect(legalMovesForSide(r.state.board, 1).length).toBeGreaterThan(0); // not checkmate
-    expect(r.state.phase).toBe('game_over');
-    expect(r.state.winner).toBe('bob');
-    expect(r.state.winReason).toBe('perpetual_check');
+    cur = r.state;
+    expect(cur.phase).toBe('playing');
+
+    // 2. Red Chariot moves (6,5) -> (6,4) gives check
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(6, 5), to: toIndex(6, 4) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    expect(cur.phase).toBe('playing');
+
+    // 3. Black General moves (0,4) -> (0,5)
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 4), to: toIndex(0, 5) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    expect(cur.phase).toBe('playing');
+
+    // 4. Red Chariot moves (6,4) -> (6,0) (different position, no 3-fold repetition)
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(6, 4), to: toIndex(6, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    expect(cur.phase).toBe('playing'); // Position is novel, game continues!
   });
 
-  it('mutual perpetual check (both sides at streak 3) is a draw', () => {
+  it('perpetual check in a repeating loop forfeits the checking player on threefold repetition', () => {
     const s = engine.setup(['alice', 'bob'], 1, {});
     s.board = emptyBoard();
-    s.board[toIndex(0, 4)] = { side: 1, type: 'general' };
-    s.board[toIndex(9, 4)] = { side: 0, type: 'general' };
-    s.board[toIndex(0, 3)] = null;
-    s.board[toIndex(5, 0)] = { side: 0, type: 'chariot' };
-    s.current = 0;
-    s.checkStreak = { 0: 2, 1: 3 }; // Black had already reached the threshold on its last move
+    s.board[toIndex(0, 3)] = { side: 1, type: 'general' }; // Black general on col 3
+    s.board[toIndex(9, 5)] = { side: 0, type: 'general' }; // Red general on col 5
+    s.board[toIndex(6, 3)] = { side: 0, type: 'chariot' }; // Red chariot on (6,3) checking general at (0,3)
+    s.current = 1; // Black to move out of check
+    s.repetition = { [positionKey(s)]: 1 };
 
-    const r = engine.reduce(s, 'alice', { type: 'move', from: toIndex(5, 0), to: toIndex(5, 4) });
+    let cur: XiangqiState = s;
+    // Cycle 1:
+    // 1. Black General moves (0,3)->(0,4)
+    let r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 3), to: toIndex(0, 4) });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.state.phase).toBe('game_over');
-    expect(r.state.winner).toBeNull();
-    expect(r.state.drawReason).toBe('perpetual_mutual_check');
+    cur = r.state;
+    // 2. Red Chariot moves (6,3)->(6,4) check
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(6, 3), to: toIndex(6, 4) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    // 3. Black General moves (0,4)->(0,3)
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 4), to: toIndex(0, 3) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    // 4. Red Chariot moves (6,4)->(6,3) check (2nd occurrence of initial position)
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(6, 4), to: toIndex(6, 3) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    expect(cur.phase).toBe('playing');
+
+    // Cycle 2:
+    // 5. Black General moves (0,3)->(0,4)
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 3), to: toIndex(0, 4) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    // 6. Red Chariot moves (6,3)->(6,4) check
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(6, 3), to: toIndex(6, 4) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    // 7. Black General moves (0,4)->(0,3)
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 4), to: toIndex(0, 3) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    // 8. Red Chariot moves (6,4)->(6,3) check -> 3rd occurrence of initial position!
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(6, 4), to: toIndex(6, 3) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+
+    // In this repeating cycle, Red checked on every move while Black did not -> Red loses by perpetual check!
+    expect(cur.phase).toBe('game_over');
+    expect(cur.winner).toBe('bob');
+    expect(cur.winReason).toBe('perpetual_check');
+  });
+
+  it('threefold repetition without checks is a draw', () => {
+    const s = engine.setup(['alice', 'bob'], 1, {});
+    s.board = emptyBoard();
+    s.board[toIndex(0, 3)] = { side: 1, type: 'general' };
+    s.board[toIndex(9, 4)] = { side: 0, type: 'general' };
+    s.board[toIndex(9, 0)] = { side: 0, type: 'chariot' };
+    s.board[toIndex(0, 0)] = { side: 1, type: 'chariot' };
+    s.current = 0;
+    s.repetition = { [positionKey(s)]: 1 };
+
+    let cur: XiangqiState = s;
+    // Cycle 1:
+    let r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(9, 0), to: toIndex(8, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 0), to: toIndex(1, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(8, 0), to: toIndex(9, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(1, 0), to: toIndex(0, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    expect(cur.phase).toBe('playing');
+
+    // Cycle 2:
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(9, 0), to: toIndex(8, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(0, 0), to: toIndex(1, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    r = engine.reduce(cur, 'alice', { type: 'move', from: toIndex(8, 0), to: toIndex(9, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+    r = engine.reduce(cur, 'bob', { type: 'move', from: toIndex(1, 0), to: toIndex(0, 0) });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    cur = r.state;
+
+    expect(cur.phase).toBe('game_over');
+    expect(cur.winner).toBeNull();
+    expect(cur.drawReason).toBe('threefold');
   });
 
   it('takeback round-trips back to the exact prior position', () => {

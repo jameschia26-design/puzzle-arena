@@ -262,6 +262,16 @@ function xiangqiPointName(pt: number): string {
 // cosmetic for the board render — the AI still only ever picks from the
 // enumerated legal-move index list below, so a mismatch here would only
 // affect prompt readability, never legality.
+const XIANGQI_PIECE_NAME: Record<string, string> = {
+  general: 'General',
+  advisor: 'Advisor',
+  elephant: 'Elephant',
+  horse: 'Horse',
+  chariot: 'Chariot',
+  cannon: 'Cannon',
+  soldier: 'Soldier',
+};
+
 const XIANGQI_PIECE_LETTER: Record<string, string> = {
   general: 'G',
   advisor: 'A',
@@ -275,7 +285,7 @@ const XIANGQI_PIECE_LETTER: Record<string, string> = {
 function formatXiangqiPrompt(view: XiangqiPromptView, actorId: string): { system: string; user: string } {
   const pIdx = view.players.findIndex((p) => p.id === actorId);
   const mySide = pIdx >= 0 ? view.players[pIdx]!.side : 0;
-  const myColor = mySide === 0 ? 'Red (moves first, bottom of board)' : 'Black (top of board)';
+  const myColor = mySide === 0 ? 'Red (moves first, bottom of board, uppercase)' : 'Black (top of board, lowercase)';
 
   let boardStr = '    ' + Array.from({ length: 9 }, (_, c) => c).join(' ') + '  (col)\n';
   for (let row = 0; row < 10; row++) {
@@ -294,15 +304,22 @@ function formatXiangqiPrompt(view: XiangqiPromptView, actorId: string): { system
 
   const legalMoves = view.you?.legalMoves ?? [];
   const moveOptions = legalMoves
-    .map((m, idx) => `Index ${idx}: ${xiangqiPointName(m.from)} -> ${xiangqiPointName(m.to)}`)
+    .map((m, idx) => {
+      const mover = view.board[m.from];
+      const target = view.board[m.to];
+      const moverName = mover ? `${mover.side === 0 ? 'Red' : 'Black'} ${XIANGQI_PIECE_NAME[mover.type] ?? mover.type}` : 'Piece';
+      const captureText = target ? ` (captures ${target.side === 0 ? 'Red' : 'Black'} ${XIANGQI_PIECE_NAME[target.type] ?? target.type})` : '';
+      return `Index ${idx}: ${moverName} from ${xiangqiPointName(m.from)} -> to ${xiangqiPointName(m.to)}${captureText}`;
+    })
     .join('\n');
 
   const system =
-    'You are a strong Xiangqi (Chinese Chess) AI on a 9x10 point grid (row 0 = top/Black back rank, row 9 = bottom/Red back rank; row/col given as (col,row)). ' +
-    'Uppercase = Red pieces (G=General A=Advisor E=Elephant H=Horse R=Chariot C=Cannon S=Soldier), lowercase = Black pieces, same letters. ' +
-    'Remember: soldiers only advance/sideways after crossing the river, elephants never cross the river, cannons need a screen piece to capture, and the two generals may never face each other on an open file. ' +
+    'You are a grandmaster Xiangqi (Chinese Chess) AI playing on a 9x10 point grid (row 0 = Black back rank at top, row 9 = Red back rank at bottom; points given as (col,row)). ' +
+    'Pieces: General (G, 10000pts), Chariot (R, 950pts), Cannon (C, 480pts), Horse (H, 420pts), Elephant (E, 200pts), Advisor (A, 200pts), Soldier (S, 100pts before river, 220+ pts across river). ' +
+    'Rules: Chariots control open files/ranks. Cannons require exactly one screen piece to jump and capture. Horses move 1 step orthogonal then 1 diagonal (blocked if horse leg is obstructed). Soldiers advance forward before river, gain lateral moves after river. Generals cannot face each other on an open file. ' +
+    'Strategy: Prioritize king safety, control central files with chariots/cannons, win material through tactics/forks, and deliver checkmate. ' +
     'Choose the BEST move by its moveIndex from the legal moves list — you may ONLY choose from this list. ' +
-    (view.you?.inCheck ? 'Your general is currently IN CHECK and must resolve it. ' : '') +
+    (view.you?.inCheck ? 'WARNING: Your general is currently IN CHECK and you must resolve it! ' : '') +
     'Reply with ONLY a JSON object: {"moveIndex": <number>, "reasoning": "<short>"}. No other text.';
 
   const user =
@@ -663,12 +680,26 @@ export async function getAiBotAction(req: AiBotMoveRequest): Promise<unknown> {
     if (gameId === 'xiangqi') {
       const v = view as XiangqiPromptView;
       const { system, user } = formatXiangqiPrompt(v, actorId);
+      let fallbackIndex = 0;
+      if (
+        typeof fallbackAction === 'object' &&
+        fallbackAction &&
+        'from' in fallbackAction &&
+        'to' in fallbackAction &&
+        v.you?.legalMoves
+      ) {
+        const matchIdx = v.you.legalMoves.findIndex(
+          (m) => m.from === fallbackAction.from && m.to === fallbackAction.to,
+        );
+        if (matchIdx >= 0) fallbackIndex = matchIdx;
+      }
+
       const res = await complete({
         task: 'bot_move',
         system,
         user,
         schema: xiangqiMoveSchema,
-        fallback: { moveIndex: 0 },
+        fallback: { moveIndex: fallbackIndex },
         noCache: true,
       });
       const move = v.you?.legalMoves?.[res.value.moveIndex];

@@ -1,59 +1,44 @@
 import type { BotDifficulty, Rng } from '@puzzle-arena/shared';
 import type { BotPolicy } from '../bot.js';
+import { search, type SearchConfig } from '../chess-core/search.js';
+import type { Side } from '../chess-core/types.js';
 import {
   applyMoveToBoard,
   colOf,
-  hasCrossedRiver,
   isInCheck,
   pieceMoves,
   rowOf,
   SIZE,
 } from './movegen.js';
-
-/**
- * `packages/games/src/chess-core/` did not exist yet when this was written
- * (checked via glob before starting), so this is a self-contained search —
- * per the plan doc's instruction not to block on the other agent and not to
- * create chess-core here to avoid a collision.
- *
- * This module intentionally imports only from `./movegen.js`, which is
- * state-free (pure functions of `(board, side)`, no `XiangqiState`
- * dependency) — exactly the "state-free primitives" shape the plan doc
- * endorses for shared search code, and the same pattern Connect 4's bot
- * uses with its own `rules.ts`. It never imports `./state.js` or
- * `./rules.js`'s engine-level helpers (setup/reduce/positionKey/etc), so a
- * bot policy still only ever sees plain view data, never engine state —
- * bots.test.ts asserts this invariant at runtime.
- */
+import type { XiangqiPieceType } from './state.js';
 
 type BotSide = 0 | 1;
 
 interface BotPiece {
+  type: XiangqiPieceType;
   side: BotSide;
-  type: 'general' | 'advisor' | 'elephant' | 'horse' | 'chariot' | 'cannon' | 'soldier';
 }
 
 interface BotLegalMove {
   from: number;
   to: number;
+  piece?: XiangqiPieceType | undefined;
+  captured?: XiangqiPieceType | undefined;
 }
 
 export interface XiangqiBotPublicPlayer {
   id: string;
-  seat: number;
   side: BotSide;
 }
 
 export interface XiangqiBotView {
   board: (BotPiece | null)[];
+  current: string;
   players: XiangqiBotPublicPlayer[];
-  current: string | null;
-  phase: 'playing' | 'game_over';
-  you: {
-    id: string;
+  you?: {
     side: BotSide;
-    inCheck: boolean;
-    legalMoves: BotLegalMove[];
+    legalMoves: { from: number; to: number }[];
+    inCheck?: boolean;
   } | null;
 }
 
@@ -65,183 +50,281 @@ function legalMovesForSide(board: (BotPiece | null)[], side: BotSide): BotLegalM
     const piece = board[from];
     if (!piece || piece.side !== side) continue;
     for (const to of pieceMoves(board, from)) {
-      const { board: next } = applyMoveToBoard(board, from, to);
-      if (!isInCheck(next, side)) moves.push({ from, to });
+      const { board: next, captured } = applyMoveToBoard(board, from, to);
+      if (!isInCheck(next, side)) {
+        moves.push({
+          from,
+          to,
+          piece: piece.type,
+          captured: captured ? captured.type : undefined,
+        });
+      }
     }
   }
   return moves;
 }
 
 /* ------------------------------------------------------------------ */
-/* Evaluation                                                          */
+/* Evaluation & Piece-Square Tables                                    */
 /* ------------------------------------------------------------------ */
 
-const PIECE_VALUE: Record<BotPiece['type'], number> = {
-  general: 100_000,
-  chariot: 900,
-  cannon: 450,
-  horse: 400,
+const PIECE_VALUE: Record<XiangqiPieceType, number> = {
+  general: 10_000,
+  chariot: 950,
+  cannon: 480,
+  horse: 420,
   advisor: 200,
   elephant: 200,
   soldier: 100,
 };
 
+// 10 rows (row 0 = piece's own back rank, row 9 = enemy back rank) x 9 cols
+const CHARIOT_PST: readonly number[][] = [
+  [-2, 6, 4, 12, 10, 12, 4, 6, -2],
+  [4, 8, 6, 14, 12, 14, 6, 8, 4],
+  [4, 8, 6, 14, 12, 14, 6, 8, 4],
+  [6, 12, 10, 18, 16, 18, 10, 12, 6],
+  [6, 14, 12, 20, 18, 20, 12, 14, 6],
+  [10, 18, 16, 24, 22, 24, 16, 18, 10],
+  [12, 20, 18, 26, 24, 26, 18, 20, 12],
+  [14, 22, 20, 28, 26, 28, 20, 22, 14],
+  [16, 24, 22, 30, 28, 30, 22, 24, 16],
+  [12, 22, 20, 28, 24, 28, 20, 22, 12],
+];
+
+const HORSE_PST: readonly number[][] = [
+  [-8, -4, 0, 0, -4, 0, 0, -4, -8],
+  [-4, 4, 8, 10, 6, 10, 8, 4, -4],
+  [0, 8, 14, 16, 12, 16, 14, 8, 0],
+  [2, 10, 18, 22, 16, 22, 18, 10, 2],
+  [4, 14, 22, 26, 20, 26, 22, 14, 4],
+  [6, 18, 26, 30, 24, 30, 26, 18, 6],
+  [8, 20, 28, 32, 26, 32, 28, 20, 8],
+  [6, 18, 24, 28, 24, 28, 24, 18, 6],
+  [2, 12, 18, 22, 18, 22, 18, 12, 2],
+  [-6, 0, 6, 10, 6, 10, 6, 0, -6],
+];
+
+const CANNON_PST: readonly number[][] = [
+  [0, 0, 2, 8, 12, 8, 2, 0, 0],
+  [0, 2, 4, 10, 16, 10, 4, 2, 0],
+  [2, 4, 6, 12, 18, 12, 6, 4, 2],
+  [2, 4, 8, 14, 20, 14, 8, 4, 2],
+  [0, 4, 8, 14, 18, 14, 8, 4, 0],
+  [-2, 4, 8, 14, 18, 14, 8, 4, -2],
+  [-2, 4, 8, 12, 16, 12, 8, 4, -2],
+  [4, 8, 12, 18, 22, 18, 12, 8, 4],
+  [2, 6, 10, 14, 16, 14, 10, 6, 2],
+  [0, 4, 8, 12, 14, 12, 8, 4, 0],
+];
+
+const SOLDIER_PST: readonly number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 4, 0, 8, 0, 4, 0, 0],
+  [4, 0, 8, 0, 14, 0, 8, 0, 4],
+  [20, 24, 28, 34, 38, 34, 28, 24, 20],
+  [24, 30, 36, 42, 46, 42, 36, 30, 24],
+  [28, 36, 44, 52, 56, 52, 44, 36, 28],
+  [24, 32, 40, 48, 50, 48, 40, 32, 24],
+  [10, 14, 18, 22, 24, 22, 18, 14, 10],
+];
+
+const ADVISOR_PST: readonly number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 15, 0, 0, 0, 0],
+  [0, 0, 0, 5, 0, 5, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+const ELEPHANT_PST: readonly number[][] = [
+  [0, 0, 2, 0, 0, 0, 2, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 16, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [4, 0, 0, 0, 0, 0, 0, 0, 4],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+const GENERAL_PST: readonly number[][] = [
+  [0, 0, 0, 5, 10, 5, 0, 0, 0],
+  [0, 0, 0, 0, 2, 0, 0, 0, 0],
+  [0, 0, 0, -10, -5, -10, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+function pstFor(type: XiangqiPieceType): readonly number[][] {
+  switch (type) {
+    case 'chariot':
+      return CHARIOT_PST;
+    case 'horse':
+      return HORSE_PST;
+    case 'cannon':
+      return CANNON_PST;
+    case 'soldier':
+      return SOLDIER_PST;
+    case 'advisor':
+      return ADVISOR_PST;
+    case 'elephant':
+      return ELEPHANT_PST;
+    case 'general':
+      return GENERAL_PST;
+  }
+}
+
 /** Positive is good for `side`. */
-function evaluate(board: (BotPiece | null)[], side: BotSide): number {
-  let score = 0;
+function evaluate(board: (BotPiece | null)[], side: BotSide, advanced: boolean): number {
+  let materialAndPst = 0;
   for (let i = 0; i < SIZE; i++) {
     const piece = board[i];
     if (!piece) continue;
     const row = rowOf(i);
     const col = colOf(i);
-    let value = PIECE_VALUE[piece.type];
-    if (piece.type === 'soldier' && hasCrossedRiver(piece.side, row)) value = 200;
+    const rank = piece.side === 0 ? 9 - row : row;
+    const file = col;
 
-    let bonus = 0;
-    if (piece.type === 'horse' && col >= 2 && col <= 6 && row >= 2 && row <= 7) bonus += 15;
-    if ((piece.type === 'chariot' || piece.type === 'cannon') && col >= 3 && col <= 5) bonus += 12;
-    if (piece.type === 'soldier' && hasCrossedRiver(piece.side, row)) bonus += 8;
+    const baseVal = PIECE_VALUE[piece.type];
+    const pstTable = pstFor(piece.type);
+    const pstVal = pstTable[rank]?.[file] ?? 0;
 
-    score += (piece.side === side ? 1 : -1) * (value + bonus);
+    const totalPieceVal = baseVal + pstVal;
+    materialAndPst += (piece.side === side ? 1 : -1) * totalPieceVal;
   }
-  return score;
-}
 
-function captureValue(board: (BotPiece | null)[], move: BotLegalMove): number {
-  const target = board[move.to];
-  return target ? PIECE_VALUE[target.type] : 0;
-}
+  if (!advanced) {
+    return materialAndPst;
+  }
 
-function orderMoves(board: (BotPiece | null)[], moves: BotLegalMove[]): BotLegalMove[] {
-  return [...moves].sort((a, b) => captureValue(board, b) - captureValue(board, a));
+  const opponent: BotSide = (1 - side) as BotSide;
+  let bonus = 0;
+
+  // King safety & check bonus/penalty
+  const ownCheck = isInCheck(board, side) ? -60 : 0;
+  const oppCheck = isInCheck(board, opponent) ? 60 : 0;
+  bonus += ownCheck + oppCheck;
+
+  // Mobility bonus
+  const ownMobility = legalMovesForSide(board, side).length;
+  const oppMobility = legalMovesForSide(board, opponent).length;
+  bonus += (ownMobility - oppMobility) * 2;
+
+  return materialAndPst + bonus;
 }
 
 /* ------------------------------------------------------------------ */
-/* Search: negamax with alpha-beta + quiescence, optionally time-boxed */
+/* Search Configuration                                                */
 /* ------------------------------------------------------------------ */
 
-function quiescence(
-  board: (BotPiece | null)[],
-  side: BotSide,
-  alpha: number,
-  beta: number,
-  deadline: number,
-): number {
-  const standPat = evaluate(board, side);
-  if (standPat >= beta) return beta;
-  if (alpha < standPat) alpha = standPat;
-
-  if (Date.now() > deadline) return alpha;
-
-  const opponent: BotSide = side === 0 ? 1 : 0;
-  const captures = orderMoves(
-    board,
-    legalMovesForSide(board, side).filter((m) => board[m.to] !== null),
-  );
-
-  for (const move of captures) {
-    if (Date.now() > deadline) break;
-    const { board: next } = applyMoveToBoard(board, move.from, move.to);
-    const score = -quiescence(next, opponent, -beta, -alpha, deadline);
-    if (score >= beta) return beta;
-    if (score > alpha) alpha = score;
-  }
-  return alpha;
+interface BotPos {
+  board: (BotPiece | null)[];
+  current: BotSide;
 }
 
-function negamax(
-  board: (BotPiece | null)[],
-  side: BotSide,
-  depth: number,
-  alpha: number,
-  beta: number,
-  deadline: number,
-): number {
-  const legal = legalMovesForSide(board, side);
-  if (legal.length === 0) {
-    // No legal moves is always a loss for `side` in Xiangqi — checkmate and
-    // stalemate are both losses, so the bot never needs to special-case them.
-    return -90_000 - depth;
-  }
-  if (depth <= 0 || Date.now() > deadline) {
-    return quiescence(board, side, alpha, beta, deadline);
-  }
-
-  const opponent: BotSide = side === 0 ? 1 : 0;
-  let best = -Infinity;
-  for (const move of orderMoves(board, legal)) {
-    if (Date.now() > deadline) break;
-    const { board: next } = applyMoveToBoard(board, move.from, move.to);
-    const score = -negamax(next, opponent, depth - 1, -beta, -alpha, deadline);
-    if (score > best) best = score;
-    if (score > alpha) alpha = score;
-    if (alpha >= beta) break;
-  }
-  return best;
+function makeSearchConfig(advanced: boolean): SearchConfig<BotPos, BotLegalMove> {
+  return {
+    genMoves(pos: BotPos, side: Side): BotLegalMove[] {
+      return legalMovesForSide(pos.board, side as BotSide);
+    },
+    makeMove(pos: BotPos, move: BotLegalMove): BotPos {
+      const { board } = applyMoveToBoard(pos.board, move.from, move.to);
+      return { board, current: (1 - pos.current) as BotSide };
+    },
+    sideToMove(pos: BotPos): Side {
+      return pos.current as Side;
+    },
+    isCapture(move: BotLegalMove): boolean {
+      return move.captured !== undefined;
+    },
+    captureValue(move: BotLegalMove): number {
+      const victim = move.captured ? PIECE_VALUE[move.captured] : 100;
+      const attacker = move.piece ? PIECE_VALUE[move.piece] : 100;
+      return victim * 10 - attacker;
+    },
+    evaluate(pos: BotPos, side: Side): number {
+      return evaluate(pos.board, side as BotSide, advanced);
+    },
+    isInCheck(pos: BotPos, side: Side): boolean {
+      return isInCheck(pos.board, side as BotSide);
+    },
+    moveKey(move: BotLegalMove): string {
+      return `${move.from}-${move.to}`;
+    },
+    stalemateIsLoss: true,
+  };
 }
-
-function bestMoveAtDepth(
-  board: (BotPiece | null)[],
-  side: BotSide,
-  legal: BotLegalMove[],
-  depth: number,
-  deadline: number,
-): { move: BotLegalMove; score: number } {
-  const opponent: BotSide = side === 0 ? 1 : 0;
-  let best = legal[0] as BotLegalMove;
-  let bestScore = -Infinity;
-  for (const move of orderMoves(board, legal)) {
-    if (Date.now() > deadline) break;
-    const { board: next } = applyMoveToBoard(board, move.from, move.to);
-    const score = -negamax(next, opponent, depth - 1, -Infinity, Infinity, deadline);
-    if (score > bestScore) {
-      bestScore = score;
-      best = move;
-    }
-  }
-  return { move: best, score: bestScore };
-}
-
-const HARD_BUDGET_MS = 550;
 
 export const xiangqiBot: BotPolicy<XiangqiBotView, XiangqiBotAction> = {
-  chooseAction(view, selfId, rng: Rng, difficulty: BotDifficulty): XiangqiBotAction {
+  chooseAction(
+    view: XiangqiBotView,
+    selfId: string,
+    rng: Rng,
+    difficulty: BotDifficulty,
+  ): XiangqiBotAction {
     const side: BotSide =
       view.you?.side ?? (view.players.find((p) => p.id === selfId)?.side as BotSide | undefined) ?? 0;
-    const legal = view.you?.legalMoves.length ? view.you.legalMoves : legalMovesForSide(view.board, side);
+    const legal: BotLegalMove[] = view.you?.legalMoves.length
+      ? view.you.legalMoves.map((m) => {
+          const piece = view.board[m.from];
+          const target = view.board[m.to];
+          return {
+            from: m.from,
+            to: m.to,
+            piece: piece ? piece.type : undefined,
+            captured: target ? target.type : undefined,
+          };
+        })
+      : legalMovesForSide(view.board, side);
 
     if (legal.length === 0) return { type: 'resign' };
 
     if (difficulty === 'easy') {
       if (rng.next() < 0.35) {
-        const pick = rng.pick(legal);
+        const pick = rng.pick<BotLegalMove>(legal);
         return { type: 'move', from: pick.from, to: pick.to };
       }
       const scored = legal
         .map((m) => {
           const { board: next } = applyMoveToBoard(view.board, m.from, m.to);
-          return { m, score: evaluate(next, side) };
+          return { m, score: evaluate(next, side, false) };
         })
         .sort((a, b) => b.score - a.score);
       const top = scored.slice(0, Math.min(3, scored.length));
-      const pick = rng.pick(top).m;
+      const pick = rng.pick<{ m: BotLegalMove; score: number }>(top).m;
       return { type: 'move', from: pick.from, to: pick.to };
     }
 
+    const pos: BotPos = { board: view.board, current: side };
+
     if (difficulty === 'normal') {
-      const deadline = Date.now() + 5_000; // generous — depth 3 is cheap, this is just a safety cap
-      const { move } = bestMoveAtDepth(view.board, side, legal, 3, deadline);
+      const result = search(pos, makeSearchConfig(false), { maxDepth: 3, quiescence: true });
+      const move = result.move ?? legal[0] ?? (rng.pick<BotLegalMove>(legal));
       return { type: 'move', from: move.from, to: move.to };
     }
 
-    // hard / ai: iterative deepening under a wall-clock budget.
-    const deadline = Date.now() + HARD_BUDGET_MS;
-    let best = legal[0] as BotLegalMove;
-    for (let depth = 1; depth <= 8; depth++) {
-      if (Date.now() > deadline) break;
-      const result = bestMoveAtDepth(view.board, side, legal, depth, deadline);
-      if (Date.now() <= deadline) best = result.move;
-    }
-    return { type: 'move', from: best.from, to: best.to };
+    // hard / ai: iterative deepening under a wall-clock budget with alpha-beta + quiescence + killer moves
+    const result = search(pos, makeSearchConfig(true), {
+      maxDepth: 16,
+      timeBudgetMs: 550,
+      quiescence: true,
+    });
+    const move = result.move ?? legal[0] ?? (rng.pick<BotLegalMove>(legal));
+    return { type: 'move', from: move.from, to: move.to };
   },
 };

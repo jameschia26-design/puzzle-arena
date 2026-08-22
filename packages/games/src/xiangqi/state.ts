@@ -41,8 +41,8 @@ export interface MoveRecord {
   side: XiangqiSide;
   captured: XiangqiPieceType | null;
   notation: string;
-  /** True when this move delivers check to the opponent. */
   check: boolean;
+  key?: string;
 }
 
 export type XiangqiPhase = 'playing' | 'game_over';

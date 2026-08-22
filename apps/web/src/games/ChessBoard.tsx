@@ -17,20 +17,117 @@ interface ChessBoardProps {
   turnEndsAt?: number | null;
   onAction: (action: unknown) => void;
 }
+export function ChessPieceSvg({
+  type,
+  side,
+  className,
+}: {
+  type: PieceType;
+  side: 0 | 1;
+  className?: string;
+}) {
+  const isWhite = side === 0;
+  const fill = isWhite ? '#f0f2f8' : '#141724';
+  const stroke = isWhite ? '#ffffff' : '#9da7ce';
+  const detail = isWhite ? '#242b45' : '#9da7ce';
+  const sw = 1.5;
+
+  return (
+    <svg
+      viewBox="0 0 45 45"
+      className={cn('w-full h-full select-none', className)}
+      style={{
+        filter: isWhite
+          ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.45))'
+          : 'drop-shadow(0 2px 4px rgba(0,0,0,0.7))',
+      }}
+    >
+      {type === 'p' && (
+        <g>
+          <path d="M 10 38 L 35 38 C 35 35 32 33 30 33 L 15 33 C 13 33 10 35 10 38 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path d="M 16 33 C 16 27 19 22 20 18 L 25 18 C 26 22 29 27 29 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path d="M 18 19 L 27 19" stroke={detail} strokeWidth={sw} />
+          <circle cx="22.5" cy="13.5" r="5.5" fill={fill} stroke={stroke} strokeWidth={sw} />
+        </g>
+      )}
+      {type === 'r' && (
+        <g>
+          <path d="M 9 38 L 36 38 L 33 33 L 12 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path d="M 13 33 L 15 17 L 30 17 L 32 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path
+            d="M 11 17 L 11 11 L 15 11 L 15 14 L 20 14 L 20 11 L 25 11 L 25 14 L 30 14 L 30 11 L 34 11 L 34 17 Z"
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={sw}
+          />
+          <path d="M 14 25 L 31 25" stroke={detail} strokeWidth={sw} />
+          <path d="M 12 17 L 33 17" stroke={detail} strokeWidth={sw} />
+        </g>
+      )}
+      {type === 'n' && (
+        <g>
+          <path d="M 9 38 L 36 38 L 33 33 L 12 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path
+            d="M 12 33 C 12 28 10 21 14 15 C 16 12 18 9 20 8 C 21 7 23 8 23 10 C 24 9 26 9 27 11 C 27 11 29 10 30 11 C 33 13 34 18 31 22 C 29 25 29 27 33 33 Z"
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={sw}
+          />
+          <circle cx="17.5" cy="15.5" r="1.5" fill={detail} />
+          <path d="M 13 24 C 16 22 20 24 22 28" fill="none" stroke={detail} strokeWidth={sw} />
+          <path d="M 23 11 C 24 14 26 15 29 16" fill="none" stroke={detail} strokeWidth={sw} />
+        </g>
+      )}
+      {type === 'b' && (
+        <g>
+          <path d="M 9 38 L 36 38 L 33 33 L 12 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path d="M 15 33 C 13 27 13 18 22.5 12 C 32 18 32 27 30 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <circle cx="22.5" cy="9.5" r="2.5" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path d="M 20 17 L 26 23 M 23 16 L 23 27" fill="none" stroke={detail} strokeWidth={sw} />
+          <path d="M 15 30 L 30 30" stroke={detail} strokeWidth={sw} />
+        </g>
+      )}
+      {type === 'q' && (
+        <g>
+          <path d="M 9 38 L 36 38 L 33 33 L 12 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path
+            d="M 12 33 Q 10 22 8 16 L 15 22 L 22.5 13 L 30 22 L 37 16 Q 35 22 33 33 Z"
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={sw}
+          />
+          <circle cx="8" cy="15" r="2" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <circle cx="15" cy="21" r="2" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <circle cx="22.5" cy="12" r="2" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <circle cx="30" cy="21" r="2" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <circle cx="37" cy="15" r="2" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path d="M 13 30 L 32 30" stroke={detail} strokeWidth={sw} />
+        </g>
+      )}
+      {type === 'k' && (
+        <g>
+          <path d="M 9 38 L 36 38 L 33 33 L 12 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+          <path
+            d="M 12 33 C 10 25 12 18 22.5 16 C 33 18 35 25 33 33 Z"
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={sw}
+          />
+          <path d="M 22.5 7 L 22.5 15 M 19 9.5 L 26 9.5" fill="none" stroke={stroke} strokeWidth={2} />
+          <path d="M 17 17 C 17 13 28 13 28 17" fill="none" stroke={detail} strokeWidth={sw} />
+          <path d="M 13 30 L 32 30" stroke={detail} strokeWidth={sw} />
+        </g>
+      )}
+    </svg>
+  );
+}
 
 const WHITE_GLYPHS: Record<PieceType, string> = { k: '♔', q: '♕', r: '♖', b: '♗', n: '♘', p: '♙' };
 const BLACK_GLYPHS: Record<PieceType, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 
-function glyphFor(piece: ChessPiece): string {
-  return piece.side === 0 ? WHITE_GLYPHS[piece.type] : BLACK_GLYPHS[piece.type];
-}
-
 function capturedGlyph(type: string): string {
-  // Captured-tray glyphs are shown neutral (white-style) since the tray is
-  // side-agnostic (it just lists what was taken).
   return WHITE_GLYPHS[type as PieceType] ?? '?';
 }
-
 function file(sq: number): number {
   return sq & 7;
 }
@@ -240,7 +337,7 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
                     aria-label={`Square ${squareName(square)}`}
                     className={cn(
                       'relative flex items-center justify-center cursor-pointer',
-                      dark ? 'bg-pa-surface-2' : 'bg-pa-surface',
+                      dark ? 'bg-[#181c30]' : 'bg-[#464f7c]',
                       isSelected && 'ring-4 ring-pa-cyan ring-inset',
                       (isLastFrom || isLastTo) && 'ring-2 ring-pa-lime ring-inset',
                       isKingInCheck && 'bg-pa-danger/30',
@@ -250,19 +347,9 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
                     {isDest && !piece && <span className="w-3 h-3 rounded-full bg-pa-amber animate-pulse" />}
                     {isDest && piece && <span className="absolute inset-0 ring-2 ring-pa-amber ring-inset" />}
                     {piece && (
-                      <span
-                        className="select-none leading-none"
-                        style={{
-                          fontSize: 'min(9vw, 46px)',
-                          color: piece.side === 0 ? '#f4f6ff' : '#0b0d17',
-                          filter:
-                            piece.side === 0
-                              ? 'drop-shadow(1px 1px 0 #05060d)'
-                              : 'drop-shadow(1px 1px 0 #e8ecff)',
-                        }}
-                      >
-                        {glyphFor(piece)}
-                      </span>
+                      <div className="w-[84%] h-[84%] flex items-center justify-center pointer-events-none">
+                        <ChessPieceSvg type={piece.type} side={piece.side} />
+                      </div>
                     )}
                   </button>
                 );
@@ -312,14 +399,14 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
             <button
               key={p}
               type="button"
-              className="w-14 h-14 flex items-center justify-center border-2 border-pa-border bg-pa-surface-2 hover:border-pa-cyan cursor-pointer"
+              className="w-14 h-14 p-2 flex items-center justify-center border-2 border-pa-border bg-pa-surface-2 hover:border-pa-cyan cursor-pointer"
               onClick={() => {
                 if (pendingPromotion) commitMove(pendingPromotion.from, pendingPromotion.to, p);
               }}
             >
-              <span style={{ fontSize: 32, color: mySide === 0 ? '#f4f6ff' : '#0b0d17' }}>
-                {mySide === 0 ? WHITE_GLYPHS[p] : BLACK_GLYPHS[p]}
-              </span>
+              <div className="w-full h-full flex items-center justify-center">
+                <ChessPieceSvg type={p} side={mySide} />
+              </div>
             </button>
           ))}
         </div>

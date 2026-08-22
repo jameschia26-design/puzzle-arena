@@ -91,21 +91,25 @@ function classifyFive(cards: BigTwoCard[]): BigTwoCombo | null {
   const isStraight = distinctRanks.size === 5 && (ranks[4] as number) - (ranks[0] as number) === 4 && (ranks[4] as number) <= 11;
 
   if (countValues[0] === 4) {
-    const fourRank = [...counts.entries()].find(([, c]) => c === 4)![0];
-    return { category: 'four-kind', value: fourRank, cards };
+    const fourRank = [...counts.entries()].find(([, c]) => c === 4)![0] as number;
+    const four = sorted.filter((c) => c.rank === fourRank);
+    const kicker = sorted.filter((c) => c.rank !== fourRank);
+    return { category: 'four-kind', value: fourRank, cards: [...four, ...kicker] };
   }
   if (isStraight && isFlush) {
-    return { category: 'straight-flush', value: (ranks[4] as number) * 4 + (suits[0] as number), cards };
+    return { category: 'straight-flush', value: (ranks[4] as number) * 4 + (suits[0] as number), cards: sorted };
   }
   if (isFlush) {
-    return { category: 'flush', value: (ranks[4] as number) * 4 + (suits[4] as number), cards };
+    return { category: 'flush', value: (ranks[4] as number) * 4 + (suits[4] as number), cards: sorted };
   }
   if (isStraight) {
-    return { category: 'straight', value: ranks[4] as number, cards };
+    return { category: 'straight', value: ranks[4] as number, cards: sorted };
   }
   if (countValues[0] === 3 && countValues[1] === 2) {
-    const tripleRank = [...counts.entries()].find(([, c]) => c === 3)![0];
-    return { category: 'full-house', value: tripleRank, cards };
+    const tripleRank = [...counts.entries()].find(([, c]) => c === 3)![0] as number;
+    const triple = sorted.filter((c) => c.rank === tripleRank);
+    const pair = sorted.filter((c) => c.rank !== tripleRank);
+    return { category: 'full-house', value: tripleRank, cards: [...triple, ...pair] };
   }
   return null;
 }

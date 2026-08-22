@@ -14,17 +14,32 @@ describe('big two combo classification', () => {
     expect(classifyCombo([c(7, 0), c(7, 1), c(7, 2)])?.category).toBe('triple');
   });
 
-  it('classifies five-card hands including bombs', () => {
-    // 3-4-5-6-7 mixed suits: straight
-    expect(classifyCombo([c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)])?.category).toBe('straight');
-    // same suit, not consecutive: flush
-    expect(classifyCombo([c(0, 0), c(2, 0), c(4, 0), c(6, 0), c(9, 0)])?.category).toBe('flush');
-    // straight + same suit: straight flush
-    expect(classifyCombo([c(0, 0), c(1, 0), c(2, 0), c(3, 0), c(4, 0)])?.category).toBe('straight-flush');
-    // triple + pair: full house
-    expect(classifyCombo([c(1, 0), c(1, 1), c(1, 2), c(9, 0), c(9, 1)])?.category).toBe('full-house');
-    // four of a kind + kicker: bomb
-    expect(classifyCombo([c(3, 0), c(3, 1), c(3, 2), c(3, 3), c(9, 0)])?.category).toBe('four-kind');
+  it('classifies five-card hands including bombs and orders/clusters cards', () => {
+    // 3-4-5-6-7 entered out of order -> arranged in order from small to big
+    const straight = classifyCombo([c(4, 0), c(1, 1), c(3, 3), c(0, 0), c(2, 2)]);
+    expect(straight?.category).toBe('straight');
+    expect(straight?.cards.map((x) => x.rank)).toEqual([0, 1, 2, 3, 4]);
+
+    // same suit entered out of order -> flush arranged from small to big
+    const flush = classifyCombo([c(9, 0), c(2, 0), c(6, 0), c(0, 0), c(4, 0)]);
+    expect(flush?.category).toBe('flush');
+    expect(flush?.cards.map((x) => x.rank)).toEqual([0, 2, 4, 6, 9]);
+
+    // straight + same suit -> straight flush in order
+    const sf = classifyCombo([c(3, 0), c(0, 0), c(4, 0), c(1, 0), c(2, 0)]);
+    expect(sf?.category).toBe('straight-flush');
+    expect(sf?.cards.map((x) => x.rank)).toEqual([0, 1, 2, 3, 4]);
+
+    // full house entered out of order (pair first, then triple) -> triple clustered first, then pair
+    const fh = classifyCombo([c(9, 0), c(1, 0), c(9, 1), c(1, 1), c(1, 2)]);
+    expect(fh?.category).toBe('full-house');
+    expect(fh?.cards.map((x) => x.rank)).toEqual([1, 1, 1, 9, 9]);
+
+    // four of a kind entered out of order (kicker in middle) -> four clustered together, then kicker
+    const fk = classifyCombo([c(3, 0), c(3, 1), c(9, 0), c(3, 2), c(3, 3)]);
+    expect(fk?.category).toBe('four-kind');
+    expect(fk?.cards.map((x) => x.rank)).toEqual([3, 3, 3, 3, 9]);
+
     // unrelated cards: invalid
     expect(classifyCombo([c(0, 0), c(2, 1), c(4, 2), c(6, 3), c(9, 0)])).toBeNull();
   });

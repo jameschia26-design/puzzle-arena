@@ -27,6 +27,8 @@ export interface SearchConfig<Pos, Mv> {
   isInCheck(pos: Pos, side: Side): boolean;
   /** A stable string key for a move, used for killer-move bookkeeping. */
   moveKey(move: Mv): string;
+  /** Whether stalemate is scored as a loss (true for Xiangqi, false/undefined for Chess). */
+  stalemateIsLoss?: boolean;
 }
 
 export interface SearchOptions {
@@ -109,7 +111,8 @@ export function search<Pos, Mv>(
     nodes++;
     const moves = config.genMoves(p, side);
     if (moves.length === 0) {
-      return config.isInCheck(p, side) ? -MATE_SCORE + ply : 0;
+      if (config.isInCheck(p, side)) return -MATE_SCORE + ply;
+      return config.stalemateIsLoss ? -MATE_SCORE + ply : 0;
     }
     if (depth <= 0) {
       return quiescence ? quiesce(p, side, alphaIn, beta, maxQDepth) : config.evaluate(p, side);

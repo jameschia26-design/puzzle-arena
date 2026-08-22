@@ -31,8 +31,12 @@ const DEFAULT_CONFIG: XiangqiConfig = { clockMinutes: 10, incrementSec: 0, allow
 
 /** 60 full moves with no capture by either side = 120 plies. */
 const SIXTY_MOVE_PLIES = 120;
-/** Simplified perpetual-check trigger: 3 consecutive own-moves delivering check. */
-const PERPETUAL_CHECK_STREAK = 3;
+/**
+ * In Xiangqi (Chinese Chess), perpetual check (长将) occurs when a player causes
+ * a threefold repetition while delivering check on every move in the repetition cycle.
+ * The perpetual checker forfeits (长将作负). If both sides perpetually check, it is a draw.
+ * Repeating non-checking positions is a threefold repetition draw.
+ */
 
 function setup(playerIds: string[], seed: number, rawConfig: unknown): XiangqiState {
   const config: XiangqiConfig = { ...DEFAULT_CONFIG, ...(rawConfig as Partial<XiangqiConfig> | null) };
@@ -42,6 +46,10 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): XiangqiSt
     { id: playerIds[1] ?? 'p1', seat: 1, actionsSubmitted: 0, actionsAccepted: 0, penalties: 0 },
   ];
 
+  const board = createInitialBoard();
+  const current: XiangqiSide = 0;
+  const initialKey = positionKey({ board, current } as XiangqiState);
+
   return {
     rng: { seed, calls: 0 },
     seq: 0,
@@ -49,12 +57,12 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): XiangqiSt
     winnerAtMs: null,
     config,
     players,
-    board: createInitialBoard(),
-    current: 0,
+    board,
+    current,
     halfmoveClock: 0,
     fullmove: 1,
     history: [],
-    repetition: {},
+    repetition: { [initialKey]: 1 },
     checkStreak: { 0: 0, 1: 0 },
     drawOffer: null,
     takebackOffer: null,
@@ -98,10 +106,60 @@ function replayFrom(records: MoveRecord[]): Pick<
     checkStreak[rec.side] = rec.check ? checkStreak[rec.side] + 1 : 0;
     current = rec.side === 0 ? 1 : 0;
     const key = keyOf(board, current);
+    rec.key = key;
     repetition[key] = (repetition[key] ?? 0) + 1;
   }
 
   return { board, current, halfmoveClock, fullmove, repetition, checkStreak, history: [...records] };
+}
+
+/**
+ * Analyzes a repeating position cycle upon 3-fold repetition.
+ * Traces backwards to find the moves in the cycle between the 2nd-to-last and last
+ * occurrence of targetKey, determining if either side gave check on all their moves.
+ */
+export function analyzeRepetition(
+  records: MoveRecord[],
+  targetKey: string,
+): { redPerpetualCheck: boolean; blackPerpetualCheck: boolean } {
+  const matchIndices: number[] = [];
+
+  for (let i = 0; i < records.length; i++) {
+    if (records[i]?.key === targetKey) {
+      matchIndices.push(i);
+    }
+  }
+
+  // If targetKey occurred 3 times across history (e.g. initial position + 2 moves,
+  // or 3 moves in records):
+  // When initial position is part of the repetition (so records has 2 occurrences):
+  if (matchIndices.length === 2 && matchIndices[0] !== undefined) {
+    // Cycle is from start (-1) to the 2nd occurrence:
+    const firstIdx = matchIndices[0];
+    const secondIdx = matchIndices[1]!;
+    const cycleMoves = records.slice(firstIdx + 1, secondIdx + 1);
+    const redMoves = cycleMoves.filter((m) => m.side === 0);
+    const blackMoves = cycleMoves.filter((m) => m.side === 1);
+    const redPerpetualCheck = redMoves.length > 0 && redMoves.every((m) => m.check);
+    const blackPerpetualCheck = blackMoves.length > 0 && blackMoves.every((m) => m.check);
+    return { redPerpetualCheck, blackPerpetualCheck };
+  }
+
+  if (matchIndices.length < 2) {
+    return { redPerpetualCheck: false, blackPerpetualCheck: false };
+  }
+
+  const prevIdx = matchIndices[matchIndices.length - 2]!;
+  const lastIdx = matchIndices[matchIndices.length - 1]!;
+  const cycleMoves = records.slice(prevIdx + 1, lastIdx + 1);
+
+  const redMoves = cycleMoves.filter((m) => m.side === 0);
+  const blackMoves = cycleMoves.filter((m) => m.side === 1);
+
+  const redPerpetualCheck = redMoves.length > 0 && redMoves.every((m) => m.check);
+  const blackPerpetualCheck = blackMoves.length > 0 && blackMoves.every((m) => m.check);
+
+  return { redPerpetualCheck, blackPerpetualCheck };
 }
 
 function reduce(prev: XiangqiState, playerId: string, action: XiangqiAction): ReduceResult<XiangqiState> {
@@ -207,9 +265,30 @@ function reduce(prev: XiangqiState, playerId: string, action: XiangqiAction): Re
     const sixty = s.halfmoveClock >= SIXTY_MOVE_PLIES;
     if (!repeated && !sixty) return fail('No draw available to claim');
     s.phase = 'game_over';
-    s.winner = null;
-    s.drawReason = repeated ? 'threefold' : 'sixty_move';
-    log.push(makeLog(`${playerId} claimed a draw (${s.drawReason})`, playerId));
+    if (repeated) {
+      const analysis = analyzeRepetition(s.history, key);
+      if (analysis.redPerpetualCheck && !analysis.blackPerpetualCheck) {
+        s.winner = s.players[1].id;
+        s.winReason = 'perpetual_check';
+        log.push(makeLog(`${s.players[0].id} loses by perpetual check`, playerId));
+      } else if (analysis.blackPerpetualCheck && !analysis.redPerpetualCheck) {
+        s.winner = s.players[0].id;
+        s.winReason = 'perpetual_check';
+        log.push(makeLog(`${s.players[1].id} loses by perpetual check`, playerId));
+      } else if (analysis.redPerpetualCheck && analysis.blackPerpetualCheck) {
+        s.winner = null;
+        s.drawReason = 'perpetual_mutual_check';
+        log.push(makeLog('Draw — mutual perpetual check', playerId));
+      } else {
+        s.winner = null;
+        s.drawReason = 'threefold';
+        log.push(makeLog('Draw by threefold repetition', playerId));
+      }
+    } else {
+      s.winner = null;
+      s.drawReason = 'sixty_move';
+      log.push(makeLog(`${playerId} claimed a draw (60 moves with no capture)`, playerId));
+    }
     const stamped = stampLogs(s, log);
     s.log = [...s.log, ...stamped].slice(-200);
     return { ok: true, state: s, log: stamped };
@@ -234,9 +313,12 @@ function reduce(prev: XiangqiState, playerId: string, action: XiangqiAction): Re
   if (side === 1) s.fullmove += 1;
 
   const opponentSide: XiangqiSide = side === 0 ? 1 : 0;
+  s.current = opponentSide;
   const givesCheck = isInCheck(s.board, opponentSide);
   s.checkStreak[side] = givesCheck ? s.checkStreak[side] + 1 : 0;
 
+  const key = positionKey(s);
+  s.repetition[key] = (s.repetition[key] ?? 0) + 1;
   const record: MoveRecord = {
     playerId,
     from: match.from,
@@ -246,11 +328,9 @@ function reduce(prev: XiangqiState, playerId: string, action: XiangqiAction): Re
     captured: captured ? captured.type : null,
     notation,
     check: givesCheck,
+    key,
   };
   s.history = [...s.history, record];
-
-  const key = positionKey(s);
-  s.repetition[key] = (s.repetition[key] ?? 0) + 1;
 
   log.push(
     makeLog(
@@ -279,32 +359,35 @@ function reduce(prev: XiangqiState, playerId: string, action: XiangqiAction): Re
       s.winReason = 'stalemate';
       log.push(makeLog(`Stalemate — ${playerId} wins (no legal moves for the opponent)`, playerId));
     }
-  } else if (s.checkStreak[side] >= PERPETUAL_CHECK_STREAK) {
-    // Simplified, practical perpetual-check rule (see state.ts's doc
-    // comment on `checkStreak`): if the side that just moved has now
-    // delivered check on 3 consecutive own moves, they lose — unless the
-    // opponent has been doing the very same thing back, in which case it's
-    // a mutual-perpetual-check draw. This is deliberately NOT a fully
-    // rigorous "no other option + position repeats" implementation, per
-    // the spec's guidance to prefer the simpler practical approximation.
+  } else if ((s.repetition[key] ?? 0) >= 3) {
+    // Threefold repetition rule in Xiangqi:
+    // If one side gave check on all their turns in the repeating cycle, that side forfeits (perpetual check).
+    // If both sides gave check on all turns, it is a mutual perpetual check draw.
+    // Otherwise, it is a normal threefold repetition draw.
+    const analysis = analyzeRepetition(s.history, key);
     s.phase = 'game_over';
-    if (s.checkStreak[opponentSide] >= PERPETUAL_CHECK_STREAK) {
+    if (analysis.redPerpetualCheck && !analysis.blackPerpetualCheck) {
+      s.winner = s.players[1].id;
+      s.winReason = 'perpetual_check';
+      log.push(makeLog(`${s.players[0].id} loses by perpetual check`, playerId));
+    } else if (analysis.blackPerpetualCheck && !analysis.redPerpetualCheck) {
+      s.winner = s.players[0].id;
+      s.winReason = 'perpetual_check';
+      log.push(makeLog(`${s.players[1].id} loses by perpetual check`, playerId));
+    } else if (analysis.redPerpetualCheck && analysis.blackPerpetualCheck) {
       s.winner = null;
       s.drawReason = 'perpetual_mutual_check';
       log.push(makeLog('Draw — mutual perpetual check', playerId));
     } else {
-      const opponent = s.players[opponentSide] as XiangqiPlayer;
-      s.winner = opponent.id;
-      s.winReason = 'perpetual_check';
-      log.push(makeLog(`${playerId} loses on time-honoured perpetual check`, playerId));
+      s.winner = null;
+      s.drawReason = 'threefold';
+      log.push(makeLog('Draw by threefold repetition', playerId));
     }
   } else if (s.halfmoveClock >= SIXTY_MOVE_PLIES) {
     s.phase = 'game_over';
     s.winner = null;
     s.drawReason = 'sixty_move';
     log.push(makeLog('Draw — 60 moves with no capture', playerId));
-  } else {
-    s.current = opponentSide;
   }
 
   s.seq += 1;
