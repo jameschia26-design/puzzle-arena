@@ -42,6 +42,7 @@ import { ReversiBoard } from '../games/ReversiBoard.js';
 import { Connect4Board } from '../games/Connect4Board.js';
 import ChessBoard from '../games/ChessBoard.js';
 import XiangqiBoard from '../games/XiangqiBoard.js';
+import { AnimalChessBoard } from '../games/AnimalChessBoard.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
@@ -147,7 +148,12 @@ export default function RoomPage(): React.ReactElement {
   React.useEffect(() => {
     if (!room) return;
     if (room.status === 'running') {
-      if (gameId === 'congkak') bgm.play('congkak');
+      if (gameId === 'animal-chess') bgm.play('animalchess');
+      else if (gameId === 'property-tycoon') bgm.play('property');
+      else if (gameId === 'manor-mystery') bgm.play('mystery');
+      else if (gameId === 'reversi' || gameId === 'connect4' || gameId === 'minesweeper') bgm.play('arcade');
+      else if (gameId === 'sudoku' || gameId === 'killer-sudoku' || gameId === 'nonogram') bgm.play('zen');
+      else if (gameId === 'congkak') bgm.play('congkak');
       else if (gameId === 'checkers') bgm.play('checkers');
       else if (gameId === 'big-two') bgm.play('bigtwo');
       else if (gameId === 'chess') bgm.play('chess');
@@ -961,6 +967,18 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
     );
   }
 
+  if (gameId === 'animal-chess') {
+    return (
+      <AnimalChessBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
 
   return (
     <ManorMysteryBoard

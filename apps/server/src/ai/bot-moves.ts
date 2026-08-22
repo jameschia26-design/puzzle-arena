@@ -331,6 +331,101 @@ function formatXiangqiPrompt(view: XiangqiPromptView, actorId: string): { system
   return { system, user };
 }
 
+interface AnimalChessPromptView {
+  board: ({ type: string; side: number } | null)[];
+  players: { id: string; side: number }[];
+  current: string | null;
+  phase: string;
+  winner: string | null;
+  you?: {
+    id: string;
+    side: number;
+    legalMoves: { from: number; to: number }[];
+  } | null;
+}
+
+const animalChessMoveSchema = z.object({
+  moveIndex: z.number().int().min(0),
+  reasoning: z.string().optional(),
+});
+
+function animalChessPointName(pt: number): string {
+  const row = Math.floor(pt / 7);
+  const col = pt % 7;
+  return `(${col},${row})`;
+}
+
+const ANIMAL_CHESS_PIECE_NAME: Record<string, string> = {
+  rat: 'Rat (鼠)',
+  cat: 'Cat (猫)',
+  dog: 'Dog (狗)',
+  wolf: 'Wolf (狼)',
+  leopard: 'Leopard (豹)',
+  tiger: 'Tiger (虎)',
+  lion: 'Lion (狮)',
+  elephant: 'Elephant (象)',
+};
+
+function formatAnimalChessPrompt(view: AnimalChessPromptView, actorId: string): { system: string; user: string } {
+  const pIdx = view.players.findIndex((p) => p.id === actorId);
+  const mySide = pIdx >= 0 ? view.players[pIdx]!.side : 0;
+  const myColor = mySide === 0 ? 'Blue (top of board, row 0-2)' : 'Red (bottom of board, row 6-8)';
+
+  let boardStr = '    ' + Array.from({ length: 7 }, (_, c) => c).join('   ') + '  (col)\n';
+  for (let row = 0; row < 9; row++) {
+    boardStr += `${String(row).padStart(2, ' ')}  `;
+    for (let col = 0; col < 7; col++) {
+      const pt = row * 7 + col;
+      const piece = view.board[pt];
+      if (!piece) {
+        // Check terrain
+        if (row === 0 && col === 3) boardStr += 'DN0 ';
+        else if (row === 8 && col === 3) boardStr += 'DN1 ';
+        else if ((row === 0 && (col === 2 || col === 4)) || (row === 1 && col === 3)) boardStr += 'TP0 ';
+        else if ((row === 8 && (col === 2 || col === 4)) || (row === 7 && col === 3)) boardStr += 'TP1 ';
+        else if (row >= 3 && row <= 5 && ((col >= 1 && col <= 2) || (col >= 4 && col <= 5))) boardStr += '~~~ ';
+        else boardStr += ' .  ';
+        continue;
+      }
+      const prefix = piece.side === 0 ? 'B-' : 'R-';
+      const shortName = piece.type.slice(0, 2).toUpperCase();
+      boardStr += `${prefix}${shortName} `;
+    }
+    boardStr += '\n';
+  }
+
+  const legalMoves = view.you?.legalMoves ?? [];
+  const moveOptions = legalMoves
+    .map((m, idx) => {
+      const mover = view.board[m.from];
+      const target = view.board[m.to];
+      const moverName = mover ? `${mover.side === 0 ? 'Blue' : 'Red'} ${ANIMAL_CHESS_PIECE_NAME[mover.type] ?? mover.type}` : 'Piece';
+      const captureText = target ? ` (captures ${target.side === 0 ? 'Blue' : 'Red'} ${ANIMAL_CHESS_PIECE_NAME[target.type] ?? target.type})` : '';
+      return `Index ${idx}: ${moverName} from ${animalChessPointName(m.from)} -> to ${animalChessPointName(m.to)}${captureText}`;
+    })
+    .join('\n');
+
+  const system =
+    'You are a master Dou Shou Qi (Animal Chess / Jungle) AI playing on a 7x9 grid (row 0 = Blue back rank at top, row 8 = Red back rank at bottom; coordinates (col,row)). ' +
+    'Pieces & Ranks: Elephant (8), Lion (7), Tiger (6), Leopard (5), Wolf (4), Dog (3), Cat (2), Rat (1). Higher rank captures equal/lower rank. ' +
+    'Special Rules:\n' +
+    '1. Rat (1) can enter river water squares (~~~) and can capture Elephant (8) on land. Rat in water cannot attack land pieces.\n' +
+    '2. Lion (7) and Tiger (6) can jump over river squares horizontally/vertically, unless blocked by any Rat in the river.\n' +
+    '3. Traps (TP0, TP1) reduce any trapped enemy piece to rank 0, allowing ANY piece to capture it.\n' +
+    '4. Entering the opponent Den (DN0 for Red, DN1 for Blue) instantly WINS the game!\n' +
+    'Strategy: Advance toward enemy den, protect your own den, use Rat to control river/threaten Elephant, and leap with Lion/Tiger for ambush tactics. ' +
+    'Choose the BEST move by its moveIndex from the legal moves list — you may ONLY choose from this list. ' +
+    'Reply with ONLY a JSON object: {"moveIndex": <number>, "reasoning": "<short>"}. No other text.';
+
+  const user =
+    `Board:\n${boardStr}\n` +
+    `You are playing as: ${myColor}\n` +
+    `Legal moves:\n${moveOptions || 'No legal moves'}\n` +
+    'Which moveIndex do you choose?';
+
+  return { system, user };
+}
+
 /* ------------------------------------------------------------------ */
 /* Congkak AI Prompt & Parser                                         */
 /* ------------------------------------------------------------------ */
@@ -710,6 +805,38 @@ export async function getAiBotAction(req: AiBotMoveRequest): Promise<unknown> {
       return fallbackAction;
     }
 
+    if (gameId === 'animal-chess') {
+      const v = view as AnimalChessPromptView;
+      const { system, user } = formatAnimalChessPrompt(v, actorId);
+      let fallbackIndex = 0;
+      if (
+        typeof fallbackAction === 'object' &&
+        fallbackAction &&
+        'from' in fallbackAction &&
+        'to' in fallbackAction &&
+        v.you?.legalMoves
+      ) {
+        const matchIdx = v.you.legalMoves.findIndex(
+          (m) => m.from === fallbackAction.from && m.to === fallbackAction.to,
+        );
+        if (matchIdx >= 0) fallbackIndex = matchIdx;
+      }
+
+      const res = await complete({
+        task: 'bot_move',
+        system,
+        user,
+        schema: animalChessMoveSchema,
+        fallback: { moveIndex: fallbackIndex },
+        noCache: true,
+      });
+      const move = v.you?.legalMoves?.[res.value.moveIndex];
+      if (move) {
+        logger.info({ gameId, ...move, source: res.source }, 'AI Bot played Animal Chess move');
+        return { type: 'move', from: move.from, to: move.to };
+      }
+      return fallbackAction;
+    }
     if (gameId === 'congkak') {
       const v = view as CongkakPromptView;
       const { system, user } = formatCongkakPrompt(v, actorId);

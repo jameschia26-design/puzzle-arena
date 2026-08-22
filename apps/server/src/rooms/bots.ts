@@ -9,6 +9,7 @@ import {
   reversiBot,
   scrabbleBot,
   xiangqiBot,
+  animalChessBot,
   type BigTwoBotView,
   type CheckersBotView,
   type ChessBotView,
@@ -19,6 +20,7 @@ import {
   type ReversiBotView,
   type SCRBotView,
   type XiangqiBotView,
+  type AnimalChessBotView,
 } from '@puzzle-arena/games';
 import { getAiBotAction } from '../ai/bot-moves.js';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
@@ -132,6 +134,8 @@ export function scheduleBots(room: LiveRoom): void {
         action = chessBot.chooseAction(view as ChessBotView, actorId, rng, effectiveDifficulty);
       } else if (room.gameId === 'xiangqi') {
         action = xiangqiBot.chooseAction(view as XiangqiBotView, actorId, rng, effectiveDifficulty);
+      } else if (room.gameId === 'animal-chess') {
+        action = animalChessBot.chooseAction(view as unknown as AnimalChessBotView, actorId, rng, effectiveDifficulty);
       } else {
         action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, effectiveDifficulty);
       }

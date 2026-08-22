@@ -14,7 +14,8 @@ import { reversi, type ReversiState } from './reversi/index.js';
 import { reversiBot, type ReversiBotView } from './reversi/bot.js';
 import { connect4, type Connect4State } from './connect4/index.js';
 import { connect4Bot, type Connect4BotView } from './connect4/bot.js';
-
+import { animalChess, type AnimalChessState } from './animal-chess/index.js';
+import { animalChessBot, type AnimalChessBotView } from './animal-chess/bot.js';
 const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard', 'ai'];
 
 /* ================================================================== */
@@ -153,6 +154,23 @@ describe('bots only ever see the restricted view', () => {
       const view = connect4.view(state, 'a') as Connect4BotView;
       const action = connect4Bot.chooseAction(view, 'a', mulberry32(1), difficulty);
       const r = connect4.reduce(state, 'a', action);
+      expect(r.ok).toBe(true);
+    }
+  });
+
+  it('never hands an Animal Chess bot the RNG stream', () => {
+    const state = animalChess.setup(['a', 'b'], 42, {});
+    const view = animalChess.view(state, 'a') as unknown as Record<string, unknown>;
+    expect(view['rng']).toBeUndefined();
+    expect(JSON.stringify(view)).not.toContain('"rng"');
+  });
+
+  it('an animal chess bot policy produces legal actions across all difficulties', () => {
+    for (const difficulty of DIFFICULTIES) {
+      const state = animalChess.setup(['a', 'b'], 42, {});
+      const view = animalChess.view(state, 'a') as unknown as AnimalChessBotView;
+      const action = animalChessBot.chooseAction(view, 'a', mulberry32(1), difficulty);
+      const r = animalChess.reduce(state, 'a', action);
       expect(r.ok).toBe(true);
     }
   });

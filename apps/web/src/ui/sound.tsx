@@ -551,8 +551,20 @@ export const sfx = {
 /* Retro Chiptune / MIDI Background Music Generator (BGM)             */
 /* ------------------------------------------------------------------ */
 
-export type MusicTrack = 'congkak' | 'puzzle' | 'board' | 'title' | 'checkers' | 'bigtwo' | 'chess' | 'xiangqi';
-
+export type MusicTrack =
+  | 'congkak'
+  | 'puzzle'
+  | 'board'
+  | 'title'
+  | 'checkers'
+  | 'bigtwo'
+  | 'chess'
+  | 'xiangqi'
+  | 'animalchess'
+  | 'property'
+  | 'mystery'
+  | 'arcade'
+  | 'zen';
 interface NoteEvent {
   note: number;
   duration: number;
@@ -686,8 +698,75 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
       { note: 33, duration: 8 }, { note: 40, duration: 8 },
     ],
   },
+  animalchess: {
+    // Upbeat, adventurous jungle safari pentatonic bounce
+    tempo: 116,
+    lead: [
+      { note: 62, duration: 2 }, { note: 65, duration: 2 }, { note: 67, duration: 4 }, { note: 65, duration: 2 }, { note: 62, duration: 2 }, { note: 60, duration: 4 },
+      { note: 62, duration: 2 }, { note: 65, duration: 2 }, { note: 67, duration: 2 }, { note: 70, duration: 2 }, { note: 72, duration: 4 }, { note: 70, duration: 4 },
+      { note: 67, duration: 3 }, { note: 65, duration: 1 }, { note: 62, duration: 4 }, { note: 60, duration: 2 }, { note: 62, duration: 2 }, { note: 65, duration: 4 },
+    ],
+    bass: [
+      { note: 38, duration: 4 }, { note: 45, duration: 4 }, { note: 38, duration: 4 }, { note: 41, duration: 4 },
+      { note: 38, duration: 4 }, { note: 45, duration: 4 }, { note: 43, duration: 4 }, { note: 46, duration: 4 },
+      { note: 43, duration: 4 }, { note: 41, duration: 4 }, { note: 38, duration: 4 }, { note: 45, duration: 4 },
+    ],
+  },
+  property: {
+    // Jaunty, syncopated ragtime capitalist groove
+    tempo: 124,
+    lead: [
+      { note: 60, duration: 2 }, { note: 64, duration: 2 }, { note: 67, duration: 2 }, { note: 69, duration: 2 }, { note: 67, duration: 4 }, { note: 64, duration: 4 },
+      { note: 65, duration: 2 }, { note: 69, duration: 2 }, { note: 72, duration: 3 }, { note: 71, duration: 1 }, { note: 69, duration: 4 }, { note: 67, duration: 4 },
+    ],
+    bass: [
+      { note: 36, duration: 4 }, { note: 40, duration: 4 }, { note: 43, duration: 4 }, { note: 45, duration: 4 },
+      { note: 41, duration: 4 }, { note: 45, duration: 4 }, { note: 43, duration: 4 }, { note: 47, duration: 4 },
+    ],
+  },
+  mystery: {
+    // Suspenseful, minor-key detective investigation noir
+    tempo: 80,
+    lead: [
+      { note: 57, duration: 4 }, { note: 60, duration: 4 }, { note: 63, duration: 4 }, { note: 64, duration: 4 },
+      { note: 65, duration: 6 }, { note: 64, duration: 2 }, { note: 60, duration: 4 }, { note: 59, duration: 4 },
+      { note: 57, duration: 4 }, { note: 60, duration: 4 }, { note: 64, duration: 4 }, { note: 57, duration: 4 },
+    ],
+    bass: [
+      { note: 45, duration: 8 }, { note: 48, duration: 8 },
+      { note: 50, duration: 8 }, { note: 47, duration: 8 },
+      { note: 45, duration: 8 }, { note: 41, duration: 8 },
+    ],
+  },
+  arcade: {
+    // High-energy 80s arcade action arpeggios
+    tempo: 144,
+    lead: [
+      { note: 60, duration: 2 }, { note: 67, duration: 2 }, { note: 63, duration: 2 }, { note: 67, duration: 2 }, { note: 65, duration: 2 }, { note: 70, duration: 2 }, { note: 67, duration: 4 },
+      { note: 72, duration: 2 }, { note: 67, duration: 2 }, { note: 70, duration: 2 }, { note: 65, duration: 2 }, { note: 67, duration: 4 }, { note: 63, duration: 4 },
+    ],
+    bass: [
+      { note: 36, duration: 2 }, { note: 36, duration: 2 }, { note: 48, duration: 2 }, { note: 36, duration: 2 }, { note: 41, duration: 2 }, { note: 41, duration: 2 }, { note: 48, duration: 4 },
+      { note: 43, duration: 2 }, { note: 43, duration: 2 }, { note: 41, duration: 2 }, { note: 41, duration: 2 }, { note: 36, duration: 4 }, { note: 48, duration: 4 },
+    ],
+  },
+  zen: {
+    // Relaxing, calming ambient lo-fi melody for focused puzzles
+    tempo: 76,
+    lead: [
+      { note: 64, duration: 4 }, { note: 67, duration: 4 }, { note: 71, duration: 4 }, { note: 74, duration: 4 },
+      { note: 72, duration: 8 }, { note: 69, duration: 8 },
+      { note: 67, duration: 4 }, { note: 71, duration: 4 }, { note: 69, duration: 4 }, { note: 64, duration: 4 },
+      { note: 62, duration: 8 }, { note: 64, duration: 8 },
+    ],
+    bass: [
+      { note: 40, duration: 8 }, { note: 47, duration: 8 },
+      { note: 45, duration: 8 }, { note: 41, duration: 8 },
+      { note: 43, duration: 8 }, { note: 40, duration: 8 },
+      { note: 38, duration: 8 }, { note: 40, duration: 8 },
+    ],
+  },
 };
-
 let currentBgmTrack: MusicTrack | null = null;
 let bgmLoopTimer: NodeJS.Timeout | null = null;
 

@@ -113,6 +113,21 @@ export type {
 } from './xiangqi/state.js';
 export type { XiangqiView, XiangqiPublicPlayer, XiangqiLegalMove } from './xiangqi/state.js';
 
+export { animalChess } from './animal-chess/index.js';
+export * as animalChessRules from './animal-chess/index.js';
+export { animalChessBot, type AnimalChessBotView, type AnimalChessBotAction } from './animal-chess/bot.js';
+export type {
+  AnimalChessState,
+  AnimalChessPlayer,
+  AnimalChessConfig,
+  AnimalChessAction,
+  AnimalPiece,
+  AnimalSide,
+  AnimalType,
+  AnimalChessMoveRecord,
+} from './animal-chess/state.js';
+export type { AnimalChessView, AnimalChessPublicPlayer, AnimalChessLegalMove } from './animal-chess/state.js';
+
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
 import { manorMystery } from './manor-mystery/index.js';
@@ -124,6 +139,7 @@ import { reversi } from './reversi/index.js';
 import { connect4 } from './connect4/index.js';
 import { chess } from './chess/index.js';
 import { xiangqi } from './xiangqi/index.js';
+import { animalChess } from './animal-chess/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
@@ -138,4 +154,5 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   connect4: connect4 as unknown as GameEngine<never, never>,
   chess: chess as unknown as GameEngine<never, never>,
   xiangqi: xiangqi as unknown as GameEngine<never, never>,
+  'animal-chess': animalChess as unknown as GameEngine<never, never>,
 };

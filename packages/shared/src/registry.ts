@@ -16,8 +16,8 @@ export const GAME_IDS = [
   'big-two',
   'chess',
   'xiangqi',
+  'animal-chess',
 ] as const;
-
 export type GameId = (typeof GAME_IDS)[number];
 
 export const gameIdSchema = z.enum(GAME_IDS);
@@ -102,6 +102,9 @@ export const bigTwoConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
 });
 
+export const animalChessConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
+});
 /**
  * Chess and Xiangqi are the only two board games that use a real chess-clock
  * (total time bank per player) instead of `turnTimeLimitSec`. The runtime
@@ -301,6 +304,17 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: xiangqiConfigSchema,
     blurb: 'Chinese chess: generals, chariots and cannons battle across the river.',
+  },
+  'animal-chess': {
+    id: 'animal-chess',
+    title: 'Animal Chess',
+    kind: 'board',
+    minPlayers: 2,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 1800,
+    supportsBots: true,
+    configSchema: animalChessConfigSchema,
+    blurb: 'Dou Shou Qi (Jungle): 8 animals, rivers, traps and dens in ancient tactical combat.',
   },
 };
 

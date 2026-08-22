@@ -43,6 +43,8 @@ import {
   scrabbleRules,
   xiangqi,
   xiangqiRules,
+  animalChess,
+  animalChessRules,
 } from '@puzzle-arena/games';
 import { wordSearch } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -268,6 +270,7 @@ export class LiveRoom {
     if (this.gameId === 'connect4') return connect4 as unknown as typeof propertyTycoon;
     if (this.gameId === 'chess') return chess as unknown as typeof propertyTycoon;
     if (this.gameId === 'xiangqi') return xiangqi as unknown as typeof propertyTycoon;
+    if (this.gameId === 'animal-chess') return animalChess as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -283,6 +286,7 @@ export class LiveRoom {
     if (this.gameId === 'connect4') return connect4Rules.actorToAct(this.gameState as never);
     if (this.gameId === 'chess') return chessRules.actorToAct(this.gameState as never);
     if (this.gameId === 'xiangqi') return xiangqiRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'animal-chess') return animalChessRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
 
