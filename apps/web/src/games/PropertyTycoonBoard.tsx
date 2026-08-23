@@ -285,6 +285,8 @@ export function PropertyTycoonBoard({
           view={view}
           nameOf={nameOf}
           seatOf={seatOf}
+          avatarOf={avatarOf}
+          isBotOf={isBotOf}
           youId={youId}
           turnEndsAt={turnEndsAt ?? null}
         />
@@ -595,6 +597,8 @@ export function PropertyTycoonBoard({
           youId={youId}
           nameOf={nameOf}
           seatOf={seatOf}
+          avatarOf={avatarOf}
+          isBotOf={isBotOf}
           onDismiss={dismissCard}
         />
       )}
@@ -680,12 +684,16 @@ function TurnBanner({
   view,
   nameOf,
   seatOf,
+  avatarOf,
+  isBotOf,
   youId,
   turnEndsAt,
 }: {
   view: PTView;
   nameOf: (id: string) => string;
   seatOf: (id: string) => number;
+  avatarOf: (id: string) => string | null;
+  isBotOf: (id: string) => boolean;
   youId: string | null;
   turnEndsAt: number | null;
 }): React.ReactElement {
@@ -1671,6 +1679,8 @@ function CardOverlay({
   youId,
   nameOf,
   seatOf,
+  avatarOf,
+  isBotOf,
   onDismiss,
 }: {
   card: DrawnCard;
@@ -1679,6 +1689,8 @@ function CardOverlay({
   youId: string | null;
   nameOf: (id: string) => string;
   seatOf: (id: string) => number;
+  avatarOf: (id: string) => string | null;
+  isBotOf: (id: string) => boolean;
   onDismiss: () => void;
 }): React.ReactElement {
   const reduced = useReducedMotion();

@@ -513,7 +513,7 @@ export const sfx = {
   },
 
   /** Big Two: a bomb (four-of-a-kind or straight flush) hits the table. */
-  bomb() {
+  cardBomb() {
     const ctx = getAudioContext();
     if (!ctx || !sfxEnabled || !sfxGain) return;
     if (ctx.state === 'suspended') void ctx.resume();

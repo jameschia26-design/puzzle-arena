@@ -110,6 +110,7 @@ export function ManorMysteryBoard({
         view={view}
         nameOf={nameOf}
         seatOf={seatOf}
+        infoOf={infoOf}
         youId={youId}
         turnEndsAt={turnEndsAt ?? null}
         targets={targets}
@@ -592,6 +593,7 @@ function MMTurnBanner({
   view,
   nameOf,
   seatOf,
+  infoOf,
   youId,
   turnEndsAt,
   targets,
@@ -599,6 +601,7 @@ function MMTurnBanner({
   view: MMView;
   nameOf: (id: string) => string;
   seatOf: (id: string) => number;
+  infoOf: (id: string) => { avatar?: string | null; isBot?: boolean };
   youId: string | null;
   turnEndsAt: number | null;
   targets: number;

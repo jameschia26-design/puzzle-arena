@@ -349,7 +349,9 @@ export function AnimalChessBoard({
               <div className="flex items-center gap-2 text-yellow-400 font-bold py-1">
                 <Trophy size={18} />
                 <span>
-                  {view.winner ? `${view.winner} won!` : 'Match drawn!'}
+                  {view.winner
+                    ? `${resolvePlayer(players, view.winner, 'Winner').displayName} won!`
+                    : 'Match drawn!'}
                 </span>
               </div>
             ) : isMyTurn ? (

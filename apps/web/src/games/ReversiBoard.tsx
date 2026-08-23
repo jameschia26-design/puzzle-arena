@@ -1,10 +1,12 @@
 import React from 'react';
+import { Trophy } from 'lucide-react';
 import type { ReversiAction, ReversiView } from '@puzzle-arena/games';
 import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
+import { Countdown } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard } from '../ui/primitives.js';
 import { resolvePlayer } from '../ui/seat.js';
-import { sfx, unlockAudioSession } from '../ui/sound.js';
+import { bgm, sfx, unlockAudioSession } from '../ui/sound.js';
 export interface ReversiBoardProps {
   view: unknown;
   players: PlayerView[];

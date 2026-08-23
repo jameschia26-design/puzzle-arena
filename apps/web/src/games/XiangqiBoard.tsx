@@ -359,7 +359,7 @@ function PlayerRow({
   align = 'left',
   children,
 }: {
-  player: PlayerView | undefined;
+  player: { seat: number; displayName: string; avatar: string | null; isBot: boolean } | undefined;
   label: string;
   align?: 'left' | 'right';
   children?: React.ReactNode;

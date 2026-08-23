@@ -70,7 +70,7 @@ export function BigTwoBoard({ view, players, youId, legalActions, turnEndsAt, on
 
   React.useEffect(() => {
     if (view.lastPlay) {
-      if (view.lastPlay.category === 'four-kind' || view.lastPlay.category === 'straight-flush') sfx.bomb();
+      if (view.lastPlay.category === 'four-kind' || view.lastPlay.category === 'straight-flush') sfx.cardBomb();
       else sfx.cardPlay();
     }
   }, [view.lastPlay]);

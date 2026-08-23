@@ -141,6 +141,7 @@ export function ScrabbleBoard({
           view={view}
           nameOf={nameOf}
           seatOf={seatOf}
+          infoOf={infoOf}
           youId={youId}
           turnEndsAt={turnEndsAt ?? null}
         />
@@ -484,12 +485,14 @@ function TurnBanner({
   view,
   nameOf,
   seatOf,
+  infoOf,
   youId,
   turnEndsAt,
 }: {
   view: ScrabbleView;
   nameOf: (id: string) => string;
   seatOf: (id: string) => number;
+  infoOf: (id: string) => { avatar?: string | null; isBot?: boolean };
   youId: string | null;
   turnEndsAt: number | null;
 }) {

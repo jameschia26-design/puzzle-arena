@@ -349,10 +349,14 @@ export const BOT_NAME_POOL = [
   'Vaughan',
 ] as const;
 
+// Every entry here must be a single-codepoint emoji (no variation-selector
+// suffix) — sequences like joystick (U+1F579 U+FE0F) or snowflake
+// (U+2744 U+FE0F) render as a missing-glyph "tofu" box on some Android
+// system/WebView fonts, which reads as a broken cross icon in the picker.
 export const AVATAR_EMOJI = [
-  '🚀', '👾', '🎮', '🕹️', '💾', '🧩', '🎲', '🏆',
+  '🚀', '👾', '🎮', '🎯', '💾', '🧩', '🎲', '🏆',
   '⚡', '🔮', '🦊', '🐙', '🦉', '🐝', '🦄', '🐲',
-  '🍄', '⭐', '🌙', '🔥', '❄️', '🌊', '🎧', '🛸',
+  '🍄', '⭐', '🌙', '🔥', '🧊', '🌊', '🎧', '🛸',
 ] as const;
 
 /** 8 seat colours, chosen for mutual distinguishability. */
