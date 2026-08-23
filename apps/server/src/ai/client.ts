@@ -15,7 +15,8 @@ export interface ResolvedProvider {
   apiKey: string;
   model: string;
   temperature: number;
-  maxTokens: number;
+  /** Null omits `max_tokens` from the request — the provider's own default/model-context cap applies. */
+  maxTokens: number | null;
   timeoutMs: number;
 }
 
@@ -108,6 +109,7 @@ async function callProvider(
   user: string,
   maxTokens?: number,
 ): Promise<string> {
+  const effectiveMaxTokens = maxTokens ?? provider.maxTokens ?? undefined;
   const res = await fetch(`${provider.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -121,7 +123,7 @@ async function callProvider(
         { role: 'user', content: user },
       ],
       temperature: provider.temperature,
-      max_tokens: maxTokens ?? provider.maxTokens,
+      ...(effectiveMaxTokens !== undefined ? { max_tokens: effectiveMaxTokens } : {}),
     }),
     signal: AbortSignal.timeout(provider.timeoutMs),
   });

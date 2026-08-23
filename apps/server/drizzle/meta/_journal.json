@@ -15,6 +15,13 @@
       "when": 1786972934784,
       "tag": "0001_keen_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787481714212,
+      "tag": "0002_new_puppet_master",
+      "breakpoints": true
     }
   ]
 }

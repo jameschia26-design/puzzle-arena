@@ -211,7 +211,8 @@ export const aiProviders = pgTable('ai_providers', {
   enabled: boolean('enabled').notNull().default(true),
   isDefault: boolean('is_default').notNull().default(false),
   temperature: real('temperature').notNull().default(0.8),
-  maxTokens: integer('max_tokens').notNull().default(1024),
+  /** Null omits `max_tokens` from the request entirely — the provider's own default/model-context cap applies. */
+  maxTokens: integer('max_tokens'),
   // Reasoning models (MiniMax-M3 among them) spend tokens thinking before they
   // answer, so a word list can take well over 8s. 8s was the plan default and
   // it times out in practice.

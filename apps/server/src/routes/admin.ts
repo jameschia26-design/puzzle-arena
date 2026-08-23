@@ -124,7 +124,7 @@ export function registerAdminRoutes(app: FastifyInstance): void {
           enabled: d.enabled ?? true,
           isDefault: d.isDefault ?? false,
           temperature: d.temperature ?? 0.8,
-          maxTokens: d.maxTokens ?? 1024,
+          maxTokens: d.maxTokens ?? null,
           timeoutMs: d.timeoutMs ?? 30000,
         })
         .returning()
