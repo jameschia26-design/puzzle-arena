@@ -8,6 +8,7 @@ import { SeatAvatar } from '../ui/game-bits.js';
 import { resolvePlayer } from '../ui/seat.js';
 import { sfx, unlockAudioSession } from '../ui/sound.js';
 import { useRoom } from '../net/socket.js';
+import { ActionRow, CapturedTray, ClockChip, MoveListPanel, StillThinkingModal } from './chess-shared.js';
 
 interface ChessBoardProps {
   view: ChessView;
