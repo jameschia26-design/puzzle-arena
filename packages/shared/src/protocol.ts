@@ -289,6 +289,7 @@ export type LeaderboardEntry = z.infer<typeof leaderboardEntrySchema>;
 export const resultRowSchema = z.object({
   playerId: z.string(),
   displayName: z.string(),
+  avatar: z.string().nullable().optional(),
   seat: z.number().int(),
   isBot: z.boolean(),
   rank: z.number().int(),

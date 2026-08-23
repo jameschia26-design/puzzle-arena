@@ -676,8 +676,10 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   React.useEffect(() => {
     setBoard(serverBoard);
   }, [serverBoard]);
-
-  if (!state) return <p className="text-pa-ink-dim text-[13px]">Waiting for the board…</p>;
+  const isPuzzle = GAME_REGISTRY[gameId]?.kind === 'puzzle';
+  if (!state || (isPuzzle && !state.puzzle)) {
+    return <p className="text-pa-ink-dim text-[13px] italic">Waiting for the board…</p>;
+  }
 
   const commit = async (
     path: string,
@@ -701,11 +703,10 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   };
 
   /** Grid games: write one cell. */
-  const commitCell = (index: number, value: number) =>
+  const commitCell = (index: number, value: number) => {
+    const puzzleSize = (gameId === 'nonogram' && state?.puzzle?.size) ? state.puzzle.size : 9;
     commit(
-      `${Math.floor(index / (gameId === 'nonogram' ? state.puzzle.size : 9))},${
-        index % (gameId === 'nonogram' ? state.puzzle.size : 9)
-      }`,
+      `${Math.floor(index / puzzleSize)},${index % puzzleSize}`,
       value,
       (prev: number[]) => {
         const next = [...(prev ?? [])];
@@ -713,7 +714,7 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
         return next;
       },
     );
-
+  };
   const gameAction = async (action: unknown): Promise<void> => {
     const res = await emit<{ accepted: boolean; error?: string }>(EV.gameAction, action);
     if (!res.accepted && res.error) toast(res.error);
@@ -735,9 +736,9 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
           }}
         />
         <SudokuBoard
-          givens={state.puzzle.givens}
-          board={board ?? state.puzzle.givens}
-          cages={state.puzzle.cages}
+          givens={state.puzzle?.givens ?? []}
+          board={board ?? state.puzzle?.givens ?? []}
+          cages={state.puzzle?.cages}
           onCommit={(r, c, v) => void commitCell(r * 9 + c, v)}
         />
       </div>
@@ -745,6 +746,7 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   }
 
   if (gameId === 'nonogram') {
+    const pSize = (state.puzzle?.size as number) || 10;
     return (
       <div className="flex flex-col gap-3 items-start overflow-x-auto">
         <HintButton
@@ -754,18 +756,17 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
             if (res.hint) {
               setHintCount((n) => n + 1);
               const [r, c] = res.hint.path.split(',').map(Number);
-              const size = state.puzzle.size as number;
-              await commitCell((r ?? 0) * size + (c ?? 0), res.hint.value);
+              await commitCell((r ?? 0) * pSize + (c ?? 0), res.hint.value);
               toast(`Revealed row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
             }
           }}
         />
         <NonogramBoard
-          size={state.puzzle.size}
-          rowClues={state.puzzle.rowClues}
-          colClues={state.puzzle.colClues}
+          size={pSize}
+          rowClues={state.puzzle?.rowClues ?? []}
+          colClues={state.puzzle?.colClues ?? []}
           marks={board ?? []}
-          onCommit={(r, c, v) => void commitCell(r * state.puzzle.size + c, v)}
+          onCommit={(r, c, v) => void commitCell(r * pSize + c, v)}
         />
       </div>
     );

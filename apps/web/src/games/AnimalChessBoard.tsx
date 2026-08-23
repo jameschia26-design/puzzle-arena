@@ -10,6 +10,7 @@ import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelCard, PixelPanel } from '../ui/primitives.js';
+import { resolvePlayer } from '../ui/seat.js';
 import { useReducedMotion } from '../ui/motion.js';
 import { sfx } from '../ui/sound.js';
 export interface AnimalChessBoardProps {
@@ -102,8 +103,8 @@ export function AnimalChessBoard({
     return legalMoves.filter((m) => m.from === selectedPt).map((m) => m.to);
   }, [selectedPt, legalMoves]);
 
-  const p0 = players.find((p) => p.id === view.players[0]?.id);
-  const p1 = players.find((p) => p.id === view.players[1]?.id);
+  const p0 = resolvePlayer(players, view.players[0]?.id ?? 0, 'Blue (Side 0)');
+  const p1 = resolvePlayer(players, view.players[1]?.id ?? 1, 'Red (Side 1)');
   const mePlayer = mySide === 0 ? p0 : p1;
   const oppPlayer = mySide === 0 ? p1 : p0;
 
@@ -163,16 +164,16 @@ export function AnimalChessBoard({
       <div className="w-full flex items-center justify-between px-4 py-2 bg-pa-surface border-2 border-pa-border shadow-pixel">
         <div className="flex items-center gap-3">
           <SeatAvatar
-            seat={oppPlayer?.seat ?? (1 - mySide)}
-            displayName={oppPlayer?.displayName ?? 'Opponent'}
-            avatar={oppPlayer?.avatar}
-            isBot={oppPlayer?.isBot}
+            seat={oppPlayer.seat}
+            displayName={oppPlayer.displayName}
+            avatar={oppPlayer.avatar}
+            isBot={oppPlayer.isBot}
             size={36}
           />
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-pa-ink text-[14px]">
-                {oppPlayer?.displayName ?? 'Opponent'}
+                {oppPlayer.displayName}
               </span>
               <PixelBadge tone={mySide === 0 ? 'danger' : 'cyan'}>
                 {mySide === 0 ? 'Red (Side 1)' : 'Blue (Side 0)'}
@@ -358,7 +359,7 @@ export function AnimalChessBoard({
               </div>
             ) : (
               <div className="p-2 bg-pa-surface border border-pa-border rounded text-pa-ink-dim text-[12px]">
-                Waiting for {oppPlayer?.displayName ?? 'Opponent'}...
+                Waiting for {oppPlayer.displayName}...
               </div>
             )}
           </PixelCard>
@@ -397,16 +398,16 @@ export function AnimalChessBoard({
       <div className="w-full flex items-center justify-between px-4 py-2 bg-pa-surface border-2 border-pa-border shadow-pixel">
         <div className="flex items-center gap-3">
           <SeatAvatar
-            seat={mePlayer?.seat ?? mySide}
-            displayName={mePlayer?.displayName ?? 'You'}
-            avatar={mePlayer?.avatar}
-            isBot={mePlayer?.isBot}
+            seat={mePlayer.seat}
+            displayName={mePlayer.displayName}
+            avatar={mePlayer.avatar}
+            isBot={mePlayer.isBot}
             size={36}
           />
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold text-pa-ink text-[14px]">
-                {mePlayer?.displayName ?? 'You'} (You)
+                {mePlayer.displayName} (You)
               </span>
               <PixelBadge tone={mySide === 0 ? 'cyan' : 'danger'}>
                 {mySide === 0 ? 'Blue (Side 0)' : 'Red (Side 1)'}

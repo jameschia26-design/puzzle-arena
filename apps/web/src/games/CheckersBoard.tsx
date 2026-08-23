@@ -183,7 +183,14 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
   const rowOrder = flipped ? [...Array(10)].map((_, i) => 9 - i) : [...Array(10)].map((_, i) => i);
   const colOrder = flipped ? [...Array(10)].map((_, i) => 9 - i) : [...Array(10)].map((_, i) => i);
 
-  const winnerPlayer = view.winner ? players.find((p) => p.id === view.winner) : null;
+  const currentActor = players.find(
+    (p) => p.id === view.current || (view.current === 'p0' && p.seat === 0) || (view.current === 'p1' && p.seat === 1),
+  );
+  const winnerPlayer = view.winner
+    ? players.find(
+        (p) => p.id === view.winner || (view.winner === 'p0' && p.seat === 0) || (view.winner === 'p1' && p.seat === 1),
+      )
+    : null;
   const ghostDest = ghost ? (ghost.path[ghost.path.length - 1] as CheckersPos) : null;
 
   return (
@@ -203,7 +210,7 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
             </span>
           ) : (
             <span className="font-display text-[12px] text-pa-ink-dim">
-              WAITING FOR {players.find((p) => p.id === view.current)?.displayName ?? 'OPPONENT'}…
+              WAITING FOR {currentActor?.displayName ?? 'OPPONENT'}…
             </span>
           )}
         </div>
@@ -337,9 +344,15 @@ function PlayerBadge({
 }) {
   return (
     <div className={cn('flex items-center gap-2', align === 'right' && 'flex-row-reverse text-right')}>
-      <SeatAvatar seat={player?.seat ?? 0} displayName={player?.displayName ?? '—'} isBot={player?.isBot ?? false} size={28} />
+      <SeatAvatar
+        seat={player?.seat ?? 0}
+        displayName={player?.displayName ?? 'Player'}
+        avatar={player?.avatar}
+        isBot={player?.isBot ?? false}
+        size={28}
+      />
       <div className="flex flex-col">
-        <span className="text-[12px] truncate max-w-[140px]">{player?.displayName ?? '—'}</span>
+        <span className="text-[12px] truncate max-w-[140px]">{player?.displayName ?? 'Player'}</span>
         <PixelBadge>{label}</PixelBadge>
       </div>
     </div>

@@ -5,6 +5,7 @@ import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
 import { PixelBadge, PixelButton, PixelCard } from '../ui/primitives.js';
 import { SeatAvatar } from '../ui/game-bits.js';
+import { resolvePlayer } from '../ui/seat.js';
 import { sfx, unlockAudioSession } from '../ui/sound.js';
 import { useRoom } from '../net/socket.js';
 import { ActionRow, CapturedTray, ClockChip, MoveListPanel, StillThinkingModal } from './chess-shared.js';
@@ -129,8 +130,8 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
     return set;
   }, [candidatesFromSelected]);
 
-  const players0 = players.find((p) => p.id === view.players[0]?.id);
-  const players1 = players.find((p) => p.id === view.players[1]?.id);
+  const players0 = resolvePlayer(players, view.players[0]?.id ?? 0, 'Red');
+  const players1 = resolvePlayer(players, view.players[1]?.id ?? 1, 'Black');
   const mePlayer = mySide === 0 ? players0 : players1;
   const oppPlayer = mySide === 0 ? players1 : players0;
   const meId = view.players[mySide]?.id ?? null;
@@ -177,7 +178,8 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
     }
   };
 
-  const winnerPlayer = view.winner ? players.find((p) => p.id === view.winner) : null;
+  const currentActor = resolvePlayer(players, view.current, 'Opponent');
+  const winnerPlayer = view.winner ? resolvePlayer(players, view.winner, 'Winner') : null;
   const isDraw = isGameOver && view.winner === null;
 
   const bannerText = isGameOver
@@ -188,7 +190,7 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
       ? view.you?.inCheck
         ? 'YOU ARE IN CHECK — YOUR TURN'
         : 'YOUR TURN'
-      : `WAITING FOR ${players.find((p) => p.id === view.current)?.displayName ?? 'OPPONENT'}…`;
+      : `WAITING FOR ${currentActor.displayName}…`;
 
   const points = React.useMemo(() => {
     const list: { square: number; row: number; col: number }[] = [];
@@ -364,9 +366,15 @@ function PlayerRow({
 }) {
   return (
     <div className={cn('flex items-center gap-2', align === 'right' && 'flex-row-reverse text-right')}>
-      <SeatAvatar seat={player?.seat ?? 0} displayName={player?.displayName ?? '—'} isBot={player?.isBot ?? false} size={28} />
+      <SeatAvatar
+        seat={player?.seat ?? (label === 'Red' ? 0 : 1)}
+        displayName={player?.displayName ?? label}
+        avatar={player?.avatar}
+        isBot={player?.isBot ?? false}
+        size={28}
+      />
       <div className="flex flex-col">
-        <span className="text-[12px] truncate max-w-[120px]">{player?.displayName ?? '—'}</span>
+        <span className="text-[12px] truncate max-w-[120px]">{player?.displayName ?? label}</span>
         <PixelBadge>{label}</PixelBadge>
       </div>
       {children}

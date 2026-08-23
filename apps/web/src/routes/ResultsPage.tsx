@@ -67,6 +67,7 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
                 <SeatAvatar
                   seat={row.seat}
                   displayName={row.displayName}
+                  avatar={row.avatar}
                   isBot={row.isBot}
                   size={40}
                 />
@@ -121,6 +122,7 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
                     <SeatAvatar
                       seat={row.seat}
                       displayName={row.displayName}
+                      avatar={row.avatar}
                       isBot={row.isBot}
                       size={20}
                     />

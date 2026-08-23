@@ -18,8 +18,8 @@ import {
 import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard, PixelDialog, PixelPanel } from '../ui/primitives.js';
+import { resolvePlayer } from '../ui/seat.js';
 import { RotateCcw } from 'lucide-react';
-
 /** Translucent tints, same "fill + label" language as the Sudoku killer cages. */
 const PREMIUM_STYLE: Record<string, { bg: string; label: string; text: string }> = {
   TW: { bg: 'rgba(255, 63, 142, 0.28)', label: 'TW', text: 'var(--color-pa-magenta)' },
@@ -66,10 +66,9 @@ export function ScrabbleBoard({
   const can = (action: string): boolean => legalActions.includes(action);
   const isMyTurn = view.current === youId;
   const rack = view.you?.rack ?? [];
-  const nameOf = (id: string): string =>
-    players.find((p) => p.id === id)?.displayName ?? id.slice(0, 6);
-  const seatOf = (id: string): number => players.find((p) => p.id === id)?.seat ?? 0;
-
+  const infoOf = (id: string) => resolvePlayer(players, id, 'Player');
+  const nameOf = (id: string): string => infoOf(id).displayName;
+  const seatOf = (id: string): number => infoOf(id).seat;
   // Reset any pending placement whenever the authoritative board changes
   // underneath it (our own accepted play, or the turn moving on).
   React.useEffect(() => {
@@ -303,7 +302,8 @@ export function ScrabbleBoard({
                 <SeatAvatar
                   seat={p.seat}
                   displayName={nameOf(p.id)}
-                  isBot={players.find((pl) => pl.id === p.id)?.isBot}
+                  avatar={infoOf(p.id).avatar}
+                  isBot={infoOf(p.id).isBot}
                   size={24}
                 />
                 <span className="min-w-0 flex-1 truncate text-[12px]">{nameOf(p.id)}</span>
@@ -510,7 +510,7 @@ function TurnBanner({
     <PixelCard className="flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
         {current && (
-          <SeatAvatar seat={seatOf(current)} displayName={nameOf(current)} size={28} />
+          <SeatAvatar seat={seatOf(current)} displayName={nameOf(current)} avatar={infoOf(current).avatar} isBot={infoOf(current).isBot} size={28} />
         )}
         <span className="truncate text-[13px]">
           {isYou ? 'Your turn' : current ? `${nameOf(current)}'s turn` : 'Waiting'}

@@ -4,6 +4,7 @@ import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard, PixelPanel } from '../ui/primitives.js';
+import { resolvePlayer } from '../ui/seat.js';
 import { FastForward, Smartphone, Sparkles, Trophy, Zap, RotateCcw } from 'lucide-react';
 import { bgm, sfx, unlockAudioSession } from '../ui/sound.js';
 
@@ -391,8 +392,9 @@ export function CongkakBoard({
   const myPlayerObj = view.players[myPlayerIndex];
   const oppPlayerObj = view.players[oppPlayerIndex];
 
-  const myPlayerInfo = players.find((p) => p.id === myPlayerObj?.id);
-  const oppPlayerInfo = players.find((p) => p.id === oppPlayerObj?.id);
+  const myPlayerInfo = resolvePlayer(players, myPlayerObj?.id, 'You');
+  const oppPlayerInfo = resolvePlayer(players, oppPlayerObj?.id, 'Opponent');
+  const currentActor = resolvePlayer(players, view.current, 'Opponent');
 
   const myPitIndices: number[] = [];
   const oppPitIndices: number[] = [];
@@ -433,7 +435,7 @@ export function CongkakBoard({
   };
 
   const isGameOver = view.phase === 'game_over';
-  const winnerPlayer = view.winner ? players.find((p) => p.id === view.winner) : null;
+  const winnerPlayer = view.winner ? resolvePlayer(players, view.winner) : null;
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full">
@@ -466,7 +468,7 @@ export function CongkakBoard({
           ) : (
             <div className="flex items-center gap-2 text-pa-ink-dim">
               <span className="font-display text-[12px] md:text-[14px]">
-                WAITING FOR {players.find((p) => p.id === view.current)?.displayName ?? 'OPPONENT'}…
+                WAITING FOR {currentActor.displayName}…
               </span>
             </div>
           )}
@@ -547,13 +549,14 @@ export function CongkakBoard({
             <div className="flex flex-col items-center gap-2 w-full">
               <div className="flex items-center gap-2 text-center">
                 <SeatAvatar
-                  seat={oppPlayerInfo?.seat ?? 1}
-                  displayName={oppPlayerInfo?.displayName ?? 'Opponent'}
-                  isBot={oppPlayerInfo?.isBot ?? false}
+                  seat={oppPlayerInfo.seat}
+                  displayName={oppPlayerInfo.displayName}
+                  avatar={oppPlayerInfo.avatar}
+                  isBot={oppPlayerInfo.isBot}
                   size={24}
                 />
                 <span className="font-display text-[11px] text-pa-ink-dim truncate max-w-[140px]">
-                  {oppPlayerInfo?.displayName ?? 'Opponent'} (Opponent)
+                  {oppPlayerInfo.displayName} (Opponent)
                 </span>
               </div>
 
@@ -706,13 +709,14 @@ export function CongkakBoard({
 
               <div className="flex items-center gap-2 text-center">
                 <SeatAvatar
-                  seat={myPlayerInfo?.seat ?? 0}
-                  displayName={myPlayerInfo?.displayName ?? 'You'}
-                  isBot={myPlayerInfo?.isBot ?? false}
+                  seat={myPlayerInfo.seat}
+                  displayName={myPlayerInfo.displayName}
+                  avatar={myPlayerInfo.avatar}
+                  isBot={myPlayerInfo.isBot}
                   size={24}
                 />
                 <span className="font-display text-[11px] text-pa-cyan truncate max-w-[140px]">
-                  {myPlayerInfo?.displayName ?? 'You'} (You)
+                  {myPlayerInfo.displayName} (You)
                 </span>
               </div>
             </div>
@@ -738,13 +742,14 @@ export function CongkakBoard({
             <div className="flex flex-col items-center gap-2">
               <div className="flex items-center gap-1.5 text-center mb-1">
                 <SeatAvatar
-                  seat={oppPlayerInfo?.seat ?? 1}
-                  displayName={oppPlayerInfo?.displayName ?? 'Opponent'}
-                  isBot={oppPlayerInfo?.isBot ?? false}
+                  seat={oppPlayerInfo.seat}
+                  displayName={oppPlayerInfo.displayName}
+                  avatar={oppPlayerInfo.avatar}
+                  isBot={oppPlayerInfo.isBot}
                   size={22}
                 />
                 <span className="font-display text-[10px] text-pa-ink-dim truncate max-w-[80px]">
-                  {oppPlayerInfo?.displayName ?? 'Opponent'}
+                  {oppPlayerInfo.displayName}
                 </span>
               </div>
 
@@ -872,13 +877,14 @@ export function CongkakBoard({
             <div className="flex flex-col items-center gap-2">
               <div className="flex items-center gap-1.5 text-center mb-1">
                 <SeatAvatar
-                  seat={myPlayerInfo?.seat ?? 0}
-                  displayName={myPlayerInfo?.displayName ?? 'You'}
-                  isBot={myPlayerInfo?.isBot ?? false}
+                  seat={myPlayerInfo.seat}
+                  displayName={myPlayerInfo.displayName}
+                  avatar={myPlayerInfo.avatar}
+                  isBot={myPlayerInfo.isBot}
                   size={22}
                 />
                 <span className="font-display text-[10px] text-pa-cyan truncate max-w-[80px]">
-                  {myPlayerInfo?.displayName ?? 'You'} (You)
+                  {myPlayerInfo.displayName} (You)
                 </span>
               </div>
 

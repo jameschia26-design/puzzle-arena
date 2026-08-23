@@ -855,6 +855,7 @@ export class LiveRoom {
         return {
           playerId: p.id,
           displayName: p.displayName,
+          avatar: p.avatar,
           seat: p.seat,
           isBot: p.isBot,
           score,

@@ -3,6 +3,7 @@ import type { Connect4Action, Connect4View } from '@puzzle-arena/games';
 import type { PlayerView } from '@puzzle-arena/shared';
 import { PixelCard } from '../ui/primitives.js';
 import { Countdown } from '../ui/game-bits.js';
+import { resolvePlayer } from '../ui/seat.js';
 import { cn } from '../ui/cn.js';
 import { bgm, sfx, unlockAudioSession } from '../ui/sound.js';
 import { Trophy, ChevronDown } from 'lucide-react';
@@ -49,8 +50,9 @@ export function Connect4Board({
 
   const p1 = c4Players[0];
   const p2 = c4Players[1];
-  const p1View = players.find((p) => p.id === p1?.id);
-  const p2View = players.find((p) => p.id === p2?.id);
+  const p1View = resolvePlayer(players, p1?.id ?? 0, 'Player 1');
+  const p2View = resolvePlayer(players, p2?.id ?? 1, 'Player 2');
+  const winnerPlayer = winner !== null && winner !== undefined ? resolvePlayer(players, winner, 'Winner') : null;
 
   // Map of winning coordinates for instant lookup
   const winSet = new Set<string>();
@@ -86,7 +88,7 @@ export function Connect4Board({
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-display text-[12px] sm:text-[14px] truncate">
-                {p1View?.displayName ?? 'Player 1'}
+                {p1View.displayName}
               </span>
               <span className="text-[10px] sm:text-[11px] text-pa-pink font-bold">
                 RED {youIdx === 0 ? '(You)' : ''}
@@ -115,7 +117,7 @@ export function Connect4Board({
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-display text-[12px] sm:text-[14px] truncate">
-                {p2View?.displayName ?? 'Player 2'}
+                {p2View.displayName}
               </span>
               <span className="text-[10px] sm:text-[11px] text-pa-amber font-bold">
                 YELLOW {youIdx === 1 ? '(You)' : ''}

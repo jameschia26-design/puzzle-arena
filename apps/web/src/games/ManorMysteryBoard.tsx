@@ -4,6 +4,7 @@ import { ROOMS, SUSPECTS, WEAPONS, type PlayerView } from '@puzzle-arena/shared'
 import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard, PixelDialog, PixelSelect } from '../ui/primitives.js';
+import { resolvePlayer } from '../ui/seat.js';
 
 const { GRID, ROOM_RECTS, SUSPECT_COLORS, DOORS_BY_ROOM, roomAt } = manorMysteryRules;
 
@@ -68,9 +69,9 @@ export function ManorMysteryBoard({
   const [accuseRoom, setAccuseRoom] = React.useState<string>(ROOMS[0]);
 
   const can = (action: string): boolean => legalActions.includes(action);
-  const nameOf = (id: string): string =>
-    players.find((p) => p.id === id)?.displayName ?? id.slice(0, 6);
-  const seatOf = (id: string): number => players.find((p) => p.id === id)?.seat ?? 0;
+  const infoOf = (id: string) => resolvePlayer(players, id, 'Player');
+  const nameOf = (id: string): string => infoOf(id).displayName;
+  const seatOf = (id: string): number => infoOf(id).seat;
 
   const reachableCells = new Set(
     (view.you?.reachableCells ?? []).map(([x, y]) => `${x},${y}`),
@@ -298,7 +299,7 @@ export function ManorMysteryBoard({
                   style={{ backgroundColor: SUSPECT_COLORS[p.suspect] }}
                   title={p.suspect}
                 />
-                <SeatAvatar seat={seatOf(p.id)} displayName={nameOf(p.id)} size={20} />
+                <SeatAvatar seat={seatOf(p.id)} displayName={nameOf(p.id)} avatar={infoOf(p.id).avatar} isBot={infoOf(p.id).isBot} size={20} />
                 <span className="text-[12px] flex-1 truncate">{nameOf(p.id)}</span>
                 <span className="text-[11px] text-pa-ink-dim tabular">{p.handSize} cards</span>
                 {p.lockedOut && <PixelBadge tone="danger">Out</PixelBadge>}
@@ -655,7 +656,7 @@ function MMTurnBanner({
         yours ? 'border-pa-cyan' : 'border-pa-border',
       )}
     >
-      {actorId && <SeatAvatar seat={seatOf(actorId)} displayName={nameOf(actorId)} size={22} />}
+      {actorId && <SeatAvatar seat={seatOf(actorId)} displayName={nameOf(actorId)} avatar={infoOf(actorId).avatar} isBot={infoOf(actorId).isBot} size={22} />}
       <span className="min-w-0 flex-1">
         <span className="block truncate font-display text-[11px] uppercase">
           {yours ? 'Your move' : actorId ? `${nameOf(actorId)}'s move` : 'Table'}

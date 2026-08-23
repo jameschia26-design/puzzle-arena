@@ -5,6 +5,7 @@ import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelPanel } from '../ui/primitives.js';
+import { resolvePlayer } from '../ui/seat.js';
 import { sfx, unlockAudioSession } from '../ui/sound.js';
 
 interface BigTwoBoardProps {
@@ -107,8 +108,9 @@ export function BigTwoBoard({ view, players, youId, legalActions, turnEndsAt, on
     onAction({ type: 'pass' });
   };
 
-  const winnerPlayer = view.winner ? players.find((p) => p.id === view.winner) : null;
-  const leadOwner = view.lastPlay ? players.find((p) => p.id === view.lastPlay!.playerId) : null;
+  const winnerPlayer = view.winner ? resolvePlayer(players, view.winner) : null;
+  const leadOwner = view.lastPlay ? resolvePlayer(players, view.lastPlay.playerId) : null;
+  const currentActor = resolvePlayer(players, view.current, 'Opponent');
 
   return (
     <div className="flex flex-col gap-4 max-w-5xl mx-auto w-full">
@@ -126,8 +128,8 @@ export function BigTwoBoard({ view, players, youId, legalActions, turnEndsAt, on
         ) : (
           <span className="text-[13px] text-pa-ink-dim">
             {view.currentLead === null
-              ? `${isMyTurn ? 'You lead' : (players.find((p) => p.id === view.current)?.displayName ?? 'Opponent') + ' leads'} — the lead is open.`
-              : `${isMyTurn ? 'You must beat' : (players.find((p) => p.id === view.current)?.displayName ?? 'Opponent') + ' must beat'} ${leadOwner?.displayName ?? 'the last play'}'s ${view.currentLead.category.replace('-', ' ')}.`}
+              ? `${isMyTurn ? 'You lead' : currentActor.displayName + ' leads'} — the lead is open.`
+              : `${isMyTurn ? 'You must beat' : currentActor.displayName + ' must beat'} ${leadOwner?.displayName ?? 'the last play'}'s ${view.currentLead.category.replace('-', ' ')}.`}
           </span>
         )}
       </PixelPanel>
@@ -137,11 +139,11 @@ export function BigTwoBoard({ view, players, youId, legalActions, turnEndsAt, on
         {view.players
           .filter((p) => p.id !== youId)
           .map((p) => {
-            const info = players.find((pl) => pl.id === p.id);
+            const info = resolvePlayer(players, p.id, `Player ${p.seat + 1}`);
             return (
               <div key={p.id} className="flex flex-col items-center gap-1">
-                <SeatAvatar seat={info?.seat ?? p.seat} displayName={info?.displayName ?? p.id} isBot={info?.isBot ?? false} size={28} />
-                <span className="text-[11px] truncate max-w-[100px]">{info?.displayName ?? p.id}</span>
+                <SeatAvatar seat={info.seat} displayName={info.displayName} avatar={info.avatar} isBot={info.isBot} size={28} />
+                <span className="text-[11px] truncate max-w-[100px]">{info.displayName}</span>
                 <div className="flex -space-x-3">
                   {Array.from({ length: Math.min(p.handSize, 8) }, (_, i) => (
                     <span key={i} className="w-6 h-9 border-2 border-pa-border bg-pa-surface-2" />
@@ -158,7 +160,7 @@ export function BigTwoBoard({ view, players, youId, legalActions, turnEndsAt, on
       <div className="flex flex-col items-center gap-2 min-h-[100px] justify-center border-2 border-pa-border bg-pa-surface/40 py-4">
         {view.lastPlay ? (
           <>
-            <span className="text-[11px] text-pa-ink-dim">{leadOwner?.displayName ?? view.lastPlay.playerId} played</span>
+            <span className="text-[11px] text-pa-ink-dim">{leadOwner?.displayName ?? 'Opponent'} played</span>
             <div className="flex gap-1">
               {view.lastPlay.cards.map((c, i) => (
                 <Card key={i} card={c} />

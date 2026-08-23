@@ -5,9 +5,9 @@ import type { PlayerView } from '@puzzle-arena/shared';
 import { cn } from '../ui/cn.js';
 import { PixelBadge, PixelButton, PixelCard, PixelDialog } from '../ui/primitives.js';
 import { SeatAvatar } from '../ui/game-bits.js';
+import { resolvePlayer } from '../ui/seat.js';
 import { sfx, unlockAudioSession } from '../ui/sound.js';
 import { useRoom } from '../net/socket.js';
-import { ActionRow, CapturedTray, ClockChip, MoveListPanel, StillThinkingModal } from './chess-shared.js';
 
 interface ChessBoardProps {
   view: ChessView;
@@ -68,14 +68,16 @@ export function ChessPieceSvg({
         <g>
           <path d="M 9 38 L 36 38 L 33 33 L 12 33 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
           <path
-            d="M 12 33 C 12 28 10 21 14 15 C 16 12 18 9 20 8 C 21 7 23 8 23 10 C 24 9 26 9 27 11 C 27 11 29 10 30 11 C 33 13 34 18 31 22 C 29 25 29 27 33 33 Z"
+            d="M 32 33 C 33 26 31 17 26 11 C 24 8.5 22 7.5 20.5 7.5 C 19.5 7.5 19 8 19 9.5 C 19 10 18.5 10.5 17 11.5 C 15 13 13 15 9.5 19.5 C 8.5 21 8.5 22.5 10 23.5 C 11.5 24.5 14 24 15 23.5 C 13.5 25.5 14 27.5 16.5 28 C 18.5 28.5 20.5 27 21.5 25 C 22.5 23 23 21 24.5 20 C 23.5 25 21 29 13 33 Z"
             fill={fill}
             stroke={stroke}
             strokeWidth={sw}
           />
-          <circle cx="17.5" cy="15.5" r="1.5" fill={detail} />
-          <path d="M 13 24 C 16 22 20 24 22 28" fill="none" stroke={detail} strokeWidth={sw} />
-          <path d="M 23 11 C 24 14 26 15 29 16" fill="none" stroke={detail} strokeWidth={sw} />
+          <circle cx="15.5" cy="15.5" r="1.5" fill={detail} />
+          <ellipse cx="11" cy="21.5" rx="1.2" ry="0.7" fill={detail} transform="rotate(-20 11 21.5)" />
+          <path d="M 23 11 C 21.5 13.5 20.5 16.5 21.5 19" fill="none" stroke={detail} strokeWidth={sw} />
+          <path d="M 27 15 C 25.5 18 24.5 22 25.5 25" fill="none" stroke={detail} strokeWidth={sw} />
+          <path d="M 12 33 L 33 33" stroke={detail} strokeWidth={sw} />
         </g>
       )}
       {type === 'b' && (
@@ -212,8 +214,8 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
     return set;
   }, [candidatesFromSelected]);
 
-  const players0 = players.find((p) => p.id === view.players[0]?.id);
-  const players1 = players.find((p) => p.id === view.players[1]?.id);
+  const players0 = resolvePlayer(players, view.players[0]?.id ?? 0, 'White');
+  const players1 = resolvePlayer(players, view.players[1]?.id ?? 1, 'Black');
   const mePlayer = mySide === 0 ? players0 : players1;
   const oppPlayer = mySide === 0 ? players1 : players0;
   const meId = view.players[mySide]?.id ?? null;
@@ -267,7 +269,8 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
     }
   };
 
-  const winnerPlayer = view.winner ? players.find((p) => p.id === view.winner) : null;
+  const currentActor = resolvePlayer(players, view.current, 'Opponent');
+  const winnerPlayer = view.winner ? resolvePlayer(players, view.winner, 'Winner') : null;
   const isDraw = isGameOver && view.winner === null;
 
   const bannerText = isGameOver
@@ -278,7 +281,7 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
       ? view.you?.inCheck
         ? 'YOU ARE IN CHECK — YOUR TURN'
         : 'YOUR TURN'
-      : `WAITING FOR ${players.find((p) => p.id === view.current)?.displayName ?? 'OPPONENT'}…`;
+      : `WAITING FOR ${currentActor.displayName}…`;
 
   return (
     <div className="flex flex-col gap-4 max-w-5xl mx-auto w-full lg:flex-row lg:items-start">
@@ -430,9 +433,15 @@ function PlayerRow({
 }) {
   return (
     <div className={cn('flex items-center gap-2', align === 'right' && 'flex-row-reverse text-right')}>
-      <SeatAvatar seat={player?.seat ?? 0} displayName={player?.displayName ?? '—'} isBot={player?.isBot ?? false} size={28} />
+      <SeatAvatar
+        seat={player?.seat ?? (label === 'White' ? 0 : 1)}
+        displayName={player?.displayName ?? label}
+        avatar={player?.avatar}
+        isBot={player?.isBot ?? false}
+        size={28}
+      />
       <div className="flex flex-col">
-        <span className="text-[12px] truncate max-w-[120px]">{player?.displayName ?? '—'}</span>
+        <span className="text-[12px] truncate max-w-[120px]">{player?.displayName ?? label}</span>
         <PixelBadge>{label}</PixelBadge>
       </div>
       {children}

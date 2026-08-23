@@ -6,7 +6,7 @@ import { cn } from '../ui/cn.js';
 import { Countdown, SeatAvatar } from '../ui/game-bits.js';
 import { PixelBadge, PixelButton, PixelCard, PixelDialog } from '../ui/primitives.js';
 import { Minus, Plus } from 'lucide-react';
-import { inkOn, monogram, seatColor } from '../ui/seat.js';
+import { inkOn, monogram, resolvePlayer, seatColor } from '../ui/seat.js';
 import { DICE_FRAME_MS, snapIn, useReducedMotion } from '../ui/motion.js';
 
 const {
@@ -175,12 +175,10 @@ export function PropertyTycoonBoard({
   /** The square whose title deed is open. Reading it never blocks play. */
   const [deed, setDeed] = React.useState<number | null>(null);
   const [bid, setBid] = React.useState(0);
-
-  const seatOf = (playerId: string): number =>
-    players.find((p) => p.id === playerId)?.seat ?? 0;
-  const nameOf = (playerId: string): string =>
-    players.find((p) => p.id === playerId)?.displayName ?? playerId.slice(0, 6);
-
+  const seatOf = (playerId: string): number => resolvePlayer(players, playerId).seat;
+  const nameOf = (playerId: string): string => resolvePlayer(players, playerId).displayName;
+  const avatarOf = (playerId: string): string | null => resolvePlayer(players, playerId).avatar;
+  const isBotOf = (playerId: string): boolean => resolvePlayer(players, playerId).isBot;
   const can = (action: string): boolean => legalActions.includes(action);
   const onTurn = view.players[view.current]?.id === youId;
   const me = view.players.find((p) => p.id === youId);
@@ -519,7 +517,7 @@ export function PropertyTycoonBoard({
                     p.bankrupt && 'opacity-50',
                   )}
                 >
-                  <SeatAvatar seat={seatOf(p.id)} displayName={nameOf(p.id)} size={24} />
+                  <SeatAvatar seat={seatOf(p.id)} displayName={nameOf(p.id)} avatar={avatarOf(p.id)} isBot={isBotOf(p.id)} size={24} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px]">
                       {nameOf(p.id)}
@@ -701,7 +699,7 @@ function TurnBanner({
         yours ? 'border-pa-cyan' : 'border-pa-border',
       )}
     >
-      {actorId && <SeatAvatar seat={seatOf(actorId)} displayName={nameOf(actorId)} size={22} />}
+      {actorId && <SeatAvatar seat={seatOf(actorId)} displayName={nameOf(actorId)} avatar={avatarOf(actorId)} isBot={isBotOf(actorId)} size={22} />}
       <span className="min-w-0 flex-1">
         <span className="block truncate font-display text-[11px] uppercase">
           {yours ? 'Your move' : actorId ? `${nameOf(actorId)}'s move` : 'Table'}
@@ -1737,7 +1735,7 @@ function CardOverlay({
 
           {drawnBy && (
             <div className="flex items-center gap-2 border-t-2 border-pa-border pt-3">
-              <SeatAvatar seat={seatOf(drawnBy)} displayName={nameOf(drawnBy)} size={22} />
+              <SeatAvatar seat={seatOf(drawnBy)} displayName={nameOf(drawnBy)} avatar={avatarOf(drawnBy)} isBot={isBotOf(drawnBy)} size={22} />
               <span className="flex-1 text-[12px] text-pa-ink-dim">
                 {/* The engine has already applied the card, so this is where the
                     token actually ended up — not where it was. */}

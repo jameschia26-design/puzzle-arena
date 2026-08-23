@@ -1,12 +1,10 @@
 import React from 'react';
 import type { ReversiAction, ReversiView } from '@puzzle-arena/games';
 import type { PlayerView } from '@puzzle-arena/shared';
-import { PixelButton, PixelCard } from '../ui/primitives.js';
-import { Countdown } from '../ui/game-bits.js';
 import { cn } from '../ui/cn.js';
-import { bgm, sfx, unlockAudioSession } from '../ui/sound.js';
-import { Trophy } from 'lucide-react';
-
+import { PixelBadge, PixelButton, PixelCard } from '../ui/primitives.js';
+import { resolvePlayer } from '../ui/seat.js';
+import { sfx, unlockAudioSession } from '../ui/sound.js';
 export interface ReversiBoardProps {
   view: unknown;
   players: PlayerView[];
@@ -49,8 +47,9 @@ export function ReversiBoard({
 
   const darkPlayer = revPlayers[0];
   const lightPlayer = revPlayers[1];
-  const darkViewPlayer = players.find((p) => p.id === darkPlayer?.id);
-  const lightViewPlayer = players.find((p) => p.id === lightPlayer?.id);
+  const darkViewPlayer = resolvePlayer(players, darkPlayer?.id ?? 0, 'Player 1');
+  const lightViewPlayer = resolvePlayer(players, lightPlayer?.id ?? 1, 'Player 2');
+  const winnerPlayer = winner !== null && winner !== undefined ? resolvePlayer(players, winner, 'Winner') : null;
 
   const canPass = isMyTurn && legalMoves.length === 0;
 
@@ -98,7 +97,7 @@ export function ReversiBoard({
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-display text-[12px] sm:text-[14px] truncate">
-                {darkViewPlayer?.displayName ?? 'Player 1'}
+                {darkViewPlayer.displayName}
               </span>
               <span className="text-[10px] sm:text-[11px] text-pa-pink font-bold">
                 DARK {youIdx === 0 ? '(You)' : ''}
@@ -125,7 +124,7 @@ export function ReversiBoard({
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-display text-[12px] sm:text-[14px] truncate">
-                {lightViewPlayer?.displayName ?? 'Player 2'}
+                {lightViewPlayer.displayName}
               </span>
               <span className="text-[10px] sm:text-[11px] text-pa-cyan font-bold">
                 LIGHT {youIdx === 1 ? '(You)' : ''}
