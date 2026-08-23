@@ -409,10 +409,10 @@ function formatAnimalChessPrompt(view: AnimalChessPromptView, actorId: string): 
     'You are a master Dou Shou Qi (Animal Chess / Jungle) AI playing on a 7x9 grid (row 0 = Blue back rank at top, row 8 = Red back rank at bottom; coordinates (col,row)). ' +
     'Pieces & Ranks: Elephant (8), Lion (7), Tiger (6), Leopard (5), Wolf (4), Dog (3), Cat (2), Rat (1). Higher rank captures equal/lower rank. ' +
     'Special Rules:\n' +
-    '1. Rat (1) can enter river water squares (~~~) and can capture Elephant (8) on land. Rat in water cannot attack land pieces.\n' +
-    '2. Lion (7) and Tiger (6) can jump over river squares horizontally/vertically, unless blocked by any Rat in the river.\n' +
-    '3. Traps (TP0, TP1) reduce any trapped enemy piece to rank 0, allowing ANY piece to capture it.\n' +
-    '4. Entering the opponent Den (DN0 for Red, DN1 for Blue) instantly WINS the game!\n' +
+    '1. Rat (1) is the only piece that can enter river squares (~~~). A Rat can capture an Elephant (8) when both are on land, but the Elephant can NEVER capture a Rat, regardless of terrain — this is the one exception to the rank order. A Rat in the water can only capture another Rat in the water, and cannot attack or be attacked by any land piece.\n' +
+    '2. Lion (7) and Tiger (6) can jump over the river in one move (horizontally or vertically), but only if no piece of either side sits in the water squares along the jump path.\n' +
+    '3. TP0 (next to Blue\'s den DN0) belongs to Blue; TP1 (next to Red\'s den DN1) belongs to Red. A piece standing on its OWN side\'s trap is completely safe. A piece standing on the ENEMY\'s trap is reduced to rank 0 and can be captured by ANY enemy piece, including the Rat.\n' +
+    '4. Moving any piece into the opponent\'s Den instantly WINS the game — Red\'s target is DN0, Blue\'s target is DN1.\n' +
     'Strategy: Advance toward enemy den, protect your own den, use Rat to control river/threaten Elephant, and leap with Lion/Tiger for ambush tactics. ' +
     'Choose the BEST move by its moveIndex from the legal moves list — you may ONLY choose from this list. ' +
     'Reply with ONLY a JSON object: {"moveIndex": <number>, "reasoning": "<short>"}. No other text.';

@@ -14,6 +14,7 @@ export interface AnimalChessBotPiece {
 export interface AnimalChessBotLegalMove {
   from: number;
   to: number;
+  captured?: BotAnimalType;
 }
 
 export interface AnimalChessBotPublicPlayer {
@@ -141,6 +142,10 @@ const DELTAS: [number, number][] = [
   [0, 1],
 ];
 
+function moveTo(from: number, to: number, occupant: AnimalChessBotPiece | null | undefined): AnimalChessBotLegalMove {
+  return occupant ? { from, to, captured: occupant.type } : { from, to };
+}
+
 function generateMoves(board: (AnimalChessBotPiece | null)[], side: BotSide): AnimalChessBotLegalMove[] {
   const moves: AnimalChessBotLegalMove[] = [];
 
@@ -163,7 +168,7 @@ function generateMoves(board: (AnimalChessBotPiece | null)[], side: BotSide): An
         if (piece.type === 'rat') {
           const occupant = board[dest];
           if (!occupant || canCapture(piece, from, occupant, dest)) {
-            moves.push({ from, to: dest });
+            moves.push(moveTo(from, dest, occupant));
           }
         } else if (piece.type === 'lion' || piece.type === 'tiger') {
           let jumpDest = -1;
@@ -196,14 +201,14 @@ function generateMoves(board: (AnimalChessBotPiece | null)[], side: BotSide): An
           if (jumpDest !== -1 && !blocked && !isDen(jumpDest, piece.side)) {
             const occupant = board[jumpDest];
             if (!occupant || canCapture(piece, from, occupant, jumpDest)) {
-              moves.push({ from, to: jumpDest });
+              moves.push(moveTo(from, jumpDest, occupant));
             }
           }
         }
       } else {
         const occupant = board[dest];
         if (!occupant || canCapture(piece, from, occupant, dest)) {
-          moves.push({ from, to: dest });
+          moves.push(moveTo(from, dest, occupant));
         }
       }
     }
@@ -285,15 +290,15 @@ const searchConfig: SearchConfig<PosWrapper, AnimalChessBotLegalMove> = {
     return pos.side as Side;
   },
 
-  isCapture(_move: AnimalChessBotLegalMove): boolean {
-    return false;
+  isCapture(move: AnimalChessBotLegalMove): boolean {
+    return move.captured !== undefined;
   },
 
   captureValue(move: AnimalChessBotLegalMove, pos: PosWrapper): number {
-    const target = pos.board[move.to];
-    const piece = pos.board[move.from];
-    if (!target || !piece) return 0;
-    return BASE_PIECE_VALUE[target.type] * 10 - BASE_PIECE_VALUE[piece.type];
+    if (!move.captured) return 0;
+    const attacker = pos.board[move.from];
+    const attackerValue = attacker ? BASE_PIECE_VALUE[attacker.type] : 0;
+    return BASE_PIECE_VALUE[move.captured] * 10 - attackerValue;
   },
 
   evaluate(pos: PosWrapper, side: Side): number {
