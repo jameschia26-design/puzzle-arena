@@ -13,7 +13,7 @@ import {
 import { xiangqiBot, type XiangqiBotView } from './bot.js';
 import type { XiangqiPiece, XiangqiState } from './state.js';
 
-const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard', 'ai'];
+const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard'];
 
 function emptyBoard(): (XiangqiPiece | null)[] {
   return new Array(90).fill(null);

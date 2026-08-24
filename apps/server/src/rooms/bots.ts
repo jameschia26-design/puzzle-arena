@@ -22,7 +22,6 @@ import {
   type XiangqiBotView,
   type AnimalChessBotView,
 } from '@puzzle-arena/games';
-import { getAiBotAction } from '../ai/bot-moves.js';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
 import { env } from '../env.js';
 import { logger } from '../logger.js';
@@ -113,50 +112,30 @@ export function scheduleBots(room: LiveRoom): void {
     const view = room.engine().view(room.gameState as never, actorId);
 
     let action: unknown;
-    const effectiveDifficulty: BotDifficulty = difficulty === 'ai' ? 'hard' : difficulty;
 
     try {
       if (room.gameId === 'property-tycoon') {
-        action = propertyTycoonBot.chooseAction(view as PTBotView, actorId, rng, effectiveDifficulty);
+        action = propertyTycoonBot.chooseAction(view as PTBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'scrabble') {
-        action = scrabbleBot.chooseAction(view as SCRBotView, actorId, rng, effectiveDifficulty);
+        action = scrabbleBot.chooseAction(view as SCRBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'congkak') {
-        action = congkakBot.chooseAction(view as CongkakBotView, actorId, rng, effectiveDifficulty);
+        action = congkakBot.chooseAction(view as CongkakBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'checkers') {
-        action = checkersBot.chooseAction(view as CheckersBotView, actorId, rng, effectiveDifficulty);
+        action = checkersBot.chooseAction(view as CheckersBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'big-two') {
-        action = bigTwoBot.chooseAction(view as BigTwoBotView, actorId, rng, effectiveDifficulty);
+        action = bigTwoBot.chooseAction(view as BigTwoBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'reversi') {
-        action = reversiBot.chooseAction(view as ReversiBotView, actorId, rng, effectiveDifficulty);
+        action = reversiBot.chooseAction(view as ReversiBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'connect4') {
-        action = connect4Bot.chooseAction(view as Connect4BotView, actorId, rng, effectiveDifficulty);
+        action = connect4Bot.chooseAction(view as Connect4BotView, actorId, rng, difficulty);
       } else if (room.gameId === 'chess') {
-        action = chessBot.chooseAction(view as ChessBotView, actorId, rng, effectiveDifficulty);
+        action = chessBot.chooseAction(view as ChessBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'xiangqi') {
-        action = xiangqiBot.chooseAction(view as XiangqiBotView, actorId, rng, effectiveDifficulty);
+        action = xiangqiBot.chooseAction(view as XiangqiBotView, actorId, rng, difficulty);
       } else if (room.gameId === 'animal-chess') {
-        action = animalChessBot.chooseAction(view as unknown as AnimalChessBotView, actorId, rng, effectiveDifficulty);
+        action = animalChessBot.chooseAction(view as unknown as AnimalChessBotView, actorId, rng, difficulty);
       } else {
-        action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, effectiveDifficulty);
-      }
-
-      // If bot difficulty is 'ai', consult the LLM provider with fallback.
-      // The local bot has already produced a strong 'hard' move above; the LLM
-      // is only useful when it responds quickly. A reasoning model on a
-      // Connect 4 prompt can blow past the provider's own 30s timeout, which
-      // leaves the user staring at an empty board — cap the user-perceived
-      // wait at 2s and let the LLM finish in the background. The pending
-      // promise is harmless: its result is just discarded.
-      if (difficulty === 'ai') {
-        let timeoutHandle: NodeJS.Timeout | undefined;
-        const timeoutPromise = new Promise<unknown>((resolve) => {
-          timeoutHandle = setTimeout(() => resolve(action), 2000);
-        });
-        action = await Promise.race([
-          getAiBotAction({ gameId: room.gameId, view, actorId, fallbackAction: action }),
-          timeoutPromise,
-        ]);
-        if (timeoutHandle) clearTimeout(timeoutHandle);
+        action = manorMysteryBot.chooseAction(view as MMBotView, actorId, rng, difficulty);
       }
     } catch (err) {
       logger.error({ err, roomId: room.id }, 'bot policy threw; using autoAction');
@@ -182,8 +161,8 @@ export function scheduleBots(room: LiveRoom): void {
 /* ------------------------------------------------------------------ */
 
 /** How much of the time limit each difficulty takes to finish. */
-const PACE: Record<BotDifficulty, number> = { easy: 1.8, normal: 0.95, hard: 0.6, ai: 0.5 };
-const ERROR_RATE: Record<BotDifficulty, number> = { easy: 0.08, normal: 0.04, hard: 0.01, ai: 0.0 };
+const PACE: Record<BotDifficulty, number> = { easy: 1.8, normal: 0.95, hard: 0.6 };
+const ERROR_RATE: Record<BotDifficulty, number> = { easy: 0.08, normal: 0.04, hard: 0.01 };
 
 /**
  * A puzzle bot replays the solver's own solve path at a human-plausible pace,

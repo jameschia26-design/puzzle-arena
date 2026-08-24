@@ -26,7 +26,14 @@ export const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const;
 export type Difficulty = (typeof DIFFICULTIES)[number];
 export const difficultySchema = z.enum(DIFFICULTIES);
 
-export const BOT_DIFFICULTIES = ['easy', 'normal', 'hard', 'ai'] as const;
+// 'ai' (an LLM picking a move by index out of the legal-move list, no
+// lookahead) used to sit above 'hard' as the strongest tier and was even
+// steered toward as the default pick in the UI. It wasn't: a single LLM
+// guess is regularly weaker than the local alpha-beta search 'hard' already
+// runs, so selecting it made bots play worse, not better. Removed rather
+// than fixed — an LLM has no way to out-calculate a real search for a
+// perfect-information board game like this.
+export const BOT_DIFFICULTIES = ['easy', 'normal', 'hard'] as const;
 export const WORD_SEARCH_THEMES = [
   'Space',
   'Animals',

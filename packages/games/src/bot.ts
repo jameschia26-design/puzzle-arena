@@ -21,5 +21,4 @@ export const RESERVE: Record<BotDifficulty, number> = {
   easy: 0,
   normal: 150,
   hard: 250,
-  ai: 250,
 };

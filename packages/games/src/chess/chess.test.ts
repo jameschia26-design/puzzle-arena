@@ -352,7 +352,7 @@ describe('forfeit (runtime-only action)', () => {
 /* Bots                                                                 */
 /* ------------------------------------------------------------------ */
 
-const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard', 'ai'];
+const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard'];
 
 describe('chess bot', () => {
   it('never sees the RNG stream through its view', () => {

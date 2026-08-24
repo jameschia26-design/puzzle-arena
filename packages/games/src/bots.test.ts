@@ -16,7 +16,7 @@ import { connect4, type Connect4State } from './connect4/index.js';
 import { connect4Bot, type Connect4BotView } from './connect4/bot.js';
 import { animalChess, type AnimalChessState } from './animal-chess/index.js';
 import { animalChessBot, type AnimalChessBotView } from './animal-chess/bot.js';
-const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard', 'ai'];
+const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard'];
 
 /* ================================================================== */
 /* The no-cheat invariant — the thing most likely to be got wrong      */

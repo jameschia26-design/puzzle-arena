@@ -565,7 +565,7 @@ function Lobby({
                 <PixelButton
                   key={difficulty}
                   size="sm"
-                  variant={difficulty === 'ai' ? 'primary' : 'ghost'}
+                  variant={difficulty === 'hard' ? 'primary' : 'ghost'}
                   disabled={busy || seated >= meta.maxPlayers}
                   onClick={() => void addBot(difficulty)}
                 >
