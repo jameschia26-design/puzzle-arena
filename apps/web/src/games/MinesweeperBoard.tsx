@@ -178,6 +178,7 @@ export function MinesweeperBoard({
         }
         return next;
       });
+    },
     [cols, isCompleted, isDetonated, revealed],
   );
 
