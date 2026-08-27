@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cn } from '../ui/cn.js';
-
+import { sfx } from '../ui/sound.js';
 export interface KillerCage {
   id: number;
   cells: number[];
@@ -147,6 +147,7 @@ export function SudokuBoard({
     if (disabled) return;
     if ((givens[index] ?? 0) !== 0) return;
     if (pencil && value !== 0) {
+      sfx.pencil();
       setMarks((prev) => {
         const next = new Set(prev[index] ?? []);
         if (next.has(value)) next.delete(value);
@@ -155,20 +156,32 @@ export function SudokuBoard({
       });
       return;
     }
+    if (value === 0) {
+      sfx.clear();
+    } else {
+      sfx.pop();
+    }
     onCommit(Math.floor(index / 9), index % 9, value);
   };
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
     const row = Math.floor(cursor / 9);
     const col = cursor % 9;
-    if (e.key === 'ArrowUp') setCursor(((row + 8) % 9) * 9 + col);
-    else if (e.key === 'ArrowDown') setCursor(((row + 1) % 9) * 9 + col);
-    else if (e.key === 'ArrowLeft') setCursor(row * 9 + ((col + 8) % 9));
-    else if (e.key === 'ArrowRight') setCursor(row * 9 + ((col + 1) % 9));
-    else if (/^[1-9]$/.test(e.key)) write(cursor, Number(e.key));
-    else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') write(cursor, 0);
-    else if (e.key.toLowerCase() === 'p') setPencil((p) => !p);
-    else return;
+    const key = e.key;
+    const keyLower = key.toLowerCase();
+
+    if (key === 'ArrowUp' || keyLower === 'w') setCursor(((row + 8) % 9) * 9 + col);
+    else if (key === 'ArrowDown' || keyLower === 's') setCursor(((row + 1) % 9) * 9 + col);
+    else if (key === 'ArrowLeft' || keyLower === 'a') setCursor(row * 9 + ((col + 8) % 9));
+    else if (key === 'ArrowRight' || keyLower === 'd') setCursor(row * 9 + ((col + 1) % 9));
+    else if (/^[1-9]$/.test(key)) write(cursor, Number(key));
+    else if (/^Numpad[1-9]$/.test(e.code)) write(cursor, Number(e.code.replace('Numpad', '')));
+    else if (key === 'Backspace' || key === 'Delete' || key === '0' || keyLower === 'c' || keyLower === 'x' || e.code === 'Numpad0') {
+      write(cursor, 0);
+    } else if (keyLower === 'p' || key === ' ') {
+      sfx.blip();
+      setPencil((p) => !p);
+    } else return;
     e.preventDefault();
   };
 
@@ -179,7 +192,10 @@ export function SudokuBoard({
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <button
           type="button"
-          onClick={() => setPencil((p) => !p)}
+          onClick={() => {
+            sfx.blip();
+            setPencil((p) => !p);
+          }}
           className={cn(
             'font-display text-[10px] uppercase border-2 px-3 min-h-[44px] pa-shadow-sm cursor-pointer',
             pencil ? 'border-pa-amber text-pa-amber' : 'border-pa-border text-pa-ink-dim',
@@ -188,9 +204,10 @@ export function SudokuBoard({
         >
           Pencil {pencil ? 'on' : 'off'}
         </button>
-        <span className="text-[12px] text-pa-ink-dim">Arrows to move · 1-9 to fill · P for pencil</span>
+        <span className="text-[11px] text-pa-ink-dim font-mono bg-pa-surface px-2 py-1 border border-pa-border/70 rounded-none">
+          Arrows/WASD · 1-9 (Numpad) · Space/P (Pencil) · Del/C (Clear)
+        </span>
       </div>
-
       {(cages?.length ?? 0) > 0 && (
         <p className="flex items-center gap-2 text-[12px] text-pa-ink-dim">
           <span

@@ -65,7 +65,7 @@ export function MinesweeperBoard({
   // Local private flags — strictly client-side, never exposed to other players!
   const [flags, setFlags] = React.useState<Set<number>>(new Set());
   const [flagMode, setFlagMode] = React.useState(false);
-
+  const [cursor, setCursor] = React.useState(0);
   // Local revealed and detonated state for instant responsive visual feedback
   const [localRevealed, setLocalRevealed] = React.useState<boolean[]>(() => {
     if (board && typeof board === 'object' && 'revealed' in board && Array.isArray(board.revealed)) {
@@ -174,11 +174,10 @@ export function MinesweeperBoard({
           sfx.chip();
         } else {
           next.add(idx);
-          sfx.deal();
+          sfx.flag();
         }
         return next;
       });
-    },
     [cols, isCompleted, isDetonated, revealed],
   );
 
@@ -254,26 +253,26 @@ export function MinesweeperBoard({
             if (res.detonated) {
               anyDetonated = true;
               detonatedPos = n;
-              break;
             }
           }
         }
 
         setLocalRevealed(currentRevealed);
-
         if (anyDetonated) {
           setLocalDetonated(true);
           sfx.bomb();
           onCommit(`${detonatedPos.r},${detonatedPos.c}`, 'detonated');
         } else {
+          sfx.chord();
           for (let i = 0; i < totalCells; i++) {
             if (currentRevealed[i] && !revealed[i]) newIndices.push(i);
           }
           if (newIndices.length > 0) {
-            sfx.turn();
             onCommit(`${row},${col}`, newIndices.join(';'));
           }
         }
+      } else {
+        sfx.blip();
       }
     },
     [cols, flags, isCompleted, isDetonated, onCommit, revealed, rows, solution, totalCells],
@@ -330,12 +329,47 @@ export function MinesweeperBoard({
             )}
           </div>
         </div>
+        <div className="mt-2 pt-2 border-t border-pa-border/40 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[11px] text-pa-ink-dim font-mono bg-pa-surface px-2 py-1 border border-pa-border/70">
+            Arrows/WASD · Space/Z (Dig) · F/X (Flag) · C (Chord)
+          </span>
+          <span className="text-[11px] text-pa-ink-dim font-mono">
+            Right-click / Long-press flags · Middle-click chords
+          </span>
+        </div>
       </PixelPanel>
 
       {/* Grid Container — Horizontal scrollable on narrow screens, naturally scrollable vertically */}
       <div className="w-full overflow-x-auto p-2 sm:p-4 bg-[#090d16] border-2 border-pa-border rounded-lg flex justify-start sm:justify-center">
         <div
-          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none m-auto shrink-0"
+          role="grid"
+          tabIndex={0}
+          aria-label="Minesweeper field"
+          onKeyDown={(e) => {
+            const r = Math.floor(cursor / cols);
+            const c = cursor % cols;
+            const key = e.key;
+            const keyLower = key.toLowerCase();
+
+            if (key === 'ArrowUp' || keyLower === 'w') setCursor(((r + rows - 1) % rows) * cols + c);
+            else if (key === 'ArrowDown' || keyLower === 's') setCursor(((r + 1) % rows) * cols + c);
+            else if (key === 'ArrowLeft' || keyLower === 'a') setCursor(r * cols + ((c + cols - 1) % cols));
+            else if (key === 'ArrowRight' || keyLower === 'd') setCursor(r * cols + ((c + 1) % cols));
+            else if (key === ' ' || key === 'Enter' || keyLower === 'z') {
+              if (flagMode) handleToggleFlag(r, c);
+              else handleReveal(r, c);
+            } else if (keyLower === 'f' || keyLower === 'x') {
+              handleToggleFlag(r, c);
+            } else if (keyLower === 'c') {
+              handleChord(r, c);
+            } else if (keyLower === 'm') {
+              unlockAudioSession();
+              setFlagMode((prev) => !prev);
+              sfx.chip();
+            } else return;
+            e.preventDefault();
+          }}
+          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none m-auto shrink-0 outline-none"
           style={{
             gridTemplateColumns: `repeat(${cols}, 32px)`,
             width: 'max-content',
@@ -347,29 +381,25 @@ export function MinesweeperBoard({
             const c = idx % cols;
             const isRev = revealed[idx];
             const isFlg = flags.has(idx);
+            const isCursor = cursor === idx;
             const val = solution ? solution.grid[idx] : 0;
             const isMine = val === MINE;
-
             return (
               <button
                 key={idx}
                 type="button"
+                role="gridcell"
+                aria-label={`Row ${r + 1} column ${c + 1}`}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   handleToggleFlag(r, c, e);
                 }}
                 onTouchStart={(e) => startLongPress(r, c, e)}
-                onTouchEnd={(e) => {
-                  if (isLongPressRef.current) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }
-                  cancelLongPress();
-                }}
-                onTouchMove={handleTouchMove}
+                onTouchEnd={cancelLongPress}
                 onTouchCancel={cancelLongPress}
                 onClick={(e) => {
+                  setCursor(idx);
                   if (isLongPressRef.current) {
                     isLongPressRef.current = false;
                     return;
@@ -383,11 +413,12 @@ export function MinesweeperBoard({
                   }
                 }}
                 className={cn(
-                  'w-8 h-8 min-w-[32px] min-h-[32px] sm:w-9 sm:h-9 sm:min-w-[36px] sm:min-h-[36px] aspect-square shrink-0',
+                  'w-8 h-8 min-w-[32px] min-h-[32px] sm:w-9 sm:h-9 sm:min-w-[36px] sm:min-h-[36px] aspect-square shrink-0 relative',
                   'text-[14px] sm:text-[16px] font-bold font-mono flex items-center justify-center transition-all cursor-pointer select-none touch-manipulation',
+                  isCursor && 'ring-2 ring-pa-amber ring-inset z-10',
                   isRev
                     ? isMine
-                      ? 'bg-red-950 border border-red-500 text-pa-pink shadow-[0_0_10px_rgba(239,68,68,0.5)]'
+                      ? 'bg-red-950 border border-red-500 text-pa-pink shadow-[0_0_10px_rgba(239,68,68,0.5)] animate-bounce'
                       : 'bg-[#121826] border border-[#1f293d]/50 shadow-inner'
                     : isFlg
                       ? 'bg-pa-bg-alt border-2 border-t-pa-pink/80 border-l-pa-pink/80 border-b-pa-pink/30 border-r-pa-pink/30 shadow'

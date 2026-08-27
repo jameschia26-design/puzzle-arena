@@ -264,6 +264,103 @@ export const sfx = {
     osc.stop(t + 0.06);
   },
 
+  /** Sudoku / puzzle pencil note scratch */
+  pencil() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1200, t);
+    osc.frequency.linearRampToValueAtTime(800, t + 0.04);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.05);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  },
+
+  /** Nonogram cross / mark toggle */
+  cross() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(400, t);
+    osc.frequency.linearRampToValueAtTime(250, t + 0.04);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.05);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.06);
+  },
+
+  /** Minesweeper flag placement */
+  flag() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.linearRampToValueAtTime(1000, t + 0.06);
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.08);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.09);
+  },
+
+  /** Minesweeper chord sweep / multi-clear */
+  chord() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t0 = ctx.currentTime + 0.01;
+    [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t = t0 + i * 0.035;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.14);
+      osc.connect(gain);
+      gain.connect(sfxGain!);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    });
+  },
+
+  /** Clear cell whoosh */
+  clear() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(300, t);
+    osc.frequency.exponentialRampToValueAtTime(100, t + 0.08);
+    gain.gain.setValueAtTime(0.25, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.09);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  },
+
   /** Turn change / chord sweep chime */
   turn() {
     const ctx = getAudioContext();

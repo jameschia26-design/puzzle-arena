@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { cn } from '../ui/cn.js';
 import { SEAT_COLORS } from '../ui/seat.js';
+import { sfx } from '../ui/sound.js';
 
 interface Cell {
   x: number;
@@ -71,7 +72,11 @@ export function WordSearchBoard({
 
     void onSelect(submittedAnchor.y, submittedAnchor.x, submittedHover.y, submittedHover.x).then(
       (word) => {
-        if (!word) return; // wrong guess or a repeat — nothing to tint, selection just clears
+        if (!word) {
+          sfx.wrong();
+          return; // wrong guess or a repeat — nothing to tint, selection just clears
+        }
+        sfx.correct();
         const colourIndex = words.indexOf(word);
         const colour = SEAT_COLORS[(colourIndex >= 0 ? colourIndex : 0) % SEAT_COLORS.length] as string;
         setHighlights((prev) => {
@@ -122,10 +127,10 @@ export function WordSearchBoard({
                 if (e.currentTarget.hasPointerCapture(e.pointerId)) {
                   e.currentTarget.releasePointerCapture(e.pointerId);
                 }
+                sfx.blip();
                 setAnchor({ x, y });
                 setHover({ x, y });
               }}
-              onPointerEnter={() => anchor && setHover({ x, y })}
             >
               {letter}
             </button>

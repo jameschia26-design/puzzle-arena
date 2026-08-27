@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cn } from '../ui/cn.js';
-
+import { sfx } from '../ui/sound.js';
 const FILLED = 1;
 const CROSSED = 2;
 
@@ -31,12 +31,15 @@ export function NonogramBoard({
   );
   /** Touch has no right button; this is how a phone places crosses. */
   const [crossMode, setCrossMode] = React.useState(false);
+  const [cursor, setCursor] = React.useState(0);
 
   const paint = (index: number, value: number): void => {
     if (disabled) return;
+    if (value === FILLED) sfx.pop();
+    else if (value === CROSSED) sfx.cross();
+    else sfx.clear();
     onCommit(Math.floor(index / size), index % size, value);
   };
-
   const runsOf = (line: boolean[]): number[] => {
     const runs: number[] = [];
     let run = 0;
@@ -81,27 +84,57 @@ export function NonogramBoard({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        {/* Mirrors the Sudoku pencil toggle, and is the only way to cross a
-            cell on a touch screen. */}
-        <button
-          type="button"
-          onClick={() => setCrossMode((v) => !v)}
-          aria-pressed={crossMode}
-          className={cn(
-            'font-display text-[10px] uppercase border-2 px-3 min-h-[44px] pa-shadow-sm cursor-pointer',
-            crossMode ? 'border-pa-amber text-pa-amber' : 'border-pa-border text-pa-ink-dim',
-          )}
-        >
-          {crossMode ? 'Marking ×' : 'Filling'}
-        </button>
-        <span className="text-[12px] text-pa-ink-dim">
-          Drag to paint a line · right-click also crosses
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              sfx.blip();
+              setCrossMode((v) => !v);
+            }}
+            aria-pressed={crossMode}
+            className={cn(
+              'font-display text-[10px] uppercase border-2 px-3 min-h-[44px] pa-shadow-sm cursor-pointer',
+              crossMode ? 'border-pa-amber text-pa-amber' : 'border-pa-border text-pa-ink-dim',
+            )}
+          >
+            {crossMode ? 'Marking ×' : 'Filling'}
+          </button>
+        </div>
+        <span className="text-[11px] text-pa-ink-dim font-mono bg-pa-surface px-2 py-1 border border-pa-border/70">
+          Arrows/WASD · Space/Z (Fill) · X/C (Cross) · Del (Clear)
         </span>
       </div>
 
     <div
-      className="inline-grid select-none touch-none"
+      role="grid"
+      tabIndex={0}
+      aria-label="Nonogram grid"
+      onKeyDown={(e) => {
+        const row = Math.floor(cursor / size);
+        const col = cursor % size;
+        const key = e.key;
+        const keyLower = key.toLowerCase();
+
+        if (key === 'ArrowUp' || keyLower === 'w') setCursor(((row + size - 1) % size) * size + col);
+        else if (key === 'ArrowDown' || keyLower === 's') setCursor(((row + 1) % size) * size + col);
+        else if (key === 'ArrowLeft' || keyLower === 'a') setCursor(row * size + ((col + size - 1) % size));
+        else if (key === 'ArrowRight' || keyLower === 'd') setCursor(row * size + ((col + 1) % size));
+        else if (key === ' ' || key === 'Enter' || keyLower === 'z') {
+          const current = marks[cursor] ?? 0;
+          paint(cursor, current === FILLED ? 0 : FILLED);
+        } else if (keyLower === 'x' || keyLower === 'c') {
+          const current = marks[cursor] ?? 0;
+          paint(cursor, current === CROSSED ? 0 : CROSSED);
+        } else if (key === 'Backspace' || key === 'Delete' || key === '0') {
+          paint(cursor, 0);
+        } else if (keyLower === 'p' || keyLower === 'm') {
+          sfx.blip();
+          setCrossMode((v) => !v);
+        } else return;
+        e.preventDefault();
+      }}
+      className="inline-grid select-none touch-none outline-none"
       style={{
         gridTemplateColumns: `auto repeat(${size}, ${cellPx})`,
         gridTemplateRows: `auto repeat(${size}, ${cellPx})`,
@@ -145,17 +178,21 @@ export function NonogramBoard({
           {Array.from({ length: size }, (_, c) => {
             const index = r * size + c;
             const mark = marks[index] ?? 0;
+            const isCursor = cursor === index;
             const wrong =
               solution && ((mark === FILLED) !== Boolean(solution[index]));
             return (
               <button
                 key={c}
                 type="button"
+                role="gridcell"
                 aria-label={`Row ${r + 1} column ${c + 1}`}
+                onClick={() => setCursor(index)}
                 className={cn(
-                  'border cursor-pointer',
+                  'relative border cursor-pointer',
                   c % 5 === 0 && c !== 0 && 'border-l-2 border-l-pa-ink',
                   r % 5 === 0 && r !== 0 && 'border-t-2 border-t-pa-ink',
+                  isCursor && 'ring-2 ring-pa-amber ring-inset z-10',
                   mark === FILLED
                     ? 'bg-pa-cyan border-pa-cyan'
                     : 'bg-pa-bg border-pa-border/60',
@@ -163,7 +200,6 @@ export function NonogramBoard({
                 )}
                 onPointerDown={(e) => {
                   if (disabled) return;
-                  // Touch sets implicit pointer capture on the cell the finger
                   // landed on, which stops pointerenter firing anywhere else —
                   // and drag-painting with it. Releasing it restores the drag.
                   if (e.currentTarget.hasPointerCapture(e.pointerId)) {
