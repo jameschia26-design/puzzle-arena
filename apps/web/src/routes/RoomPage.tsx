@@ -277,7 +277,7 @@ export default function RoomPage(): React.ReactElement {
           </PixelBadge>
         </div>
         <div className="flex items-center gap-3">
-          {running && <Countdown endsAt={store.endsAt} className="text-[16px] md:text-[24px]" />}
+          {running && store.endsAt && <Countdown endsAt={store.endsAt} className="text-[16px] md:text-[24px]" />}
           {isHost && running && (
             <PixelButton
               size="sm"
@@ -718,9 +718,12 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
     );
   };
   const gameAction = async (action: unknown): Promise<void> => {
+    const isTick = typeof action === 'object' && action !== null && 'type' in action && action.type === 'tick';
     const res = await emit<{ accepted: boolean; error?: string }>(EV.gameAction, action);
-    if (!res.accepted && res.error && res.error !== 'Blocked' && res.error !== 'Illegal move') {
-      toast(res.error);
+    if (isTick) return;
+    if (!res.accepted && res.error) {
+      const silentErrors = ['Blocked', 'Illegal move', 'Room is paused', 'Not in a room', 'Room is not running'];
+      if (!silentErrors.includes(res.error)) toast(res.error);
     }
   };
 

@@ -234,7 +234,8 @@ export class LiveRoom {
 
     const startsAt = Date.now() + START_COUNTDOWN_MS;
     this.startedAt = startsAt;
-    this.endsAt = startsAt + this.timeLimitMs;
+    const hasTimeLimit = this.timeLimitMs > 0 && this.gameId !== 'pacman' && this.gameId !== 'tetris';
+    this.endsAt = hasTimeLimit ? startsAt + this.timeLimitMs : null;
     this.status = 'running';
 
     await db
@@ -242,7 +243,7 @@ export class LiveRoom {
       .set({
         status: 'running',
         startedAt: new Date(startsAt),
-        endsAt: new Date(this.endsAt),
+        endsAt: this.endsAt ? new Date(this.endsAt) : null,
       })
       .where(eq(rooms.id, this.id));
 

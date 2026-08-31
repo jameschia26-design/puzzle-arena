@@ -1,5 +1,6 @@
 import * as React from 'react';
 import type { PacManView, GhostState } from '@puzzle-arena/games';
+import { useRoom } from '../net/socket.js';
 import { sfx, bgm } from '../ui/sound.js';
 
 const GHOST_COLORS: Record<number, string> = {
@@ -11,20 +12,28 @@ const GHOST_COLORS: Record<number, string> = {
 const GHOST_NAMES = ['Blinky', 'Pinky', 'Inky', 'Clyde'];
 
 const CELL = 18; // px per maze cell
-// Engine tick cadence (ms per tile step). The rAF interpolator animates
-// sprites across exactly this window, so the two must stay in sync.
-const TICK_MS = 180;
+// Engine tick cadence (ms per tile step). The rAF interpolator and chomping
+// window use the same cadence so motion and animation stay in sync.
+const TICK_MS = 250;
 
-/** One sprite's lerp window: previous tick position -> current tick position. */
-type SpriteAnim = { from: { x: number; y: number }; to: { x: number; y: number }; start: number };
+type TilePosition = { x: number; y: number };
+/** One sprite's lerp window: previous visual position -> current tick position. */
+type SpriteAnim = { from: TilePosition; to: TilePosition; start: number };
+
+function spritePosition(a: SpriteAnim, now: number): TilePosition {
+  const t = Math.min(1, (now - a.start) / TICK_MS);
+  return {
+    x: a.from.x + (a.to.x - a.from.x) * t,
+    y: a.from.y + (a.to.y - a.from.y) * t,
+  };
+}
 
 /** Write the interpolated tile position as a translate() transform. */
-function applySpriteTransform(el: HTMLElement | null, a: SpriteAnim | null, now: number) {
-  if (!el || !a) return;
-  const t = Math.min(1, (now - a.start) / TICK_MS);
-  const x = a.from.x + (a.to.x - a.from.x) * t;
-  const y = a.from.y + (a.to.y - a.from.y) * t;
-  el.style.transform = `translate(${x * CELL}px, ${y * CELL}px)`;
+function applySpriteTransform(el: HTMLElement | null, a: SpriteAnim | null, now: number): TilePosition | null {
+  if (!el || !a) return null;
+  const position = spritePosition(a, now);
+  el.style.transform = `translate(${position.x * CELL}px, ${position.y * CELL}px)`;
+  return position;
 }
 
 function MazeCell({ tile, fruit }: {
@@ -198,6 +207,7 @@ export function PacManBoard({
   onAction: (a: unknown) => void;
 }): React.ReactElement {
   const you = view.you;
+  const paused = useRoom((s) => s.paused);
   const W = view.mazeW;
   const H = view.mazeH;
   // Touch and tick loops outlive individual room snapshots; keep them pointed
@@ -252,10 +262,10 @@ export function PacManBoard({
   // recovery path. Emit authoritative logic ticks at the engine cadence while
   // this player is alive; rAF below makes each resulting tile step smooth.
   React.useEffect(() => {
-    if (!you || you.gameOver || view.phase === 'game_over') return;
+    if (!you || you.gameOver || view.phase === 'game_over' || paused) return;
     const interval = window.setInterval(() => actionRef.current({ type: 'tick' }), TICK_MS);
     return () => window.clearInterval(interval);
-  }, [you?.gameOver, view.phase]);
+  }, [you?.gameOver, view.phase, paused]);
 
 
 
@@ -362,33 +372,39 @@ export function PacManBoard({
 
   // --- Smooth sprite interpolation ---------------------------------------
   // The engine moves one tile per tick (TICK_MS); rendering bare tick
-  // snapshots makes Pac-Man and ghosts pop tile-by-tile at ~5.5 FPS. A rAF
-  // loop lerps each sprite from its previous tick position to the current
-  // one across the tick window, gliding at display framerate. Tunnel wraps
-  // and respawns (|delta| > 1 tile) snap instantly — never a linear
-  // fly-across between tunnel mouths.
+  // snapshots makes Pac-Man and ghosts pop tile-by-tile. The rAF loop tracks
+  // each sprite's rendered float position, so a tick that arrives before the
+  // current glide ends continues from that point rather than jumping back to
+  // the prior integer tile. Tunnel wraps and respawns (|delta| > 1 tile)
+  // still snap instantly — never fly linearly across tunnel mouths.
   const pacElRef = React.useRef<HTMLDivElement | null>(null);
   const ghostElsRef = React.useRef<Map<number, HTMLDivElement>>(new Map());
   const spriteAnimRef = React.useRef<{ pac: SpriteAnim | null; ghosts: Map<number, SpriteAnim> }>({
     pac: null,
     ghosts: new Map(),
   });
-  const lastPacPosRef = React.useRef<{ x: number; y: number } | null>(null);
-  const lastGhostPosRef = React.useRef<Map<number, { x: number; y: number }>>(new Map());
+  const spriteVisualRef = React.useRef<{ pac: TilePosition | null; ghosts: Map<number, TilePosition> }>({
+    pac: null,
+    ghosts: new Map(),
+  });
+  const lastPacPosRef = React.useRef<TilePosition | null>(null);
+  const lastGhostPosRef = React.useRef<Map<number, TilePosition>>(new Map());
 
-  // Re-arm animation targets whenever a tick delivers new positions.
-  // useLayoutEffect (not useEffect) so the fresh from-position is written to
-  // the DOM pre-paint — sprites never flash at their previous spot.
+  // Re-arm targets only when a tick actually changes a sprite's tile.
+  // useLayoutEffect writes its current visual position before paint, so
+  // sprites never flash or reset to an older tile when socket timing varies.
   React.useLayoutEffect(() => {
     const now = performance.now();
     const anim = spriteAnimRef.current;
+    const visual = spriteVisualRef.current;
     if (you) {
       const cur = you.pacPos;
       const last = lastPacPosRef.current;
-      const positionChanged = !last || last.x !== cur.x || last.y !== cur.y;
-      if (positionChanged) {
+      if (!last || last.x !== cur.x || last.y !== cur.y) {
         const snap = !last || Math.abs(cur.x - last.x) > 1 || Math.abs(cur.y - last.y) > 1;
-        anim.pac = { from: snap ? { ...cur } : { ...last! }, to: { ...cur }, start: now };
+        const from = snap ? { ...cur } : (visual.pac ?? { ...last });
+        anim.pac = { from, to: { ...cur }, start: now };
+        visual.pac = from;
         if (snap) stopPacChomp();
         else startPacChomp();
       }
@@ -397,15 +413,19 @@ export function PacManBoard({
         const gLast = lastGhostPosRef.current.get(g.id);
         if (!gLast || gLast.x !== g.pos.x || gLast.y !== g.pos.y) {
           const snap = !gLast || Math.abs(g.pos.x - gLast.x) > 1 || Math.abs(g.pos.y - gLast.y) > 1;
-          anim.ghosts.set(g.id, { from: snap ? { ...g.pos } : { ...gLast }, to: { ...g.pos }, start: now });
+          const from = snap ? { ...g.pos } : (visual.ghosts.get(g.id) ?? { ...gLast });
+          anim.ghosts.set(g.id, { from, to: { ...g.pos }, start: now });
+          visual.ghosts.set(g.id, from);
         }
         lastGhostPosRef.current.set(g.id, { ...g.pos });
       }
     }
-    // Paint immediately (t=0 or wherever the lerp stands) — covers freshly
-    // mounted sprite elements that have no transform yet.
-    applySpriteTransform(pacElRef.current, anim.pac, now);
-    for (const [id, a] of anim.ghosts) applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
+    const pacVisual = applySpriteTransform(pacElRef.current, anim.pac, now);
+    if (pacVisual) visual.pac = pacVisual;
+    for (const [id, a] of anim.ghosts) {
+      const ghostVisual = applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
+      if (ghostVisual) visual.ghosts.set(id, ghostVisual);
+    }
   });
 
   // 60 FPS glide: lerp every sprite toward its tick target. Transform is
@@ -415,8 +435,13 @@ export function PacManBoard({
     const step = () => {
       const now = performance.now();
       const anim = spriteAnimRef.current;
-      applySpriteTransform(pacElRef.current, anim.pac, now);
-      for (const [id, a] of anim.ghosts) applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
+      const visual = spriteVisualRef.current;
+      const pacVisual = applySpriteTransform(pacElRef.current, anim.pac, now);
+      if (pacVisual) visual.pac = pacVisual;
+      for (const [id, a] of anim.ghosts) {
+        const ghostVisual = applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
+        if (ghostVisual) visual.ghosts.set(id, ghostVisual);
+      }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);

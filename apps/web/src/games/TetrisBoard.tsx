@@ -1,5 +1,6 @@
 import * as React from 'react';
 import type { TetrisView, TetrominoKind } from '@puzzle-arena/games';
+import { useRoom } from '../net/socket.js';
 import { sfx, bgm } from '../ui/sound.js';
 
 const COLORS: Record<TetrominoKind, string> = {
@@ -145,6 +146,7 @@ export function TetrisBoard({
   onAction: (a: unknown) => void;
 }): React.ReactElement {
   const you = view.you;
+  const paused = useRoom((s) => s.paused);
   const cell = useCellSize();
   // Play BGM when view mounted; stop on unmount
   React.useEffect(() => {
@@ -233,7 +235,7 @@ export function TetrisBoard({
   const gravityRef = React.useRef<number>(0);
   const tickRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
-    if (!you || you.gameOver || view.phase === 'game_over') return;
+    if (!you || you.gameOver || view.phase === 'game_over' || paused) return;
     const gravityMs = Math.max(80, 1000 - (you.level - 1) * 80);
     const loop = () => {
       onAction({ type: 'tick' });
@@ -242,7 +244,7 @@ export function TetrisBoard({
     tickRef.current = setTimeout(loop, gravityMs);
     return () => { if (tickRef.current) clearTimeout(tickRef.current); };
 
-  }, [you?.level, you?.gameOver, view.phase, onAction]);
+  }, [you?.level, you?.gameOver, view.phase, paused, onAction]);
   if (!you) {
     return <div className="text-pa-ink-dim text-sm">Loading Tetris…</div>;
   }
