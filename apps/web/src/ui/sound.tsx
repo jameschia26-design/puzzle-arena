@@ -642,6 +642,55 @@ export const sfx = {
       osc.stop(t + 0.19);
     });
   },
+
+  rotate() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const tt = ctx.currentTime + 0.01;
+    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+    osc.type = 'square'; osc.frequency.setValueAtTime(620, tt); osc.frequency.linearRampToValueAtTime(780, tt + 0.04);
+    gain.gain.setValueAtTime(0.25, tt); gain.gain.linearRampToValueAtTime(0.001, tt + 0.06);
+    osc.connect(gain); gain.connect(sfxGain); osc.start(tt); osc.stop(tt + 0.07);
+  },
+  lineClear() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t0 = ctx.currentTime + 0.01;
+    [523.25, 659.25, 783.99].forEach((f, i) => { const osc = ctx.createOscillator(); const gain = ctx.createGain(); const tt = t0 + i*0.06; osc.type='triangle'; osc.frequency.setValueAtTime(f, tt); gain.gain.setValueAtTime(0.4, tt); gain.gain.linearRampToValueAtTime(0.001, tt+0.18); osc.connect(gain); gain.connect(sfxGain!); osc.start(tt); osc.stop(tt+0.19); });
+  },
+  tetrisClear() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t0 = ctx.currentTime + 0.01;
+    [523.25,659.25,783.99,1046.5,783.99,1046.5].forEach((f,i)=>{ const osc=ctx.createOscillator(); const gain=ctx.createGain(); const tt=t0+i*0.08; osc.type='square'; osc.frequency.setValueAtTime(f,tt); gain.gain.setValueAtTime(0.35,tt); gain.gain.linearRampToValueAtTime(0.001,tt+0.16); osc.connect(gain); gain.connect(sfxGain!); osc.start(tt); osc.stop(tt+0.17);});
+  },
+  levelUp() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const t0=ctx.currentTime+0.01; [392,523.25,659.25,783.99].forEach((f,i)=>{ const osc=ctx.createOscillator(); const gain=ctx.createGain(); const tt=t0+i*0.1; osc.type='triangle'; osc.frequency.setValueAtTime(f,tt); gain.gain.setValueAtTime(0.4,tt); gain.gain.linearRampToValueAtTime(0.001,tt+0.2); osc.connect(gain); gain.connect(sfxGain!); osc.start(tt); osc.stop(tt+0.21);});
+  },
+  hardDrop() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const tt=ctx.currentTime+0.01; const osc=ctx.createOscillator(); const gain=ctx.createGain(); osc.type='sine'; osc.frequency.setValueAtTime(120,tt); osc.frequency.exponentialRampToValueAtTime(50,tt+0.08); gain.gain.setValueAtTime(0.6,tt); gain.gain.linearRampToValueAtTime(0.001,tt+0.1); osc.connect(gain); gain.connect(sfxGain); osc.start(tt); osc.stop(tt+0.11);
+  },
+  pacWaka() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const tm=ctx.currentTime+0.01; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='square'; o.frequency.setValueAtTime(440,tm); o.frequency.linearRampToValueAtTime(880,tm+0.06); g.gain.setValueAtTime(0.28,tm); g.gain.linearRampToValueAtTime(0.001,tm+0.09); o.connect(g); g.connect(sfxGain!); o.start(tm); o.stop(tm+0.10);
+  },
+  pacPower() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const tm=ctx.currentTime+0.01; [660,880,660,880].forEach((f,i)=>{ const o=ctx.createOscillator(); const g=ctx.createGain(); const tt=tm+i*0.11; o.type='square'; o.frequency.setValueAtTime(f,tt); g.gain.setValueAtTime(0.3,tt); g.gain.linearRampToValueAtTime(0.001,tt+0.10); o.connect(g); g.connect(sfxGain!); o.start(tt); o.stop(tt+0.11);});
+  },
+  pacEatGhost() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const tm=ctx.currentTime+0.01; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='square'; o.frequency.setValueAtTime(1200,tm); o.frequency.linearRampToValueAtTime(200,tm+0.28); g.gain.setValueAtTime(0.35,tm); g.gain.linearRampToValueAtTime(0.001,tm+0.30); o.connect(g); g.connect(sfxGain!); o.start(tm); o.stop(tm+0.32);
+  },
+  pacDeath() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const tm=ctx.currentTime+0.01; [440,380,320,260,200,160,120].forEach((f,i)=>{ const o=ctx.createOscillator(); const g=ctx.createGain(); const tt=tm+i*0.12; o.type='sawtooth'; o.frequency.setValueAtTime(f,tt); g.gain.setValueAtTime(0.28,tt); g.gain.linearRampToValueAtTime(0.001,tt+0.11); o.connect(g); g.connect(sfxGain!); o.start(tt); o.stop(tt+0.12);});
+  },
+  pacSiren() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const tm=ctx.currentTime+0.01; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sawtooth'; o.frequency.setValueAtTime(180,tm); o.frequency.linearRampToValueAtTime(360,tm+0.22); g.gain.setValueAtTime(0.12,tm); g.gain.linearRampToValueAtTime(0.001,tm+0.24); o.connect(g); g.connect(sfxGain!); o.start(tm); o.stop(tm+0.25);
+  },
+  gameOver() {
+    const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const t0=ctx.currentTime+0.01; [220,180,140,110].forEach((f,i)=>{ const osc=ctx.createOscillator(); const gain=ctx.createGain(); const tt=t0+i*0.18; osc.type='sawtooth'; osc.frequency.setValueAtTime(f,tt); gain.gain.setValueAtTime(0.35,tt); gain.gain.linearRampToValueAtTime(0.001,tt+0.25); osc.connect(gain); gain.connect(sfxGain!); osc.start(tt); osc.stop(tt+0.26);});
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -661,7 +710,9 @@ export type MusicTrack =
   | 'property'
   | 'mystery'
   | 'arcade'
-  | 'zen';
+  | 'zen'
+  | 'tetris'
+  | 'pacman';
 interface NoteEvent {
   note: number;
   duration: number;
@@ -861,6 +912,40 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
       { note: 45, duration: 8 }, { note: 41, duration: 8 },
       { note: 43, duration: 8 }, { note: 40, duration: 8 },
       { note: 38, duration: 8 }, { note: 40, duration: 8 },
+    ],
+  },
+  pacman: {
+    // Intro + siren blend, Namco-inspired but original composition, 138 BPM
+    tempo: 138,
+    lead: [
+      { note: 60, duration: 2 }, { note: 62, duration: 2 }, { note: 64, duration: 2 }, { note: 65, duration: 2 },
+      { note: 67, duration: 4 }, { note: 65, duration: 2 }, { note: 64, duration: 2 },
+      { note: 62, duration: 2 }, { note: 64, duration: 2 }, { note: 65, duration: 2 }, { note: 67, duration: 2 },
+      { note: 64, duration: 4 }, { note: 60, duration: 4 },
+      { note: 60, duration: 2 }, { note: 62, duration: 2 }, { note: 64, duration: 2 }, { note: 65, duration: 2 },
+      { note: 67, duration: 3 }, { note: 69, duration: 1 }, { note: 67, duration: 4 }, { note: 65, duration: 4 },
+    ],
+    bass: [
+      { note: 36, duration: 4 }, { note: 43, duration: 4 }, { note: 36, duration: 4 }, { note: 43, duration: 4 },
+      { note: 38, duration: 4 }, { note: 45, duration: 4 }, { note: 38, duration: 4 }, { note: 45, duration: 4 },
+      { note: 41, duration: 4 }, { note: 48, duration: 4 }, { note: 41, duration: 4 }, { note: 48, duration: 4 },
+      { note: 36, duration: 4 }, { note: 40, duration: 4 }, { note: 43, duration: 4 }, { note: 40, duration: 4 },
+    ],
+  },
+  tetris: {
+    // Korobeiniki-inspired, Web Audio synthesized (no sample, CC0). 8-bit arps at 144 BPM.
+    tempo: 144,
+    lead: [
+      { note: 64, duration: 2 }, { note: 65, duration: 2 }, { note: 67, duration: 2 }, { note: 72, duration: 2 }, { note: 69, duration: 2 }, { note: 67, duration: 2 }, { note: 65, duration: 2 },
+      { note: 72, duration: 2 }, { note: 65, duration: 2 }, { note: 67, duration: 2 }, { note: 69, duration: 2 }, { note: 67, duration: 2 }, { note: 65, duration: 2 }, { note: 64, duration: 2 },
+      { note: 64, duration: 2 }, { note: 67, duration: 2 }, { note: 72, duration: 2 }, { note: 69, duration: 2 }, { note: 67, duration: 2 }, { note: 65, duration: 2 },
+      { note: 69, duration: 2 }, { note: 65, duration: 2 }, { note: 64, duration: 2 }, { note: 62, duration: 4 }, { note: 60, duration: 4 },
+    ],
+    bass: [
+      { note: 36, duration: 4 }, { note: 43, duration: 4 }, { note: 36, duration: 4 }, { note: 43, duration: 4 },
+      { note: 38, duration: 4 }, { note: 45, duration: 4 }, { note: 40, duration: 4 }, { note: 45, duration: 4 },
+      { note: 36, duration: 4 }, { note: 43, duration: 4 }, { note: 36, duration: 4 }, { note: 43, duration: 4 },
+      { note: 33, duration: 4 }, { note: 40, duration: 4 }, { note: 33, duration: 4 }, { note: 40, duration: 4 },
     ],
   },
 };

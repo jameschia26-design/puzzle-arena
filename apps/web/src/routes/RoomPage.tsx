@@ -43,6 +43,8 @@ import { Connect4Board } from '../games/Connect4Board.js';
 import ChessBoard from '../games/ChessBoard.js';
 import XiangqiBoard from '../games/XiangqiBoard.js';
 import { AnimalChessBoard } from '../games/AnimalChessBoard.js';
+import { TetrisBoard } from '../games/TetrisBoard.js';
+import { PacManBoard } from '../games/PacManBoard.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
@@ -717,7 +719,9 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   };
   const gameAction = async (action: unknown): Promise<void> => {
     const res = await emit<{ accepted: boolean; error?: string }>(EV.gameAction, action);
-    if (!res.accepted && res.error) toast(res.error);
+    if (!res.accepted && res.error && res.error !== 'Blocked' && res.error !== 'Illegal move') {
+      toast(res.error);
+    }
   };
 
   if (gameId === 'sudoku' || gameId === 'killer-sudoku') {
@@ -981,6 +985,32 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
     );
   }
 
+  if (gameId === 'pacman') {
+    return (
+      <PacManBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'tetris') {
+    return (
+      <TetrisBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
   return (
     <ManorMysteryBoard
       view={state}
@@ -1158,8 +1188,8 @@ function Chat(): React.ReactElement {
   return (
     <PixelPanel title="Chat & log">
       <div className="h-[220px] overflow-y-auto flex flex-col gap-1 text-[13px]">
-        {log.map((entry) => (
-          <p key={`l${entry.seq}`} className="text-pa-ink-dim">
+        {log.map((entry, i) => (
+          <p key={`${i}-${entry.seq}`} className="text-pa-ink-dim">
             {entry.text}
           </p>
         ))}

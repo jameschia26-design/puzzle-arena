@@ -17,6 +17,8 @@ export const GAME_IDS = [
   'chess',
   'xiangqi',
   'animal-chess',
+  'tetris',
+  'pacman',
 ] as const;
 export type GameId = (typeof GAME_IDS)[number];
 
@@ -111,6 +113,16 @@ export const bigTwoConfigSchema = z.object({
 
 export const animalChessConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
+});
+export const tetrisConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(90),
+  startLevel: z.number().int().min(1).max(20).default(1),
+  /** Ghost shadow visible (assist mode). false = classic mode. */
+  assist: z.boolean().default(true),
+});
+export const pacmanConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(15).max(300).default(90),
+  startLevel: z.number().int().min(1).max(21).default(1),
 });
 /**
  * Chess and Xiangqi are the only two board games that use a real chess-clock
@@ -322,6 +334,28 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: animalChessConfigSchema,
     blurb: 'Dou Shou Qi (Jungle): 8 animals, rivers, traps and dens in ancient tactical combat.',
+  },
+  tetris: {
+    id: 'tetris',
+    title: 'Tetris',
+    kind: 'board',
+    minPlayers: 1,
+    maxPlayers: 8,
+    defaultTimeLimitSec: 600,
+    supportsBots: true,
+    configSchema: tetrisConfigSchema,
+    blurb: 'Stack, clear and survive — 10×20 with SRS, 7-bag, hold and T-spins. Toggle assist mode for a ghost shadow.',
+  },
+  pacman: {
+    id: 'pacman',
+    title: 'Pac-Man',
+    kind: 'board',
+    minPlayers: 1,
+    maxPlayers: 8,
+    defaultTimeLimitSec: 600,
+    supportsBots: true,
+    configSchema: pacmanConfigSchema,
+    blurb: 'Navigate the 28×31 maze, eat dots, chase frightened ghosts and grab fruit through 21 levels.',
   },
 };
 

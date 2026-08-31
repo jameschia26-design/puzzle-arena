@@ -72,9 +72,8 @@ export async function pruneHostRooms(userId: string, keepCount = 10): Promise<vo
   const rows = await db
     .select({ id: rooms.id })
     .from(rooms)
-    .where(eq(rooms.hostUserId, userId))
+    .where(and(eq(rooms.hostUserId, userId), inArray(rooms.status, ['finished', 'abandoned'])))
     .orderBy(desc(rooms.createdAt));
-
   if (rows.length > keepCount) {
     const toDelete = rows.slice(keepCount).map((r) => r.id);
     for (const id of toDelete) {

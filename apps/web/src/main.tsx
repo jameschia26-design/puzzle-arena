@@ -13,6 +13,7 @@ import AdminAi from './routes/AdminAi.js';
 import RoomPage from './routes/RoomPage.js';
 import ResultsPage from './routes/ResultsPage.js';
 import UiGallery from './routes/UiGallery.js';
+import PacmanHarness from './routes/PacmanHarness.js';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
         <Route path="/r/:code/results" element={<ResultsPage />} />
         {/* The visual proof surface, dev only. */}
         {import.meta.env.DEV && <Route path="/ui" element={<UiGallery />} />}
+        {import.meta.env.DEV && <Route path="/dev/pacman" element={<PacmanHarness />} />}
         <Route path="*" element={<Landing />} />
       </Routes>
     </BrowserRouter>

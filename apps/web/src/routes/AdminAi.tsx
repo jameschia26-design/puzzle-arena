@@ -150,7 +150,16 @@ export default function AdminAi(): React.ReactElement {
                       <Zap size={14} strokeWidth={3} className="lucide" />
                       {testing === p.id ? 'Testing…' : 'Test'}
                     </PixelButton>
-                    <PixelButton variant="danger" size="sm" onClick={() => void remove(p.id)}>
+                    <PixelButton
+                      variant="danger"
+                      size="sm"
+                      aria-label={`Delete ${p.name}`}
+                      onClick={() => {
+                        if (window.confirm(`Delete provider "${p.name}"?`)) {
+                          void remove(p.id);
+                        }
+                      }}
+                    >
                       <Trash2 size={14} strokeWidth={3} className="lucide" />
                     </PixelButton>
                   </div>

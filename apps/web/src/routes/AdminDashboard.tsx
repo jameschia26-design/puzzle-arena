@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BarChart2, Copy, Cpu, Link2, Plus, Trash2, XCircle } from 'lucide-react';
+import { BarChart2, Copy, Cpu, Link2, LogOut, Plus, Trash2, XCircle } from 'lucide-react';
 import { GAME_IDS, GAME_REGISTRY, WORD_SEARCH_THEMES, type GameId } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -113,6 +113,11 @@ export default function AdminDashboard(): React.ReactElement {
       toast(res.body?.error ?? 'Could not delete room');
     }
   };
+  const signOut = async (): Promise<void> => {
+    await api('/api/auth/sign-out', { method: 'POST' });
+    navigate('/admin/login');
+  };
+
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -124,6 +129,10 @@ export default function AdminDashboard(): React.ReactElement {
               AI providers
             </PixelButton>
           </Link>
+          <PixelButton variant="ghost" size="sm" onClick={() => void signOut()}>
+            <LogOut size={16} strokeWidth={3} className="lucide" />
+            Sign out
+          </PixelButton>
         </div>
       </header>
 
@@ -327,7 +336,11 @@ export default function AdminDashboard(): React.ReactElement {
                           <PixelButton
                             variant="danger"
                             size="sm"
-                            onClick={() => void closeRoom(room.id)}
+                            onClick={() => {
+                              if (window.confirm('Close this room for everyone?')) {
+                                void closeRoom(room.id);
+                              }
+                            }}
                           >
                             <XCircle size={14} strokeWidth={3} className="lucide" />
                             Close
@@ -346,7 +359,11 @@ export default function AdminDashboard(): React.ReactElement {
                           <PixelButton
                             variant="ghost"
                             size="sm"
-                            onClick={() => void deleteRoom(room.id)}
+                            onClick={() => {
+                              if (window.confirm('Delete this room? This cannot be undone.')) {
+                                void deleteRoom(room.id);
+                              }
+                            }}
                             className="text-pa-danger hover:bg-pa-danger/10"
                           >
                             <Trash2 size={14} strokeWidth={3} className="lucide" />

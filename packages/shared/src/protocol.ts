@@ -175,6 +175,22 @@ export const xiangqiActionSchema = z.discriminatedUnion('type', [
 ]);
 export type XiangqiAction = z.infer<typeof xiangqiActionSchema>;
 
+export const tetrisActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('move'), dir: z.enum(['left', 'right']) }),
+  z.object({ type: z.literal('rotate'), dir: z.enum(['cw', 'ccw']) }),
+  z.object({ type: z.literal('softDrop') }),
+  z.object({ type: z.literal('hardDrop') }),
+  z.object({ type: z.literal('hold') }),
+  z.object({ type: z.literal('toggleAssist') }),
+]);
+export type TetrisAction = z.infer<typeof tetrisActionSchema>;
+
+export const pacmanActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('dir'), dir: z.enum(['up', 'down', 'left', 'right']) }),
+  z.object({ type: z.literal('tick') }),
+]);
+export type PacmanAction = z.infer<typeof pacmanActionSchema>;
+
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
   manorMysteryActionSchema,
@@ -186,6 +202,8 @@ export const gameActionSchema = z.union([
   bigTwoActionSchema,
   chessActionSchema,
   xiangqiActionSchema,
+  tetrisActionSchema,
+  pacmanActionSchema,
 ]);
 export type GameAction =
   | PropertyTycoonAction
@@ -197,7 +215,9 @@ export type GameAction =
   | Connect4Action
   | BigTwoAction
   | ChessAction
-  | XiangqiAction;
+  | XiangqiAction
+  | TetrisAction
+  | PacmanAction;
 
 /**
  * `forfeit` is deliberately NOT part of `gameActionSchema` — it is produced

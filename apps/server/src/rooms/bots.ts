@@ -10,6 +10,8 @@ import {
   scrabbleBot,
   xiangqiBot,
   animalChessBot,
+  tetrisBot,
+  pacmanBot,
   type BigTwoBotView,
   type CheckersBotView,
   type ChessBotView,
@@ -21,6 +23,8 @@ import {
   type SCRBotView,
   type XiangqiBotView,
   type AnimalChessBotView,
+  type TetrisBotView,
+  type PacManBotView,
 } from '@puzzle-arena/games';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
 import { env } from '../env.js';
@@ -73,6 +77,10 @@ function thinkDelay(rng: Rng): number {
  */
 export function scheduleBots(room: LiveRoom): void {
   if (room.kind !== 'board' || room.status !== 'running') return;
+  if (room.gameId === 'tetris' || room.gameId === 'pacman') {
+    scheduleConcurrentBots(room);
+    return;
+  }
   const existing = timers.get(room.id);
   if (existing) clearTimeout(existing);
 
@@ -153,6 +161,41 @@ export function scheduleBots(room: LiveRoom): void {
     }
   }, delay);
 
+  timers.set(room.id, timer);
+}
+
+function scheduleConcurrentBots(room: LiveRoom): void {
+  const existing = timers.get(room.id);
+  if (existing) clearTimeout(existing);
+  const bots = room.players.filter((p) => p.isBot && !p.left);
+  if (bots.length === 0 || room.status !== 'running') return;
+  const rng = rngFor(room);
+  const delay = thinkDelay(rng);
+  const timer = setTimeout(() => {
+    timers.delete(room.id);
+    if (room.status !== 'running') return;
+    for (const bot of bots) {
+      const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView;
+      const difficulty: BotDifficulty = bot.botDifficulty ?? 'normal';
+      // concurrent games expose `you` with gameOver; narrow via typed view, not inline shape cast
+      const concurrentView = view as unknown as { you: { gameOver?: boolean } | null };
+      const you = concurrentView.you;
+      if (!you || you.gameOver) continue;
+      let action: unknown;
+      try {
+        if (room.gameId === 'pacman') {
+          action = pacmanBot.chooseAction(view as PacManBotView, bot.id, rng, difficulty);
+        } else {
+          action = tetrisBot.chooseAction(view as TetrisBotView, bot.id, rng, difficulty);
+        }
+      } catch (e) { void e;
+        action = room.engine().autoAction(room.gameState as never, bot.id);
+      }
+      const res = room.applyGameAction(bot.id, action as never);
+      if (!res.accepted) room.applyGameAction(bot.id, { type: 'tick' } as never);
+    }
+    scheduleConcurrentBots(room);
+  }, delay);
   timers.set(room.id, timer);
 }
 

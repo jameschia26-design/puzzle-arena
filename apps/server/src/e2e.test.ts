@@ -1,12 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { EV, type RoomSnapshot } from '@puzzle-arena/shared';
+import type { PacManState } from '@puzzle-arena/games';
 import { buildServer } from './index.js';
 import { attachSocket, setRoomLookup } from './socket.js';
-import { getRoom, rooms_registry } from './rooms/runtime.js';
+import { getRoom, rehydrateRunningRooms, rooms_registry } from './rooms/runtime.js';
+import { pruneHostRooms } from './routes/rooms.js';
 import { db, sql } from './db/index.js';
+import { rooms, user } from './db/schema.js';
+import { env } from './env.js';
 
 /**
  * Full-stack integration: a real Fastify + socket.io server against the real
@@ -21,6 +25,7 @@ let app: FastifyInstance;
 let base: string;
 let adminCookie = '';
 const SIGNUP_CODE = process.env['ADMIN_SIGNUP_CODE'] ?? 'letmein';
+const createdAdminEmails: string[] = [];
 
 async function api(
   path: string,
@@ -96,6 +101,13 @@ const connected = (socket: Socket): Promise<void> =>
   });
 
 beforeAll(async () => {
+  const dbHostname = new URL(env.databaseUrl).hostname;
+  if (dbHostname !== 'localhost' && dbHostname !== '127.0.0.1') {
+    throw new Error(
+      'Refusing to run e2e tests against a non-local DATABASE_URL — point .env at the local docker-compose Postgres (see docker-compose.yml / README) before running tests.',
+    );
+  }
+
   app = await buildServer();
   await app.listen({ port: 0, host: '127.0.0.1' });
   const io = attachSocket(app);
@@ -108,6 +120,7 @@ beforeAll(async () => {
 
   // A fresh admin per run, so repeated runs do not collide.
   const email = `admin_${Date.now()}@test.local`;
+  createdAdminEmails.push(email);
   const reg = await api('/api/admin/register', {
     method: 'POST',
     body: JSON.stringify({ email, password: 'password123', name: 'Admin', signupCode: SIGNUP_CODE }),
@@ -122,6 +135,13 @@ afterAll(async () => {
   // Close socket.io first: open websockets keep the HTTP server alive.
   app?.io?.close();
   await app?.close();
+  if (createdAdminEmails.length > 0) {
+    try {
+      await db.delete(user).where(inArray(user.email, createdAdminEmails));
+    } catch {
+      // Ignore cleanup error if database is closed or unreachable
+    }
+  }
   await sql.end({ timeout: 5 });
 }, 30_000);
 
@@ -202,6 +222,66 @@ describe('rooms', () => {
   it('404s an unknown code', async () => {
     expect((await api('/api/rooms/ZZZZZZ')).status).toBe(404);
   });
+
+  it('does not prune lobby or running rooms when host exceeds keepCount', async () => {
+    const adminEmail = `host_prune_${Date.now()}@example.com`;
+    createdAdminEmails.push(adminEmail);
+    const regRes = await api('/api/admin/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: adminEmail,
+        password: 'password123',
+        name: 'PruneHost',
+        signupCode: SIGNUP_CODE,
+      }),
+    });
+    const hostCookie = cookieValues(regRes.setCookie);
+    const hostUserRow = (await db.select().from(user).where(eq(user.email, adminEmail)).limit(1))[0];
+    const hostUserId = hostUserRow!.id;
+
+    // Create 2 finished rooms
+    for (let i = 0; i < 2; i++) {
+      const res = await api('/api/rooms', {
+        method: 'POST',
+        cookie: hostCookie,
+        body: JSON.stringify({ gameId: 'sudoku', config: { difficulty: 'easy' }, timeLimitSec: 300 }),
+      });
+      const rId = res.body.id as string;
+      const live = getRoom(rId);
+      if (live) await live.finish('host');
+    }
+
+    // Create 1 running room
+    const runningRes = await api('/api/rooms', {
+      method: 'POST',
+      cookie: hostCookie,
+      body: JSON.stringify({ gameId: 'sudoku', config: { difficulty: 'easy' }, timeLimitSec: 300 }),
+    });
+    const runningRoomId = runningRes.body.id as string;
+    const runningCode = runningRes.body.code as string;
+
+    const hostSocket = connect(hostCookie);
+    await connected(hostSocket);
+    await emit(hostSocket, EV.roomJoin, { code: runningCode, displayName: 'Host' });
+    await emit(hostSocket, EV.roomStart);
+    await awaitStart(runningRoomId);
+
+    const liveRunning = getRoom(runningRoomId);
+    expect(liveRunning).toBeDefined();
+    expect(liveRunning!.status).toBe('running');
+
+    // Call pruneHostRooms with keepCount = 1
+    await pruneHostRooms(hostUserId, 1);
+
+    // Running room must still exist in DB and in memory (LiveRoom)
+    const runningDbRow = (await db.select().from(rooms).where(eq(rooms.id, runningRoomId)).limit(1))[0];
+    expect(runningDbRow).toBeDefined();
+    expect(runningDbRow!.status).toBe('running');
+    expect(getRoom(runningRoomId)).toBeDefined();
+    expect(getRoom(runningRoomId)!.status).toBe('running');
+
+    hostSocket.close();
+  });
 });
 
 describe('guest identity', () => {
@@ -217,6 +297,63 @@ describe('guest identity', () => {
     const socket = connect('');
     await expect(connected(socket)).rejects.toThrow();
     socket.close();
+  });
+
+  it('gives two separate seats to two distinct guests using the same display name', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'sudoku', config: { difficulty: 'easy' }, timeLimitSec: 300 }),
+    });
+    const { code } = created.body;
+
+    const guest1Res = await api('/api/guest', { method: 'POST' });
+    const guest1Cookie = cookieValues(guest1Res.setCookie);
+    const guest2Res = await api('/api/guest', { method: 'POST' });
+    const guest2Cookie = cookieValues(guest2Res.setCookie);
+
+    const socket1 = connect(guest1Cookie);
+    const socket2 = connect(guest2Cookie);
+    await Promise.all([connected(socket1), connected(socket2)]);
+
+    const join1 = await emit(socket1, EV.roomJoin, { code, displayName: 'Alice' });
+    const join2 = await emit(socket2, EV.roomJoin, { code, displayName: 'Alice' });
+
+    expect(join1.error).toBeUndefined();
+    expect(join2.error).toBeUndefined();
+    expect(join1.snapshot.you.playerId).not.toBe(join2.snapshot.you.playerId);
+    expect(join1.snapshot.you.seat).not.toBe(join2.snapshot.you.seat);
+
+    socket1.close();
+    socket2.close();
+  });
+
+  it('resolves concurrent room:join events for the same guest to the same seat and playerId', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'sudoku', config: { difficulty: 'easy' }, timeLimitSec: 300 }),
+    });
+    const { code } = created.body;
+
+    const guestRes = await api('/api/guest', { method: 'POST' });
+    const guestCookie = cookieValues(guestRes.setCookie);
+
+    const guestSocket = connect(guestCookie);
+    await connected(guestSocket);
+
+    // Fire two room:join events back-to-back before the first ack returns
+    const [join1, join2] = await Promise.all([
+      emit(guestSocket, EV.roomJoin, { code, displayName: 'FastClicker' }),
+      emit(guestSocket, EV.roomJoin, { code, displayName: 'FastClicker' }),
+    ]);
+
+    expect(join1.error).toBeUndefined();
+    expect(join2.error).toBeUndefined();
+    expect(join1.snapshot.you.playerId).toBe(join2.snapshot.you.playerId);
+    expect(join1.snapshot.you.seat).toBe(join2.snapshot.you.seat);
+
+    guestSocket.close();
   });
 });
 
@@ -388,6 +525,93 @@ describe('a sudoku room end to end', () => {
     hostSocket.close();
     guestSocket.close();
   }, 120_000);
+});
+
+describe('crash recovery', () => {
+  it('rehydrates puzzle player penalties and state after simulated crash', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({
+        gameId: 'sudoku',
+        config: { difficulty: 'easy', instantFeedback: false },
+        timeLimitSec: 300,
+      }),
+    });
+    const { id: roomId, code } = created.body;
+
+    const guestRes = await api('/api/guest', { method: 'POST' });
+    const guestCookie = cookieValues(guestRes.setCookie);
+
+    const hostSocket = connect(adminCookie);
+    const guestSocket = connect(guestCookie);
+    await Promise.all([connected(hostSocket), connected(guestSocket)]);
+
+    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    expect(hostJoin.error).toBeUndefined();
+
+    const guestJoin = await emit(guestSocket, EV.roomJoin, { code, displayName: 'Guest' });
+    expect(guestJoin.error).toBeUndefined();
+    const guestId = guestJoin.snapshot.you.playerId as string;
+
+    const startAck = await emit(hostSocket, EV.roomStart);
+    expect(startAck.error).toBeUndefined();
+    await awaitStart(roomId);
+
+    const liveBefore = getRoom(roomId);
+    expect(liveBefore).toBeDefined();
+    const solution = liveBefore!.puzzle!.solution as number[];
+    const givens = (liveBefore!.puzzle!.puzzle as { givens: number[] }).givens;
+
+    // Submit at least 3 correct commits
+    const blanks: number[] = [];
+    for (let i = 0; i < 81; i++) {
+      if (givens[i] === 0) {
+        blanks.push(i);
+        if (blanks.length === 3) break;
+      }
+    }
+    for (const idx of blanks) {
+      const r = Math.floor(idx / 9);
+      const c = idx % 9;
+      const res = await emit(guestSocket, EV.puzzleCommit, {
+        path: `${r},${c}`,
+        value: solution[idx],
+      });
+      expect(res.accepted).toBe(true);
+    }
+
+    // Submit 1 intentionally illegal commit (e.g. overwriting a given)
+    const givenIdx = givens.findIndex((v) => v !== 0);
+    const badCommit = await emit(guestSocket, EV.puzzleCommit, {
+      path: `${Math.floor(givenIdx / 9)},${givenIdx % 9}`,
+      value: 5,
+    });
+    expect(badCommit.accepted).toBe(false);
+
+    // Request 1 hint
+    const hintRes = await emit(guestSocket, EV.puzzleHint);
+    expect(hintRes.hint).toBeTruthy();
+
+    const playerBefore = liveBefore!.player(guestId)!;
+    expect(playerBefore.penalties).toBeGreaterThanOrEqual(2);
+    const expectedPenalties = playerBefore.penalties;
+    const expectedState = structuredClone(playerBefore.state);
+
+    hostSocket.close();
+    guestSocket.close();
+
+    // Simulate crash + restart
+    rooms_registry.delete(roomId);
+    await rehydrateRunningRooms(app.io);
+
+    const recoveredRoom = getRoom(roomId);
+    expect(recoveredRoom).toBeDefined();
+    const recoveredPlayer = recoveredRoom!.player(guestId);
+    expect(recoveredPlayer).toBeDefined();
+    expect(recoveredPlayer!.penalties).toBe(expectedPenalties);
+    expect(recoveredPlayer!.state).toEqual(expectedState);
+  }, 60_000);
 });
 
 describe('instant feedback, when the host turns it on', () => {
@@ -772,6 +996,51 @@ describe('event log', () => {
     }
 
     await emit(hostSocket, EV.roomEndEarly);
+    hostSocket.close();
+  }, 60_000);
+
+  it('advances pacman human player via server-side watchdog when client sends no ticks', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'pacman', config: {}, timeLimitSec: 300 }),
+    });
+    const { id: roomId, code } = created.body;
+
+    const hostSocket = connect(adminCookie);
+    await connected(hostSocket);
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+
+    const guestCookie = (await api('/api/guest', { method: 'POST' })).setCookie;
+    const guestSocket = connect(guestCookie);
+    await connected(guestSocket);
+    await emit(guestSocket, EV.roomJoin, { code, displayName: 'Guest' });
+
+    const ok = await emit<{ error?: string }>(hostSocket, EV.roomStart);
+    expect(ok.error).toBeUndefined();
+    await awaitStart(roomId);
+
+    const room = getRoom(roomId)!;
+    expect(room).toBeDefined();
+    const guestPlayer = room.players.find((p) => p.displayName === 'Guest')!;
+    const initialGameState = room.gameState as PacManState;
+    const initialPlayerState = structuredClone(
+      initialGameState.players.find((p) => p.id === guestPlayer.id)!,
+    );
+    expect(initialPlayerState.actionsAccepted).toBe(0);
+
+    // Integration test: wait for the server-side watchdog interval (1s) to fire without client ticks
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 1200);
+    await promise;
+
+    const updatedGameState = room.gameState as PacManState;
+    const updatedPlayerState = updatedGameState.players.find((p) => p.id === guestPlayer.id)!;
+    expect(updatedPlayerState.actionsAccepted).toBeGreaterThan(0);
+    expect(updatedPlayerState).not.toEqual(initialPlayerState);
+
+    await emit(hostSocket, EV.roomEndEarly);
+    guestSocket.close();
     hostSocket.close();
   }, 60_000);
 });

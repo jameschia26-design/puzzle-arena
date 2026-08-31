@@ -21,6 +21,17 @@ export const auth = betterAuth({
   // name; without these, sign-in from anything but baseURL is rejected.
   trustedOrigins: env.trustedOrigins,
   emailAndPassword: { enabled: true },
+  socialProviders: {
+    ...(env.googleClientId && env.googleClientSecret
+      ? {
+          google: {
+            clientId: env.googleClientId,
+            clientSecret: env.googleClientSecret,
+            disableImplicitSignUp: true,
+          },
+        }
+      : {}),
+  },
   advanced: {
     // Same origin for API and SPA, so no cross-site cookie work is needed.
     defaultCookieAttributes: { sameSite: 'lax', httpOnly: true, secure: env.isProd },

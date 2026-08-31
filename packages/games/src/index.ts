@@ -128,6 +128,16 @@ export type {
 } from './animal-chess/state.js';
 export type { AnimalChessView, AnimalChessPublicPlayer, AnimalChessLegalMove } from './animal-chess/state.js';
 
+export { tetris } from './tetris/index.js';
+export * as tetrisRules from './tetris/rules.js';
+export { tetrisBot, type TetrisBotView } from './tetris/bot.js';
+export type { TetrisState, TetrisPlayerState, TetrisConfig, TetrisAction, TetrisView, TetrisPublicPlayer, TetrominoKind } from './tetris/state.js';
+
+export { pacman } from './pacman/index.js';
+export * as pacmanRules from './pacman/rules.js';
+export { pacmanBot, type PacManBotView } from './pacman/bot.js';
+export type { PacManState, PacManPlayerState, PacManConfig, PacManAction, PacManView, PacManPublicPlayer, GhostState } from './pacman/state.js';
+
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
 import { manorMystery } from './manor-mystery/index.js';
@@ -140,6 +150,8 @@ import { connect4 } from './connect4/index.js';
 import { chess } from './chess/index.js';
 import { xiangqi } from './xiangqi/index.js';
 import { animalChess } from './animal-chess/index.js';
+import { tetris } from './tetris/index.js';
+import { pacman } from './pacman/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
@@ -155,4 +167,6 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   chess: chess as unknown as GameEngine<never, never>,
   xiangqi: xiangqi as unknown as GameEngine<never, never>,
   'animal-chess': animalChess as unknown as GameEngine<never, never>,
+  tetris: tetris as unknown as GameEngine<never, never>,
+  pacman: pacman as unknown as GameEngine<never, never>,
 };

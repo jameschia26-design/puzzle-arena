@@ -18,6 +18,11 @@ secrets/
 npm-debug.log*
 .cache/
 tmp/
+.qa/
+screenshots/
+*.png
+*.jpg
+*.jpeg
 
 # Editors and OS
 .DS_Store

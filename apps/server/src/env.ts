@@ -1,4 +1,19 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * The single .env lives at the repo root; resolve it from this file so the
+ * server behaves identically no matter which directory it is started from
+ * (`npm run dev` inside apps/server, tsx from the root, tests, ...).
+ * `override: true` makes the file win over stale vars inherited from a
+ * parent shell — inherited env once shadowed APP_TRUSTED_ORIGINS and broke
+ * sign-in over the Tailscale funnel.
+ */
+dotenv.config({
+  path: resolve(dirname(fileURLToPath(import.meta.url)), '../../../.env'),
+  override: true,
+});
 
 function required(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
@@ -28,7 +43,8 @@ export const env = {
     'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
   ),
   adminSignupCode: required('ADMIN_SIGNUP_CODE', 'letmein'),
-
+  googleClientId: process.env['GOOGLE_CLIENT_ID'] ?? '',
+  googleClientSecret: process.env['GOOGLE_CLIENT_SECRET'] ?? '',
   /**
    * Extra origins Better Auth will accept, comma-separated. Needed whenever the
    * app is reached on something other than BETTER_AUTH_URL — e.g. over Tailscale,

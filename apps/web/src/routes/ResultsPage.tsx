@@ -12,12 +12,20 @@ export default function ResultsPage(): React.ReactElement {
   const { code = '' } = useParams();
   const navigate = useNavigate();
   const [results, setResults] = React.useState<ResultRow[] | null>(null);
+  const [notFound, setNotFound] = React.useState(false);
 
   React.useEffect(() => {
     void (async () => {
       const lookup = await api<{ id: string }>(`/api/rooms/${code.toUpperCase()}`);
-      if (lookup.status !== 200) return;
+      if (lookup.status !== 200) {
+        setNotFound(true);
+        return;
+      }
       const res = await api<{ results: ResultRow[] }>(`/api/rooms/${lookup.body.id}/results`);
+      if (res.status !== 200) {
+        setNotFound(true);
+        return;
+      }
       setResults(res.body.results ?? []);
     })();
   }, [code]);
@@ -28,7 +36,16 @@ export default function ResultsPage(): React.ReactElement {
         RESULTS
       </h1>
       <PixelPanel title={`Room ${code.toUpperCase()}`}>
-        {results ? <ResultsTable results={results} /> : <p className="text-pa-ink-dim">Loading…</p>}
+        {notFound ? (
+          <div className="flex flex-col gap-3 items-start">
+            <p className="text-pa-ink-dim">Room not found or results have expired.</p>
+            <PixelButton onClick={() => navigate('/')}>Back to home</PixelButton>
+          </div>
+        ) : results ? (
+          <ResultsTable results={results} />
+        ) : (
+          <p className="text-pa-ink-dim">Loading…</p>
+        )}
       </PixelPanel>
       <PixelButton className="self-start" onClick={() => navigate('/')}>
         Back to home
@@ -91,7 +108,7 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full text-[13px] tabular">
+        <table className="w-full min-w-[560px] text-[13px] tabular">
           <thead>
             <tr className="border-b-2 border-pa-border text-pa-ink-dim">
               <th className="text-left py-2 font-normal">#</th>

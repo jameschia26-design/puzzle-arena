@@ -124,6 +124,31 @@ export async function generatePuzzle(
   }
 }
 
+export function initialPuzzleState(gameId: GameId, puzzle: unknown): unknown {
+  switch (gameId) {
+    case 'sudoku':
+    case 'killer-sudoku':
+      return [...(puzzle as { givens: Grid }).givens];
+    case 'nonogram': {
+      const size = (puzzle as { size: number }).size;
+      return new Array<number>(size * size).fill(0);
+    }
+    case 'word-search':
+      return { found: [], selections: 0 };
+    case 'minesweeper': {
+      const p = puzzle as { rows: number; cols: number };
+      return {
+        revealed: new Array<boolean>(p.rows * p.cols).fill(false),
+        detonated: false,
+        detonatedCell: null,
+        moves: 0,
+      };
+    }
+    default:
+      return null;
+  }
+}
+
 export function gradePuzzle(
   gameId: GameId,
   playerState: unknown,

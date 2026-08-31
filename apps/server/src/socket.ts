@@ -1,6 +1,6 @@
 import { Server as IOServer, type Socket } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import {
   EV,
@@ -16,8 +16,28 @@ import { roomPlayers, rooms } from './db/schema.js';
 import { auth } from './auth.js';
 import { env } from './env.js';
 import { logger } from './logger.js';
-import { loadRoom, type LiveRoom } from './rooms/runtime.js';
+import { loadRoom, type LivePlayer, type LiveRoom } from './rooms/runtime.js';
 import { nextFreeSeat, toHeaders } from './routes/rooms.js';
+
+const roomJoinLocks = new Map<string, Promise<void>>();
+
+async function withRoomJoinLock<T>(roomId: string, fn: () => Promise<T>): Promise<T> {
+  const current = roomJoinLocks.get(roomId) ?? Promise.resolve();
+  let release: () => void;
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  roomJoinLocks.set(roomId, current.then(() => next, () => next));
+  await current.catch(() => {});
+  try {
+    return await fn();
+  } finally {
+    release!();
+    if (roomJoinLocks.get(roomId) === next) {
+      roomJoinLocks.delete(roomId);
+    }
+  }
+}
 
 function parseCookies(header: string | undefined): Record<string, string> {
   const out: Record<string, string> = {};
@@ -83,69 +103,101 @@ export function attachSocket(app: FastifyInstance): IOServer {
         const isHostUser = socket.data.userId === row.hostUserId;
         const guestId = (socket.data.guestId as string | undefined) ?? null;
 
-        // Reconnect to an existing seat where possible (by guestId, hostId, or matching displayName for disconnected human).
-        let player =
-          (guestId ? room.playerByGuest(guestId) : undefined) ??
-          (isHostUser ? room.players.find((p) => p.isHost && !p.left) : undefined);
+        let joinError: string | undefined;
+        let player: LivePlayer | undefined;
 
-        if (!player && parsed.data.displayName) {
-          const nameNorm = parsed.data.displayName.trim().toLowerCase();
-          const candidate = room.players.find(
-            (p) => !p.isBot && !p.left && p.displayName.trim().toLowerCase() === nameNorm,
-          );
-          if (candidate) {
-            player = candidate;
-            if (guestId) {
-              player.guestId = guestId;
-              void db.update(roomPlayers).set({ guestId }).where(eq(roomPlayers.id, player.id));
+        await withRoomJoinLock(room.id, async () => {
+          // Reconnect to an existing seat where possible (by guestId or hostId).
+          player =
+            (guestId ? room.playerByGuest(guestId) : undefined) ??
+            (isHostUser ? room.players.find((p) => p.isHost && !p.left) : undefined);
+
+          if (!player) {
+            if (room.status !== 'lobby') {
+              joinError = 'That game has already started';
+              return;
+            }
+            const meta = GAME_REGISTRY[room.gameId];
+            const seated = room.players.filter((p) => !p.left);
+            if (seated.length >= meta.maxPlayers) {
+              joinError = `${meta.title} is full`;
+              return;
+            }
+
+            const seat = nextFreeSeat(room);
+            let insertedRow: typeof roomPlayers.$inferSelect | undefined;
+            try {
+              insertedRow = (
+                await db
+                  .insert(roomPlayers)
+                  .values({
+                    roomId: room.id,
+                    guestId,
+                    displayName: parsed.data.displayName,
+                    seat,
+                    isHost: isHostUser && !room.players.some((p) => p.isHost),
+                    isBot: false,
+                    avatar: parsed.data.avatar ?? null,
+                  })
+                  .returning()
+              )[0];
+            } catch (err: unknown) {
+              const isPgUniqueViolation =
+                Boolean(err && typeof err === 'object' && 'code' in err && err.code === '23505');
+              if (isPgUniqueViolation) {
+                const existing = (
+                  await db
+                    .select()
+                    .from(roomPlayers)
+                    .where(
+                      guestId
+                        ? and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.guestId, guestId))
+                        : and(eq(roomPlayers.roomId, room.id), eq(roomPlayers.seat, seat)),
+                    )
+                    .limit(1)
+                )[0];
+                if (existing) {
+                  insertedRow = existing;
+                } else {
+                  throw err;
+                }
+              } else {
+                throw err;
+              }
+            }
+
+            if (!insertedRow) {
+              joinError = 'Could not seat you';
+              return;
+            }
+
+            const existingInRoom = room.players.find((p) => p.id === insertedRow!.id);
+            if (existingInRoom) {
+              player = existingInRoom;
+            } else {
+              player = {
+                id: insertedRow.id,
+                guestId: insertedRow.guestId,
+                displayName: insertedRow.displayName,
+                seat: insertedRow.seat,
+                isHost: insertedRow.isHost,
+                isBot: false,
+                botDifficulty: null,
+                avatar: insertedRow.avatar,
+                connected: true,
+                left: false,
+                state: room.puzzle ? structuredClone(room.puzzle.initialState) : null,
+                penalties: 0,
+                completed: false,
+                completedAtMs: null,
+              };
+              room.players.push(player);
             }
           }
-        }
-        if (!player) {
-          if (room.status !== 'lobby') {
-            return respond(ack, { error: 'That game has already started' });
-          }
-          const meta = GAME_REGISTRY[room.gameId];
-          const seated = room.players.filter((p) => !p.left);
-          if (seated.length >= meta.maxPlayers) {
-            return respond(ack, { error: `${meta.title} is full` });
-          }
+        });
 
-          const seat = nextFreeSeat(room);
-          const inserted = (
-            await db
-              .insert(roomPlayers)
-              .values({
-                roomId: room.id,
-                guestId,
-                displayName: parsed.data.displayName,
-                seat,
-                isHost: isHostUser && !room.players.some((p) => p.isHost),
-                isBot: false,
-                avatar: parsed.data.avatar ?? null,
-              })
-              .returning()
-          )[0];
-          if (!inserted) return respond(ack, { error: 'Could not seat you' });
-
-          player = {
-            id: inserted.id,
-            guestId,
-            displayName: inserted.displayName,
-            seat,
-            isHost: inserted.isHost,
-            isBot: false,
-            botDifficulty: null,
-            avatar: inserted.avatar,
-            connected: true,
-            left: false,
-            state: room.puzzle ? structuredClone(room.puzzle.initialState) : null,
-            penalties: 0,
-            completed: false,
-            completedAtMs: null,
-          };
-          room.players.push(player);
-        }
+        if (joinError) return respond(ack, { error: joinError });
+        if (!player) return respond(ack, { error: 'Could not seat you' });
 
         player.connected = true;
         player.left = false;

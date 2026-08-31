@@ -37,14 +37,15 @@ import {
   manorMysteryRules,
   reversi,
   reversiRules,
-  propertyTycoon,
-  propertyTycoonRules,
   scrabble,
   scrabbleRules,
-  xiangqi,
-  xiangqiRules,
+  propertyTycoon,
+  propertyTycoonRules,
   animalChess,
   animalChessRules,
+  tetris,
+  pacman,
+  xiangqi,
 } from '@puzzle-arena/games';
 import { wordSearch } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -61,6 +62,7 @@ import {
   applyCommit,
   generatePuzzle,
   gradePuzzle,
+  initialPuzzleState,
   puzzleHint,
   type GeneratedPuzzle,
 } from '../games/puzzle-adapter.js';
@@ -141,9 +143,8 @@ export class LiveRoom {
   private cleanupTimer: ReturnType<typeof setTimeout> | null = null;
   /** Chess-clock games: fires the "still thinking?" prompts every 60s of idling on one move. */
   private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private arcadeTickTimer: NodeJS.Timeout | null = null;
   private idleStrikes = 0;
-  private eventBuffer: { roomId: string; seq: number; actorPlayerId: string | null; action: object }[] = [];
-  private eventFlushTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(row: {
     id: string;
     code: string;
@@ -258,6 +259,7 @@ export class LiveRoom {
       if (this.status !== 'running') return;
       if (this.kind === 'board') {
         this.armTurnTimer();
+        this.armArcadeTickWatchdog();
         // The first actor's deadline exists only once the countdown clears.
         this.broadcastGameState();
         scheduleBots(this);
@@ -278,6 +280,8 @@ export class LiveRoom {
     if (this.gameId === 'chess') return chess as unknown as typeof propertyTycoon;
     if (this.gameId === 'xiangqi') return xiangqi as unknown as typeof propertyTycoon;
     if (this.gameId === 'animal-chess') return animalChess as unknown as typeof propertyTycoon;
+    if (this.gameId === 'tetris') return tetris as unknown as typeof propertyTycoon;
+    if (this.gameId === 'pacman') return pacman as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -292,7 +296,8 @@ export class LiveRoom {
     if (this.gameId === 'reversi') return reversiRules.actorToAct(this.gameState as never);
     if (this.gameId === 'connect4') return connect4Rules.actorToAct(this.gameState as never);
     if (this.gameId === 'chess') return chessRules.actorToAct(this.gameState as never);
-    if (this.gameId === 'xiangqi') return xiangqiRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'tetris') return null; // concurrent — no turn
+    if (this.gameId === 'pacman') return null; // concurrent — no turn
     if (this.gameId === 'animal-chess') return animalChessRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
@@ -312,6 +317,10 @@ export class LiveRoom {
       clearInterval(this.idleTimer);
       this.idleTimer = null;
     }
+    if (this.arcadeTickTimer) {
+      clearInterval(this.arcadeTickTimer);
+      this.arcadeTickTimer = null;
+    }
     stopBots(this.id);
     this.pushLog('Game paused by host');
     this.io?.to(this.id).emit(EV.roomPaused, { paused: true });
@@ -330,6 +339,7 @@ export class LiveRoom {
       this.armTurnTimer();
     }
     if (this.kind === 'board') {
+      this.armArcadeTickWatchdog();
       scheduleBots(this);
     } else if (this.kind === 'puzzle') {
       schedulePuzzleBots(this);
@@ -353,6 +363,10 @@ export class LiveRoom {
     if (this.idleTimer) {
       clearInterval(this.idleTimer);
       this.idleTimer = null;
+    }
+    if (this.arcadeTickTimer) {
+      clearInterval(this.arcadeTickTimer);
+      this.arcadeTickTimer = null;
     }
     stopBots(this.id);
 
@@ -450,6 +464,30 @@ export class LiveRoom {
         logger.error({ roomId: this.id, actorId, err: applied.error }, 'auto-action rejected');
       }
     }, delay);
+  }
+
+  /**
+   * Watchdog timer for concurrent arcade games (Pac-Man, Tetris): ticks human
+   * players who have gone quiet / stalled on the client side.
+   */
+  armArcadeTickWatchdog(): void {
+    if (this.arcadeTickTimer) {
+      clearInterval(this.arcadeTickTimer);
+      this.arcadeTickTimer = null;
+    }
+    if (this.kind !== 'board' || (this.gameId !== 'pacman' && this.gameId !== 'tetris') || this.status !== 'running') {
+      return;
+    }
+    this.arcadeTickTimer = setInterval(() => {
+      if (this.status !== 'running' || !this.gameState) return;
+      for (const player of this.players) {
+        if (player.isBot || player.left) continue;
+        const view = this.engine().view(this.gameState as never, player.id) as unknown as { you: { gameOver?: boolean } | null };
+        const you = view?.you;
+        if (!you || you.gameOver) continue;
+        this.applyGameAction(player.id, { type: 'tick' });
+      }
+    }, 1000);
   }
 
   /**
@@ -603,6 +641,7 @@ export class LiveRoom {
     if (nextState === null) {
       // An illegal move costs a penalty, exactly like an illegal board action.
       player.penalties += 1;
+      void this.appendEvent(playerId, { type: 'illegal_commit', path, value });
       return { accepted: false, progress: 0, error: 'Illegal move' };
     }
     player.state = nextState;
@@ -671,6 +710,7 @@ export class LiveRoom {
     );
     if (!hint) return { hint: null, error: 'Nothing left to reveal' };
     player.penalties += 1;
+    void this.appendEvent(playerId, { type: 'hint', path: hint.path });
     this.broadcastLeaderboard();
     return { hint };
   }
@@ -754,23 +794,7 @@ export class LiveRoom {
   /* ---------------- persistence ---------------- */
 
   private async appendEvent(actorPlayerId: string | null, action: object): Promise<void> {
-    this.seq += 1;
-    const seq = this.seq;
-    try {
-      await db.insert(roomEvents).values({
-        roomId: this.id,
-        seq,
-        actorPlayerId,
-        action,
-      });
-      if (seq % SNAPSHOT_EVERY === 0) await this.writeSnapshot(seq);
-    } catch (err) {
-      logger.error({ err, roomId: this.id }, 'failed to append room event');
-    }
-  }
-
-  private async writeSnapshot(seq: number): Promise<void> {
-    const state =
+    const rawPayload =
       this.kind === 'board'
         ? { kind: 'board', gameState: this.gameState }
         : {
@@ -783,6 +807,24 @@ export class LiveRoom {
               completedAtMs: p.completedAtMs,
             })),
           };
+    const payload = structuredClone(rawPayload);
+
+    this.seq += 1;
+    const seq = this.seq;
+    try {
+      await db.insert(roomEvents).values({
+        roomId: this.id,
+        seq,
+        actorPlayerId,
+        action,
+      });
+      if (seq % SNAPSHOT_EVERY === 0) await this.writeSnapshot(seq, payload);
+    } catch (err) {
+      logger.error({ err, roomId: this.id }, 'failed to append room event');
+    }
+  }
+
+  private async writeSnapshot(seq: number, state: object): Promise<void> {
     try {
       await db.insert(roomSnapshots).values({ roomId: this.id, seq, state }).onConflictDoNothing();
     } catch (err) {
@@ -833,6 +875,10 @@ export class LiveRoom {
       clearInterval(this.idleTimer);
       this.idleTimer = null;
     }
+    if (this.arcadeTickTimer) {
+      clearInterval(this.arcadeTickTimer);
+      this.arcadeTickTimer = null;
+    }
     stopBots(this.id);
     const rowsToRank = this.players
       .filter((p) => !p.left || p.isBot)
@@ -843,7 +889,7 @@ export class LiveRoom {
         // (total asset value for PT, raw point total for Scrabble). See the
         // comment on `assetValueBreakdown` in property-tycoon/rules.ts.
         const usesAssetValue =
-          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble' || this.gameId === 'congkak') &&
+          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble' || this.gameId === 'congkak' || this.gameId === 'tetris' || this.gameId === 'pacman') &&
           input.assetValue !== undefined;
         const score = usesAssetValue
           ? Math.round(input.assetValue as number)
@@ -873,30 +919,32 @@ export class LiveRoom {
     this.results = ranked as ResultRow[];
 
     try {
-      await db
-        .update(rooms)
-        .set({ status: 'finished', finishedAt: new Date() })
-        .where(eq(rooms.id, this.id));
-      if (ranked.length > 0) {
-        await db
-          .insert(roomResults)
-          .values(
-            ranked.map((r) => ({
-              roomId: this.id,
-              playerId: r.playerId,
-              rank: r.rank,
-              score: r.score,
-              progress: r.progress,
-              accuracy: r.accuracy,
-              speed: r.speed,
-              completed: r.completed,
-              completedAtMs: r.completedAtMs,
-              penalties: r.penalties,
-              detail: r.detail,
-            })),
-          )
-          .onConflictDoNothing();
-      }
+      await db.transaction(async (tx) => {
+        if (ranked.length > 0) {
+          await tx
+            .insert(roomResults)
+            .values(
+              ranked.map((r) => ({
+                roomId: this.id,
+                playerId: r.playerId,
+                rank: r.rank,
+                score: r.score,
+                progress: r.progress,
+                accuracy: r.accuracy,
+                speed: r.speed,
+                completed: r.completed,
+                completedAtMs: r.completedAtMs,
+                penalties: r.penalties,
+                detail: r.detail,
+              })),
+            )
+            .onConflictDoNothing();
+        }
+        await tx
+          .update(rooms)
+          .set({ status: 'finished', finishedAt: new Date() })
+          .where(eq(rooms.id, this.id));
+      });
     } catch (err) {
       logger.error({ err, roomId: this.id }, 'failed to persist results');
     }
@@ -1255,7 +1303,7 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
           puzzle: inst.puzzle,
           solution: inst.solution,
           meta: inst.meta as GeneratedPuzzle['meta'],
-          initialState: null,
+          initialState: initialPuzzleState(room.gameId, inst.puzzle),
           solveOrder: [],
         };
       }
@@ -1299,6 +1347,10 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
           Number(inst?.seed ?? 1),
           room.config,
         );
+      } else if (room.kind === 'puzzle' && room.puzzle) {
+        for (const p of room.players) {
+          p.state = structuredClone(room.puzzle.initialState);
+        }
       }
 
       const events = await db
@@ -1324,6 +1376,31 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
               (action.value ?? null) as number | string | null,
             );
             if (next !== null) p.state = next;
+          }
+        } else if (room.kind === 'puzzle' && ev.actorPlayerId && action.type === 'hint') {
+          const p = room.player(ev.actorPlayerId);
+          if (p) p.penalties += 1;
+        } else if (room.kind === 'puzzle' && ev.actorPlayerId && action.type === 'illegal_commit') {
+          const p = room.player(ev.actorPlayerId);
+          if (p) p.penalties += 1;
+        }
+      }
+
+      if (room.kind === 'puzzle' && room.puzzle) {
+        for (const p of room.players.filter((pl) => !pl.isBot)) {
+          const grade = gradePuzzle(room.gameId, p.state, room.puzzle.puzzle, room.puzzle.solution);
+          if (grade.complete && !p.completed) {
+            p.completed = true;
+            let lastEventAt: Date | null = null;
+            for (let i = events.length - 1; i >= 0; i--) {
+              if (events[i]!.actorPlayerId === p.id) {
+                lastEventAt = events[i]!.at;
+                break;
+              }
+            }
+            if (lastEventAt !== null) {
+              p.completedAtMs = Math.max(0, lastEventAt.getTime() - (room.startedAt ?? Date.now()));
+            }
           }
         }
       }
@@ -1374,6 +1451,7 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
       }
 
       room.armTurnTimer();
+      room.armArcadeTickWatchdog();
       // Recovery has to restart the bot scheduler too. Without this a room
       // whose next actor is a bot comes back 'running' and then sits there
       // forever, because nothing is left to take the bot's turn.

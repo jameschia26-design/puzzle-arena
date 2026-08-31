@@ -179,6 +179,150 @@
   animation: pa-shake 120ms steps(1, end) 1;
 }
 
+/* ======================================================================
+ * Pac-Man arcade uplift — "rounded neon": the app's base layer flattens
+ * every radius to 0 (retro-square), but the maze intentionally breaks that
+ * with a rounded cabinet shell. These rules are UNLAYERED on purpose:
+ * unlayered !important beats the layered base `border-radius: 0 !important`.
+ * ==================================================================== */
+
+/* --- Maze cabinet: rounded shell, neon glow, soft inner vignette ------ */
+.pa-maze-shell {
+  border-radius: 26px !important;
+  border: 2px solid #2a3b8f;
+  padding: 8px;
+  background:
+    radial-gradient(130% 110% at 50% 0%, #131a4a 0%, #0a0e2a 52%, #060818 100%);
+  box-shadow:
+    0 0 0 1px rgba(34, 224, 255, 0.12),
+    0 0 22px rgba(26, 60, 255, 0.5),
+    0 0 56px rgba(34, 224, 255, 0.14),
+    inset 0 0 30px rgba(5, 8, 24, 0.85);
+}
+
+/* Inner surface rounds a step tighter than the shell so the wall glow
+   never pokes out of the clipped corner. */
+.pa-maze-clip {
+  border-radius: 18px !important;
+}
+
+/* --- Pac-Man: two rotating half-disc "jaws", not `d: path()` ---------
+   interpolation. `d` keyframe animation is unreliable (unsupported in
+   several SVG renderers, silently ignored, or refuses to interpolate
+   across differing path command structures) so the mouth instead comes
+   from two stacked half-circle SVGs whose wrapping <div>s rotate apart
+   and back together with plain CSS `transform: rotate()` — universally
+   supported, GPU-composited, and immune to path-interpolation quirks.
+   At rest the jaws sit at 0deg and overlap into a solid full circle
+   (the classic arcade "closed mouth" resting frame); while moving they
+   swing open to a wide wedge and snap shut on a short, crisp loop. */
+.pa-pac-body {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+.pa-pac-jaw {
+  position: absolute;
+  inset: 0;
+  transform: rotate(0deg);
+}
+.pa-pac-jaw svg {
+  display: block;
+}
+.pa-pac-jaw-top.pa-pac-chomping {
+  animation: pa-pac-chomp-top 220ms ease-in-out infinite alternate;
+}
+.pa-pac-jaw-bottom.pa-pac-chomping {
+  animation: pa-pac-chomp-bottom 220ms ease-in-out infinite alternate;
+}
+@keyframes pa-pac-chomp-top {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-35deg); }
+}
+@keyframes pa-pac-chomp-bottom {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(35deg); }
+}
+/* Eye layer sits above the jaws, never rotates with the chomp; the
+   outer icon frame (rotate/scaleX in PacIcon) makes it direction-aware. */
+.pa-pac-eye-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Motion trail: a fading amber streak bleeding out of the back of the
+   mouth-side rotation frame (element sits opposite the mouth). */
+.pa-pac-trail {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 15px;
+  height: 9px;
+  margin-top: -4.5px;
+  border-radius: 999px !important;
+  background: linear-gradient(to left, rgba(255, 212, 38, 0.55), transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+.pa-pac-trail-on {
+  animation: pa-pac-trail 280ms linear infinite;
+}
+@keyframes pa-pac-trail {
+  0%   { opacity: 0.85; transform: translateX(3px); }
+  100% { opacity: 0;    transform: translateX(-9px); }
+}
+
+/* --- Ghosts: wavy skirt, direction pupils, frightened shimmer ---------- */
+.pa-ghost-skirt {
+  d: path('M1 15 V7 A7 7 0 0 1 15 7 V15 L13.3 13 L11.5 15 L9.7 13 L8 15 L6.3 13 L4.5 15 L2.7 13 L1 15 Z');
+}
+.pa-ghost-walk .pa-ghost-skirt {
+  animation: pa-ghost-wave 460ms ease-in-out infinite alternate;
+}
+@keyframes pa-ghost-wave {
+  from { d: path('M1 15 V7 A7 7 0 0 1 15 7 V15 L13.3 13 L11.5 15 L9.7 13 L8 15 L6.3 13 L4.5 15 L2.7 13 L1 15 Z'); }
+  to   { d: path('M1 15 V7 A7 7 0 0 1 15 7 V15 L13.3 15 L11.5 13 L9.7 15 L8 13 L6.3 15 L4.5 13 L2.7 15 L1 15 Z'); }
+}
+.pa-ghost-fright {
+  animation: pa-fright-shimmer 640ms linear infinite;
+}
+@keyframes pa-fright-shimmer {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 2px rgba(80, 120, 255, 0.6)); }
+  50%      { filter: brightness(1.6) drop-shadow(0 0 5px rgba(157, 184, 255, 0.9)); }
+}
+
+/* --- Dots, pellets, fruit, chips --------------------------------------- */
+.pa-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px !important;
+  background: #ffe7a0;
+  box-shadow: 0 0 5px rgba(255, 176, 32, 0.9), 0 0 1px #fff;
+}
+.pa-pellet {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px !important;
+  background: radial-gradient(circle at 35% 30%, #fffbe0 0%, #fff080 55%, #ffb020 100%);
+  box-shadow: 0 0 10px rgba(255, 240, 128, 0.95), 0 0 20px rgba(255, 176, 32, 0.5);
+}
+.pa-fruit-badge {
+  border-radius: 7px !important;
+  background: rgba(255, 176, 32, 0.12);
+  border: 1px solid rgba(255, 176, 32, 0.55);
+  box-shadow: 0 0 8px rgba(255, 176, 32, 0.35);
+}
+.pa-chip {
+  border-radius: 999px !important;
+}
+
+/* Door to the ghost house: soft glowing dash instead of a hard line. */
+.pa-ghost-door {
+  border-top: 2px dashed #ffb020;
+  filter: drop-shadow(0 0 3px rgba(255, 176, 32, 0.7));
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
