@@ -22,7 +22,8 @@ const TICK_MS = 250;
 type TilePosition = { x: number; y: number };
 type FloatingJoystick = { x: number; y: number; nubX: number; nubY: number };
 /** One sprite's lerp window: previous visual position -> current tick position. */
-type SpriteAnim = { from: TilePosition; to: TilePosition; start: number; duration: number };
+type SpriteAxis = 'horizontal' | 'vertical';
+type SpriteAnim = { from: TilePosition; to: TilePosition; axis: SpriteAxis | null; start: number; duration: number };
 
 function spritePosition(a: SpriteAnim, now: number): TilePosition {
   const dur = a.duration > 0 ? a.duration : TICK_MS;
@@ -31,6 +32,12 @@ function spritePosition(a: SpriteAnim, now: number): TilePosition {
     x: a.from.x + (a.to.x - a.from.x) * t,
     y: a.from.y + (a.to.y - a.from.y) * t,
   };
+}
+
+function gridStepAxis(from: TilePosition, to: TilePosition): SpriteAxis | null {
+  if (from.x !== to.x && from.y === to.y) return 'horizontal';
+  if (from.y !== to.y && from.x === to.x) return 'vertical';
+  return null;
 }
 
 /** Write the interpolated tile position as a translate() transform. */
@@ -323,7 +330,7 @@ export function PacManBoard({
   React.useEffect(() => {
     const el = mazeTouchRef.current;
     if (!el) return;
-    const THRESHOLD = 20;
+    const THRESHOLD = 14;
     const JOYSTICK_RADIUS = 48;
     const MAX_NUB_DISTANCE = 38;
     const reset = () => {
@@ -430,10 +437,11 @@ export function PacManBoard({
   // --- Smooth sprite interpolation ---------------------------------------
   // The engine moves one tile per tick (TICK_MS); rendering bare tick
   // snapshots makes Pac-Man and ghosts pop tile-by-tile. The rAF loop tracks
-  // each sprite's rendered float position, so a tick that arrives before the
-  // current glide ends continues from that point rather than jumping back to
-  // the prior integer tile. Tunnel wraps and respawns (|delta| > 1 tile)
-  // still snap instantly — never fly linearly across tunnel mouths.
+  // each sprite's rendered float position. A tick that continues along the
+  // same axis starts from that float; a turn instead starts at the last
+  // confirmed tile, preserving its orthogonal corner. Tunnel wraps and
+  // respawns (|delta| > 1 tile) still snap instantly — never fly linearly
+  // across tunnel mouths.
   const pacElRef = React.useRef<HTMLDivElement | null>(null);
   const ghostElsRef = React.useRef<Map<number, HTMLDivElement>>(new Map());
   const spriteAnimRef = React.useRef<{ pac: SpriteAnim | null; ghosts: Map<number, SpriteAnim> }>({
@@ -458,10 +466,17 @@ export function PacManBoard({
       const cur = you.pacPos;
       const last = lastPacPosRef.current;
       if (!last || last.x !== cur.x || last.y !== cur.y) {
-        const snap = !last || Math.abs(cur.x - last.x) > 1 || Math.abs(cur.y - last.y) > 1;
-        const from = snap ? { ...cur } : (visual.pac ?? { ...last });
+        const axis = last ? gridStepAxis(last, cur) : null;
+        const snap = !last || !axis || Math.abs(cur.x - last.x) > 1 || Math.abs(cur.y - last.y) > 1;
+        // A turn must start at its last confirmed tile, not a fractional
+        // position still travelling along the prior axis.
+        const from = !snap && axis === anim.pac?.axis && visual.pac
+          ? visual.pac
+          : snap
+            ? { ...cur }
+            : { ...last! };
         const duration = Math.max(1, Math.hypot(cur.x - from.x, cur.y - from.y) * TICK_MS);
-        anim.pac = { from, to: { ...cur }, start: now, duration };
+        anim.pac = { from, to: { ...cur }, axis, start: now, duration };
         visual.pac = from;
         if (snap) stopPacChomp();
         else startPacChomp();
@@ -470,11 +485,17 @@ export function PacManBoard({
       for (const g of you.ghosts) {
         const gLast = lastGhostPosRef.current.get(g.id);
         if (!gLast || gLast.x !== g.pos.x || gLast.y !== g.pos.y) {
-          const snap = !gLast || Math.abs(g.pos.x - gLast.x) > 1 || Math.abs(g.pos.y - gLast.y) > 1;
-          const from = snap ? { ...g.pos } : (visual.ghosts.get(g.id) ?? { ...gLast });
+          const axis = gLast ? gridStepAxis(gLast, g.pos) : null;
+          const snap = !gLast || !axis || Math.abs(g.pos.x - gLast.x) > 1 || Math.abs(g.pos.y - gLast.y) > 1;
+          const previous = anim.ghosts.get(g.id);
+          const visualPosition = visual.ghosts.get(g.id);
+          const from = !snap && axis === previous?.axis && visualPosition
+            ? visualPosition
+            : snap
+              ? { ...g.pos }
+              : { ...gLast! };
           const duration = Math.max(1, Math.hypot(g.pos.x - from.x, g.pos.y - from.y) * TICK_MS);
-          anim.ghosts.set(g.id, { from, to: { ...g.pos }, start: now, duration });
-          visual.ghosts.set(g.id, from);
+          anim.ghosts.set(g.id, { from, to: { ...g.pos }, axis, start: now, duration });
         }
         lastGhostPosRef.current.set(g.id, { ...g.pos });
       }
