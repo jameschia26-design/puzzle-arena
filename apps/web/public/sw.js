@@ -1,16 +1,15 @@
 /*
- * Minimal service worker: enough to make the app installable and to survive a
- * flaky connection, and deliberately no more.
+ * The worker keeps static subresources available but deliberately never stores
+ * a document: an offline HTML shell from an earlier deploy can refer to a
+ * deleted asset hash and leave the user with only the page background.
+ * Documents and the worker script always go to the network.
  *
- * The hard rule here is that a service worker must never hand back a stale
- * build. Vite fingerprints everything under /assets, so those are immutable and
- * safe to serve from cache forever; the HTML shell that points at them is
- * always fetched from the network first. Anything live — the API and the socket
- * — is not touched at all.
+ * This name replaces the previous document cache so activation clears any
+ * stale shell already stored on clients. Future deployments remain safe
+ * without a cache-name change because HTML is not cached here.
  */
-
-const CACHE = 'puzzle-arena-v1';
-const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
+const CACHE = 'puzzle-arena-assets-v2';
+const SHELL = ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -37,8 +36,14 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  // Live traffic is never cached: a cached room snapshot is a wrong room.
-  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/socket.io')) return;
+  // Live traffic and deployment metadata are never cached by this worker.
+  if (
+    url.pathname.startsWith('/api') ||
+    url.pathname.startsWith('/socket.io') ||
+    url.pathname === '/sw.js'
+  ) {
+    return;
+  }
 
   // Fingerprinted assets are immutable — cache first, and never re-validate.
   if (url.pathname.startsWith('/assets/')) {
@@ -58,20 +63,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigations: network first so a new deploy is picked up immediately, with
-  // the cached shell as the offline fallback.
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          void caches.open(CACHE).then((cache) => cache.put('/', copy));
-          return response;
-        })
-        .catch(() => caches.match('/').then((hit) => hit ?? Response.error())),
-    );
-    return;
-  }
+  // A deployment document must never be served from Cache Storage. Its hashed
+  // asset references are valid only for that deployment, so leave navigation
+  // handling to the browser's network request.
+  if (request.mode === 'navigate') return;
 
   // Everything else (icons, fonts): cache first, refresh in the background.
   event.respondWith(

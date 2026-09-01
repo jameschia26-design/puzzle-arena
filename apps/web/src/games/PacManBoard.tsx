@@ -12,6 +12,7 @@ const GHOST_COLORS: Record<number, string> = {
 const GHOST_NAMES = ['Blinky', 'Pinky', 'Inky', 'Clyde'];
 
 const CELL = 18; // px per maze cell
+const WALL_EDGE_INSET = 4; // px inside a wall tile; leaves room for 22px sprites in 18px corridors
 const PAC_ICON_SIZE = 22; // px; intentionally slightly wider than a corridor tile
 const GHOST_ICON_SIZE = 22; // px; the SVG body has 1px of viewBox padding
 // Engine tick cadence (ms per tile step). The rAF interpolator and chomping
@@ -467,14 +468,17 @@ export function PacManBoard({
     x >= 0 && x < W && y >= 0 && y < H && (you.maze[y * W + x] ?? 9) === 9;
   const doorAt = (x: number, y: number) =>
     x >= 0 && x < W && y >= 0 && y < H && you.maze[y * W + x] === 3;
+  // Keep the grid's collision edges unchanged, but put each visual wall line
+  // inside its wall tile. A centered 22px sprite otherwise overlaps the
+  // boundary stroke of an 18px-wide corridor.
   let wallPath = '';
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       if (!isWallAt(x, y)) continue;
-      if (!isWallAt(x, y - 1) && !doorAt(x, y - 1)) wallPath += `M${x * CELL} ${y * CELL}h${CELL}`;
-      if (!isWallAt(x, y + 1) && !doorAt(x, y + 1)) wallPath += `M${x * CELL} ${(y + 1) * CELL}h${CELL}`;
-      if (!isWallAt(x - 1, y) && !doorAt(x - 1, y)) wallPath += `M${x * CELL} ${y * CELL}v${CELL}`;
-      if (!isWallAt(x + 1, y) && !doorAt(x + 1, y)) wallPath += `M${(x + 1) * CELL} ${y * CELL}v${CELL}`;
+      if (!isWallAt(x, y - 1) && !doorAt(x, y - 1)) wallPath += `M${x * CELL} ${y * CELL + WALL_EDGE_INSET}h${CELL}`;
+      if (!isWallAt(x, y + 1) && !doorAt(x, y + 1)) wallPath += `M${x * CELL} ${(y + 1) * CELL - WALL_EDGE_INSET}h${CELL}`;
+      if (!isWallAt(x - 1, y) && !doorAt(x - 1, y)) wallPath += `M${x * CELL + WALL_EDGE_INSET} ${y * CELL}v${CELL}`;
+      if (!isWallAt(x + 1, y) && !doorAt(x + 1, y)) wallPath += `M${(x + 1) * CELL - WALL_EDGE_INSET} ${y * CELL}v${CELL}`;
     }
   }
   return (
@@ -597,7 +601,7 @@ export function PacManBoard({
                 >
                   <defs>
                     <filter id="paWallGlow" x="-15%" y="-15%" width="130%" height="130%">
-                      <feGaussianBlur stdDeviation="1.4" result="blur" />
+                      <feGaussianBlur stdDeviation="1" result="blur" />
                       <feMerge>
                         <feMergeNode in="blur" />
                         <feMergeNode in="SourceGraphic" />
@@ -605,7 +609,7 @@ export function PacManBoard({
                     </filter>
                   </defs>
                   {/* neon triple-stroke: soft halo, bright body, cool highlight */}
-                  <path d={wallPath} fill="none" stroke="#1a3cff" strokeWidth={4.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.4} filter="url(#paWallGlow)" />
+                  <path d={wallPath} fill="none" stroke="#1a3cff" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" opacity={0.4} filter="url(#paWallGlow)" />
                   <path d={wallPath} fill="none" stroke="#3d5bff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
                   <path d={wallPath} fill="none" stroke="#9db4ff" strokeWidth={0.7} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
                 </svg>
