@@ -758,7 +758,9 @@ export function PacManBoard({
       </div>
       {/* Mobile Joypad — bottom thumb zone, below the maze and ghost legend */}
       <div className="lg:hidden w-full max-w-lg mx-auto px-2 flex flex-col items-center gap-1">
-        <span className="font-display text-[8px] sm:text-[9px] text-pa-ink-dim tracking-wider">TOUCH MAZE OR TAP JOYPAD</span>
+        <span className="font-display text-[8px] sm:text-[9px] text-pa-ink-dim tracking-wider">
+          SWIPE OR TAP ◀ ▲ ▼ ▶ TO STEER
+        </span>
         <Joypad onDir={(dir) => onAction({ type: 'dir', dir })} />
       </div>
 
