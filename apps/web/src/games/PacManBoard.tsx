@@ -20,7 +20,6 @@ const GHOST_ICON_SIZE = 22; // px; the SVG body has 1px of viewBox padding
 const TICK_MS = 250;
 
 type TilePosition = { x: number; y: number };
-type FloatingJoystick = { x: number; y: number; nubX: number; nubY: number };
 /** One sprite's lerp window: previous visual position -> current tick position. */
 type SpriteAxis = 'horizontal' | 'vertical';
 type SpriteAnim = { from: TilePosition; to: TilePosition; axis: SpriteAxis | null; start: number; duration: number };
@@ -258,9 +257,6 @@ export function PacManBoard({
     } catch {}
   };
 
-  const controlModeRef = React.useRef(controlMode);
-  controlModeRef.current = controlMode;
-
   // Touch and tick loops outlive individual room snapshots; keep them pointed
   // at the latest socket action callback without re-arming the loops.
   const actionRef = React.useRef(onAction);
@@ -357,118 +353,6 @@ export function PacManBoard({
       window.visualViewport?.removeEventListener('resize', update);
     };
   }, [W, H]);
-
-  // --- Floating touch joystick on the maze --------------------------------
-  // Touches that begin on the maze stay entirely on this game surface; the
-  // rest of the page remains free to scroll normally.
-  const swipeRef = React.useRef<{
-    id: number;
-    x: number;
-    y: number;
-    startX: number;
-    startY: number;
-  } | null>(null);
-  const [floatingJoystick, setFloatingJoystick] = React.useState<FloatingJoystick | null>(null);
-  const mazeTouchRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    const el = mazeTouchRef.current;
-    if (!el) return;
-    const THRESHOLD = 14;
-    const MARGIN_RATIO = 0.65;
-    const JOYSTICK_RADIUS = 48;
-    const MAX_NUB_DISTANCE = 38;
-    const reset = () => {
-      swipeRef.current = null;
-      setFloatingJoystick(null);
-    };
-    const start = (e: TouchEvent) => {
-      if (controlModeRef.current !== 'joystick') return;
-      e.preventDefault();
-      if (swipeRef.current) return;
-      const t = e.changedTouches[0] ?? e.touches[0];
-      if (!t) return;
-      const rect = el.getBoundingClientRect();
-      const clampCenter = (point: number, size: number) => (
-        size <= JOYSTICK_RADIUS * 2
-          ? size / 2
-          : Math.min(Math.max(point, JOYSTICK_RADIUS), size - JOYSTICK_RADIUS)
-      );
-      swipeRef.current = {
-        id: t.identifier,
-        x: t.clientX,
-        y: t.clientY,
-        startX: t.clientX,
-        startY: t.clientY,
-      };
-      setFloatingJoystick({
-        x: clampCenter(t.clientX - rect.left, rect.width),
-        y: clampCenter(t.clientY - rect.top, rect.height),
-        nubX: 0,
-        nubY: 0,
-      });
-    };
-    const move = (e: TouchEvent) => {
-      e.preventDefault();
-      const from = swipeRef.current;
-      if (!from) return;
-      const t = Array.from(e.touches).find((touch) => touch.identifier === from.id);
-      if (!t) return;
-
-      const dragX = t.clientX - from.startX;
-      const dragY = t.clientY - from.startY;
-      const absDragX = Math.abs(dragX);
-      const absDragY = Math.abs(dragY);
-
-      // Snap to dominant compass direction; nub locks visually to that single axis line only
-      let nubX = 0;
-      let nubY = 0;
-      if (absDragX >= absDragY) {
-        nubX = Math.sign(dragX) * Math.min(absDragX, MAX_NUB_DISTANCE);
-        nubY = 0;
-      } else {
-        nubX = 0;
-        nubY = Math.sign(dragY) * Math.min(absDragY, MAX_NUB_DISTANCE);
-      }
-
-      setFloatingJoystick((joystick) => joystick && ({
-        ...joystick,
-        nubX,
-        nubY,
-      }));
-
-      const dx = t.clientX - from.x;
-      const dy = t.clientY - from.y;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-
-      // Dispatch only along the locked dominant axis; preserve hysteresis thresholds
-      if (absDragX >= absDragY) {
-        if (absDx >= THRESHOLD && absDy <= absDx * MARGIN_RATIO) {
-          actionRef.current({ type: 'dir', dir: dx > 0 ? 'right' : 'left' });
-          swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
-        }
-      } else {
-        if (absDy >= THRESHOLD && absDx <= absDy * MARGIN_RATIO) {
-          actionRef.current({ type: 'dir', dir: dy > 0 ? 'down' : 'up' });
-          swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
-        }
-      }
-    };
-    const end = (e: TouchEvent) => {
-      const from = swipeRef.current;
-      if (from && Array.from(e.changedTouches).some((touch) => touch.identifier === from.id)) reset();
-    };
-    el.addEventListener('touchstart', start, { passive: false });
-    el.addEventListener('touchmove', move, { passive: false });
-    el.addEventListener('touchend', end);
-    el.addEventListener('touchcancel', end);
-    return () => {
-      el.removeEventListener('touchstart', start);
-      el.removeEventListener('touchmove', move);
-      el.removeEventListener('touchend', end);
-      el.removeEventListener('touchcancel', end);
-    };
-  }, []);
 
   // Chomping belongs to the actual interpolation window, not to a one-render
   // comparison of server snapshots. Room-state updates that arrive mid-glide
@@ -684,7 +568,7 @@ export function PacManBoard({
           <span className="text-pa-ink-dim ml-1.5">Dots</span><span className="text-pa-ink">{you.dotsRemaining}</span>
         </div>
       </div>
-      {/* Maze — fixed CELL geometry scaled to fill portrait; swipe to steer */}
+      {/* Maze — fixed CELL geometry scaled to fill portrait */}
       <div className="w-full lg:w-auto flex flex-col items-center gap-1 lg:gap-2">
 
         <div ref={mazeBoxRef} className="w-full flex justify-center">
@@ -692,7 +576,7 @@ export function PacManBoard({
             className="relative pa-maze-shell"
             style={{ width: W * CELL * scale + 20, height: H * CELL * scale + 20 }}
           >
-            <div ref={mazeTouchRef} className="relative overflow-hidden touch-none select-none pa-maze-clip" style={{ width: W * CELL * scale, height: H * CELL * scale }}>
+            <div className="relative overflow-hidden select-none pa-maze-clip" style={{ width: W * CELL * scale, height: H * CELL * scale }}>
               <div
                 className="absolute top-0 left-0 origin-top-left"
                 style={{ width: W * CELL, height: H * CELL, transform: `scale(${scale})` }}
@@ -761,27 +645,6 @@ export function PacManBoard({
                   <path d={wallPath} fill="none" stroke="#9db4ff" strokeWidth={0.7} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
                 </svg>
               </div>
-              {floatingJoystick && (
-                <div
-                  className="pa-floating-joystick pointer-events-none absolute z-20 h-24 w-24 -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: floatingJoystick.x, top: floatingJoystick.y }}
-                  aria-hidden="true"
-                >
-                  <svg className="absolute inset-0 h-full w-full drop-shadow-[0_0_12px_rgba(0,216,255,0.7)]" viewBox="0 0 96 96">
-                    <circle cx="48" cy="48" r="46" fill="#00d8ff" fillOpacity="0.14" stroke="#00d8ff" strokeOpacity="0.9" strokeWidth="2" />
-                    <circle cx="48" cy="48" r="36" fill="none" stroke="#ffd426" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="3 5" />
-                    <path d="M48 10v12M48 74v12M10 48h12M74 48h12" stroke="#00d8ff" strokeOpacity="0.55" strokeWidth="2" />
-                  </svg>
-                  <svg
-                    className="absolute left-[29px] top-[29px] h-[38px] w-[38px] drop-shadow-[0_0_10px_rgba(255,212,38,0.9)] will-change-transform"
-                    viewBox="0 0 38 38"
-                    style={{ transform: `translate(${floatingJoystick.nubX}px, ${floatingJoystick.nubY}px)` }}
-                  >
-                    <circle cx="19" cy="19" r="17" fill="#ffd426" fillOpacity="0.74" stroke="#fff3ad" strokeWidth="2" />
-                    <circle cx="14" cy="14" r="4" fill="#fff7c2" fillOpacity="0.85" />
-                  </svg>
-                </div>
-              )}
               {(you.gameOver || view.phase === 'game_over') && (
                 <div className="absolute inset-0 bg-pa-bg/85 flex flex-col items-center justify-center gap-2">
                   <div className="font-display text-pa-danger text-sm">GAME OVER</div>
@@ -847,61 +710,63 @@ export function PacManBoard({
             </div>
           </div>
 
-          {/* Alignment toggle (in PAD mode) or Swipe Hint (in STICK mode) */}
-          {controlMode === 'pad' ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-pa-ink-dim tracking-wider">ALIGN:</span>
-              <div className="inline-flex border-2 border-pa-border bg-pa-surface shadow-[1px_1px_0_var(--color-pa-shadow)]">
-                <button
-                  type="button"
-                  onClick={() => handleSetPadAlign('left')}
-                  className={`px-1.5 py-0.5 cursor-pointer transition-colors ${
-                    padAlign === 'left'
-                      ? 'bg-pa-amber text-pa-bg font-bold'
-                      : 'text-pa-ink-dim hover:text-pa-ink'
-                  }`}
-                  aria-label="Align pad left"
-                  title="Align left"
-                >
-                  L
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetPadAlign('center')}
-                  className={`px-1.5 py-0.5 cursor-pointer transition-colors border-l-2 border-pa-border ${
-                    padAlign === 'center'
-                      ? 'bg-pa-amber text-pa-bg font-bold'
-                      : 'text-pa-ink-dim hover:text-pa-ink'
-                  }`}
-                  aria-label="Align pad center"
-                  title="Align center"
-                >
-                  C
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetPadAlign('right')}
-                  className={`px-1.5 py-0.5 cursor-pointer transition-colors border-l-2 border-pa-border ${
-                    padAlign === 'right'
-                      ? 'bg-pa-amber text-pa-bg font-bold'
-                      : 'text-pa-ink-dim hover:text-pa-ink'
-                  }`}
-                  aria-label="Align pad right"
-                  title="Align right"
-                >
-                  R
-                </button>
-              </div>
+          {/* Alignment toggle (shown in both STICK and PAD modes) */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-pa-ink-dim tracking-wider">ALIGN:</span>
+            <div className="inline-flex border-2 border-pa-border bg-pa-surface shadow-[1px_1px_0_var(--color-pa-shadow)]">
+              <button
+                type="button"
+                onClick={() => handleSetPadAlign('left')}
+                className={`px-1.5 py-0.5 cursor-pointer transition-colors ${
+                  padAlign === 'left'
+                    ? 'bg-pa-amber text-pa-bg font-bold'
+                    : 'text-pa-ink-dim hover:text-pa-ink'
+                }`}
+                aria-label="Align left"
+                title="Align left"
+                aria-pressed={padAlign === 'left'}
+              >
+                L
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetPadAlign('center')}
+                className={`px-1.5 py-0.5 cursor-pointer transition-colors border-l-2 border-pa-border ${
+                  padAlign === 'center'
+                    ? 'bg-pa-amber text-pa-bg font-bold'
+                    : 'text-pa-ink-dim hover:text-pa-ink'
+                }`}
+                aria-label="Align center"
+                title="Align center"
+                aria-pressed={padAlign === 'center'}
+              >
+                C
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetPadAlign('right')}
+                className={`px-1.5 py-0.5 cursor-pointer transition-colors border-l-2 border-pa-border ${
+                  padAlign === 'right'
+                    ? 'bg-pa-amber text-pa-bg font-bold'
+                    : 'text-pa-ink-dim hover:text-pa-ink'
+                }`}
+                aria-label="Align right"
+                title="Align right"
+                aria-pressed={padAlign === 'right'}
+              >
+                R
+              </button>
             </div>
-          ) : (
-            <span className="text-[8px] text-pa-ink-dim tracking-wider">
-              SWIPE MAZE TO STEER
-            </span>
-          )}
+          </div>
         </div>
 
-        {/* Cross-shaped Joypad (rendered in pad mode) */}
-        {controlMode === 'pad' && (
+        {/* Persistent Joystick or Joypad widget */}
+        {controlMode === 'joystick' ? (
+          <Joystick
+            align={padAlign}
+            onDir={(dir) => onAction({ type: 'dir', dir })}
+          />
+        ) : (
           <Joypad
             align={padAlign}
             onDir={(dir) => onAction({ type: 'dir', dir })}
@@ -994,6 +859,141 @@ function Joypad({
           <span>▼</span>
         </button>
         <div className="invisible pointer-events-none" />
+      </div>
+    </div>
+  );
+}
+
+/** Persistent mobile Joystick: cyan base ring, amber draggable nub with axis locking. */
+function Joystick({
+  onDir,
+  align,
+}: {
+  onDir: (dir: 'up' | 'down' | 'left' | 'right') => void;
+  align: 'left' | 'center' | 'right';
+}) {
+  const [nub, setNub] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = React.useState(false);
+  const dragRef = React.useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const THRESHOLD = 14;
+  const MARGIN_RATIO = 0.65;
+  const MAX_NUB_DISTANCE = 42;
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (dragRef.current !== null) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+    dragRef.current = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      x: e.clientX,
+      y: e.clientY,
+    };
+    setIsDragging(true);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragRef.current;
+    if (!from || from.id !== e.pointerId) return;
+    e.preventDefault();
+
+    const dragX = e.clientX - from.startX;
+    const dragY = e.clientY - from.startY;
+    const absDragX = Math.abs(dragX);
+    const absDragY = Math.abs(dragY);
+
+    // Snap to dominant compass direction; nub locks visually to that single axis line only
+    let nubX = 0;
+    let nubY = 0;
+    if (absDragX >= absDragY) {
+      nubX = Math.sign(dragX) * Math.min(absDragX, MAX_NUB_DISTANCE);
+      nubY = 0;
+    } else {
+      nubX = 0;
+      nubY = Math.sign(dragY) * Math.min(absDragY, MAX_NUB_DISTANCE);
+    }
+
+    setNub({ x: nubX, y: nubY });
+
+    const dx = e.clientX - from.x;
+    const dy = e.clientY - from.y;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    // Dispatch only along the locked dominant axis; preserve hysteresis thresholds
+    if (absDragX >= absDragY) {
+      if (absDx >= THRESHOLD && absDy <= absDx * MARGIN_RATIO) {
+        onDir(dx > 0 ? 'right' : 'left');
+        dragRef.current = { ...from, x: e.clientX, y: e.clientY };
+      }
+    } else {
+      if (absDy >= THRESHOLD && absDx <= absDy * MARGIN_RATIO) {
+        onDir(dy > 0 ? 'down' : 'up');
+        dragRef.current = { ...from, x: e.clientX, y: e.clientY };
+      }
+    }
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const from = dragRef.current;
+    if (from && from.id === e.pointerId) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+      dragRef.current = null;
+      setIsDragging(false);
+      setNub({ x: 0, y: 0 });
+    }
+  };
+
+  const alignClass =
+    align === 'left' ? 'justify-start pl-2' : align === 'right' ? 'justify-end pr-2' : 'justify-center';
+
+  return (
+    <div className={`w-full flex ${alignClass} py-0.5`} role="group" aria-label="Mobile Joystick">
+      <div
+        className="relative w-[124px] h-[124px] touch-none select-none cursor-pointer flex items-center justify-center"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        data-testid="pacman-joystick"
+      >
+        {/* Cyan base ring */}
+        <svg
+          className="absolute inset-0 h-full w-full drop-shadow-[0_0_12px_rgba(0,216,255,0.7)] pointer-events-none"
+          viewBox="0 0 124 124"
+          aria-hidden="true"
+        >
+          <circle cx="62" cy="62" r="59" fill="#00d8ff" fillOpacity="0.14" stroke="#00d8ff" strokeOpacity="0.9" strokeWidth="2" />
+          <circle cx="62" cy="62" r="46" fill="none" stroke="#ffd426" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="4 6" />
+          <path d="M62 10v16M62 98v16M10 62h16M98 62h16" stroke="#00d8ff" strokeOpacity="0.55" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+
+        {/* Amber draggable nub */}
+        <svg
+          className="absolute left-[39px] top-[39px] h-[46px] w-[46px] drop-shadow-[0_0_10px_rgba(255,212,38,0.9)] will-change-transform pointer-events-none"
+          viewBox="0 0 46 46"
+          style={{
+            transform: `translate(${nub.x}px, ${nub.y}px)`,
+            transition: isDragging ? 'none' : 'transform 120ms ease-out',
+          }}
+          data-testid="pacman-joystick-nub"
+          aria-hidden="true"
+        >
+          <circle cx="23" cy="23" r="21" fill="#ffd426" fillOpacity="0.74" stroke="#fff3ad" strokeWidth="2" />
+          <circle cx="17" cy="17" r="5" fill="#fff7c2" fillOpacity="0.85" />
+        </svg>
       </div>
     </div>
   );
