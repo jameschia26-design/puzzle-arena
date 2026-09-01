@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mulberry32 } from '@puzzle-arena/shared';
 import { pacman, type PacManState } from './index.js';
-import { buildMaze, countPellets, frightTicksForLevel, fruitForLevel, ghostScore, TILE_PELLET, TILE_DOT } from './rules.js';
+import { buildMaze, countPellets, frightTicksForLevel, fruitForLevel, ghostReviveTicks, ghostScore, TILE_PELLET, TILE_DOT } from './rules.js';
 import { MAZE_W } from './state.js';
 
 describe('pacman maze', () => {
@@ -420,5 +420,257 @@ describe('pacman swap collision', () => {
       expect(pAfter.dyingTicks).toBe(0);
       expect(pAfter.ghostsEatenTotal).toBe(0);
     }
+  });
+});
+
+describe('pacman ghost revival', () => {
+  it('ghostReviveTicks formula decreases with level to floor of 4 ticks', () => {
+    expect(ghostReviveTicks(1)).toBe(12);
+    expect(ghostReviveTicks(2)).toBe(10);
+    expect(ghostReviveTicks(3)).toBe(8);
+    expect(ghostReviveTicks(4)).toBe(6);
+    expect(ghostReviveTicks(5)).toBe(4);
+    expect(ghostReviveTicks(6)).toBe(4);
+    expect(ghostReviveTicks(21)).toBe(4);
+    expect(ghostReviveTicks(0)).toBe(12);
+  });
+
+  it('(a) eaten ghost reaching door enters house with houseTicks == ghostReviveTicks(level)', () => {
+    // Level 1: expected 12 ticks
+    const s1 = pacman.setup(['p1'], 42, { startLevel: 1 });
+    const p1 = s1.players[0]!;
+    p1.pacPos = { x: 1, y: 1 };
+    const g1 = p1.ghosts[0]!;
+    g1.pos = { x: 14, y: 12 }; // at ghost house door
+    g1.eaten = true;
+    g1.mode = 'eaten';
+    g1.inHouse = false;
+    g1.houseTicks = 0;
+
+    const r1 = pacman.reduce(s1, 'p1', { type: 'tick' });
+    expect(r1.ok).toBe(true);
+    if (r1.ok) {
+      const pAfter = r1.state.players[0]!;
+      const gAfter = pAfter.ghosts[0]!;
+      expect(gAfter.pos).toEqual({ x: 14, y: 14 });
+      expect(gAfter.eaten).toBe(false);
+      expect(gAfter.inHouse).toBe(true);
+      expect(gAfter.houseTicks).toBe(12);
+      expect(gAfter.mode).toBe('scatter');
+    }
+
+    // Level 5: expected 4 ticks
+    const s5 = pacman.setup(['p1'], 42, { startLevel: 5 });
+    const p5 = s5.players[0]!;
+    p5.level = 5;
+    p5.pacPos = { x: 1, y: 1 };
+    const g5 = p5.ghosts[0]!;
+    g5.pos = { x: 14, y: 12 };
+    g5.eaten = true;
+    g5.mode = 'eaten';
+    g5.inHouse = false;
+    g5.houseTicks = 0;
+
+    const r5 = pacman.reduce(s5, 'p1', { type: 'tick' });
+    expect(r5.ok).toBe(true);
+    if (r5.ok) {
+      const pAfter = r5.state.players[0]!;
+      const gAfter = pAfter.ghosts[0]!;
+      expect(gAfter.pos).toEqual({ x: 14, y: 14 });
+      expect(gAfter.eaten).toBe(false);
+      expect(gAfter.inHouse).toBe(true);
+      expect(gAfter.houseTicks).toBe(4);
+    }
+  });
+
+  it('(b) ghost stays in house for full wait duration jiggling, then exits exactly when houseTicks hits 0', () => {
+    const s = pacman.setup(['p1'], 42, { startLevel: 1 });
+    const p = s.players[0]!;
+    p.pacPos = { x: 1, y: 1 };
+    p.globalMode = 'scatter';
+    p.frightTicks = 0;
+
+    // Place Blinky inside house with 12 revive ticks
+    const g = p.ghosts[0]!;
+    g.pos = { x: 14, y: 14 };
+    g.dir = 'up';
+    g.eaten = false;
+    g.inHouse = true;
+    g.houseTicks = 12;
+    g.mode = 'scatter';
+
+    let curState = s;
+    const expectedWait = 12;
+
+    // For 12 ticks, ghost should stay inside house with houseTicks counting down from 11 to 0
+    for (let tick = 1; tick <= expectedWait; tick++) {
+      const r = pacman.reduce(curState, 'p1', { type: 'tick' });
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      curState = r.state;
+      const ghost = curState.players[0]!.ghosts[0]!;
+      expect(ghost.inHouse).toBe(true);
+      expect(ghost.houseTicks).toBe(expectedWait - tick);
+      // Ghost stays within house bounds
+      expect(ghost.pos.x).toBeGreaterThanOrEqual(11);
+      expect(ghost.pos.x).toBeLessThanOrEqual(16);
+      expect(ghost.pos.y).toBeGreaterThanOrEqual(13);
+      expect(ghost.pos.y).toBeLessThanOrEqual(15);
+    }
+
+    // On the 13th tick (when houseTicks was 0), ghost exits house to (14, 11)
+    const rExit = pacman.reduce(curState, 'p1', { type: 'tick' });
+    expect(rExit.ok).toBe(true);
+    if (!rExit.ok) return;
+    const exitedGhost = rExit.state.players[0]!.ghosts[0]!;
+    expect(exitedGhost.inHouse).toBe(false);
+    expect(exitedGhost.pos).toEqual({ x: 14, y: 11 });
+    expect(exitedGhost.mode).toBe('scatter');
+    expect(exitedGhost.dir).toBe('left');
+  });
+
+  it('(b - fright) ghost exits with frightened mode when player.frightTicks > 0', () => {
+    const s = pacman.setup(['p1'], 42, { startLevel: 1 });
+    const p = s.players[0]!;
+    p.pacPos = { x: 1, y: 1 };
+    p.globalMode = 'chase';
+    p.frightTicks = 20;
+
+    const g = p.ghosts[0]!;
+    g.pos = { x: 14, y: 14 };
+    g.inHouse = true;
+    g.houseTicks = 2;
+    g.mode = 'frightened';
+    g.frightTicks = 20;
+
+    // 2 ticks to count down houseTicks from 2 -> 1 -> 0
+    let curState = s;
+    for (let i = 0; i < 2; i++) {
+      const r = pacman.reduce(curState, 'p1', { type: 'tick' });
+      expect(r.ok).toBe(true);
+      if (r.ok) curState = r.state;
+    }
+
+    // Next tick: ghost exits house
+    const rExit = pacman.reduce(curState, 'p1', { type: 'tick' });
+    expect(rExit.ok).toBe(true);
+    if (rExit.ok) {
+      const ghost = rExit.state.players[0]!.ghosts[0]!;
+      expect(ghost.inHouse).toBe(false);
+      expect(ghost.pos).toEqual({ x: 14, y: 11 });
+      expect(ghost.mode).toBe('frightened');
+      expect(ghost.frightTicks).toBe(rExit.state.players[0]!.frightTicks);
+      expect(ghost.frightTicks).toBeGreaterThan(0);
+    }
+  });
+
+  it('(c) revive-then-eatable: exiting ghost can be eaten again on same power pellet, scoring streak points', () => {
+    let s = pacman.setup(['p1'], 42, { startLevel: 1 });
+    let p = s.players[0]!;
+
+    // Clear pellets near spawn and door for isolated score checks
+    p.maze[1 * MAZE_W + 1] = 0;
+    p.maze[1 * MAZE_W + 2] = 0;
+    p.maze[11 * MAZE_W + 14] = 0;
+    p.maze[11 * MAZE_W + 13] = 0;
+
+    p.pacPos = { x: 1, y: 1 };
+    p.pacDir = 'right';
+    p.nextDir = 'right';
+    p.frightTicks = 60; // long enough fright duration
+    p.ghostStreak = 0;
+
+    const g = p.ghosts[0]!;
+    g.pos = { x: 2, y: 1 };
+    g.dir = 'left';
+    g.mode = 'frightened';
+    g.frightTicks = 60;
+    g.inHouse = false;
+    g.moveCounter = 1;
+
+    const initialScore = p.score;
+
+    // 1. Pac-Man eats Blinky for the first time
+    const r1 = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(r1.ok).toBe(true);
+    if (!r1.ok) return;
+    s = r1.state;
+    p = s.players[0]!;
+    const gAfter1 = p.ghosts[0]!;
+
+    expect(gAfter1.eaten).toBe(true);
+    expect(gAfter1.mode).toBe('eaten');
+    expect(p.ghostStreak).toBe(1);
+    expect(p.ghostsEatenTotal).toBe(1);
+    expect(p.score).toBe(initialScore + ghostScore(0)); // +200
+
+    // 2. Teleport eaten eyes to door (14, 12)
+    gAfter1.pos = { x: 14, y: 12 };
+    // Move Pac-Man away from door while ghost revives
+    p.pacPos = { x: 1, y: 1 };
+    p.pacDir = 'left';
+    p.nextDir = 'left';
+
+    // Tick once to enter the house
+    const rDoor = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(rDoor.ok).toBe(true);
+    if (!rDoor.ok) return;
+    s = rDoor.state;
+    p = s.players[0]!;
+    const gInHouse = p.ghosts[0]!;
+
+    expect(gInHouse.pos).toEqual({ x: 14, y: 14 });
+    expect(gInHouse.eaten).toBe(false);
+    expect(gInHouse.inHouse).toBe(true);
+    expect(gInHouse.houseTicks).toBe(12);
+    expect(gInHouse.mode).toBe('frightened');
+
+    // 3. Wait for revival in house (12 ticks)
+    for (let i = 0; i < 12; i++) {
+      p.pacPos = { x: 1, y: 1 }; // keep Pac safely away
+      const rWait = pacman.reduce(s, 'p1', { type: 'tick' });
+      expect(rWait.ok).toBe(true);
+      if (!rWait.ok) return;
+      s = rWait.state;
+      p = s.players[0]!;
+    }
+
+    // 4. Ghost exits the house on next tick
+    p.pacPos = { x: 1, y: 1 };
+    const rExit = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(rExit.ok).toBe(true);
+    if (!rExit.ok) return;
+    s = rExit.state;
+    p = s.players[0]!;
+    const gExited = p.ghosts[0]!;
+
+    expect(gExited.inHouse).toBe(false);
+    expect(gExited.pos).toEqual({ x: 14, y: 11 });
+    expect(gExited.mode).toBe('frightened');
+    expect(p.frightTicks).toBeGreaterThan(0);
+    expect(p.ghostStreak).toBe(1); // streak still intact
+
+    // 5. Position Pac-Man to eat the revived ghost again at (14, 11)
+    p.pacPos = { x: 15, y: 11 };
+    p.pacDir = 'left';
+    p.nextDir = 'left';
+    gExited.dir = 'right';
+    gExited.moveCounter = 1;
+
+    const scoreBefore2 = p.score;
+    const rEatAgain = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(rEatAgain.ok).toBe(true);
+    if (!rEatAgain.ok) return;
+    s = rEatAgain.state;
+    p = s.players[0]!;
+    const gAfter2 = p.ghosts[0]!;
+
+    expect(gAfter2.eaten).toBe(true);
+    expect(gAfter2.mode).toBe('eaten');
+    expect(p.ghostStreak).toBe(2);
+    expect(p.ghostsEatenTotal).toBe(2);
+    // Streak 1 => 400 pts (ghostScore(1))
+    expect(p.score).toBe(scoreBefore2 + ghostScore(1));
+    expect(p.score).toBe(initialScore + ghostScore(0) + ghostScore(1)); // 200 + 400 = 600
   });
 });

@@ -43,6 +43,21 @@ export function frightTicksForLevel(level: number): number {
   return table[level] ?? 0;
 }
 
+/**
+ * Ghost revival wait inside the ghost house (in simulation ticks).
+ *
+ * In arcade Pac-Man, eaten ghost eyes return to the ghost house, restore their
+ * body, and wait inside before being released. Arcade release timing is governed
+ * by per-ghost dot counters (Pinky: 0 dots, Inky: 0-30, Clyde: 0-60, dropping
+ * to 0 at level 5+) or an inactivity timeout (~4s). In this tick-based engine
+ * (4 ticks/sec at TICK_MS = 250ms), we approximate this authentic behavior with
+ * a short level-scaled pause: ~3s (12 ticks) at level 1, decreasing by 2 ticks per
+ * level down to a floor of ~1s (4 ticks) at level 5+.
+ */
+export function ghostReviveTicks(level: number): number {
+  return Math.max(4, 12 - (Math.max(1, level) - 1) * 2);
+}
+
 // Speed tables: ticks per move. Higher level = smaller divisor = faster.
 // Pac-Man normal: L1 1.0, L5 1.1x etc. We'll return moveEvery = 1 for most, with occasional extra move.
 // Simplified: pacmanMoveEvery(level) = 1 always, ghostMoveEvery: frightened 2, tunnel 2, normal 1

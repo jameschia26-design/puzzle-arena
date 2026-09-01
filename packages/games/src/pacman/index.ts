@@ -5,7 +5,7 @@ import {
   MAZE_W, MAZE_H, DIRS, type Dir, type GhostState, type PacManPlayerState, type PacManState, type PacManAction, type PacManConfig, type PacManView, type PacManPublicPlayer,
 } from './state.js';
 import {
-  buildMaze, countPellets, canMovePac, canMoveGhost, nextPos, SCATTER_TARGETS, GHOST_HOUSE, FRUIT_POS, PAC_SPAWN, chooseGhostDir, ghostTarget, manhattan, fruitForLevel, frightTicksForLevel, MODE_CYCLE, pelletScore, ghostScore, TILE_DOT, TILE_PELLET, TUNNEL_Y,
+  buildMaze, countPellets, canMovePac, canMoveGhost, nextPos, SCATTER_TARGETS, GHOST_HOUSE, FRUIT_POS, PAC_SPAWN, chooseGhostDir, ghostTarget, manhattan, fruitForLevel, frightTicksForLevel, ghostReviveTicks, MODE_CYCLE, pelletScore, ghostScore, TILE_DOT, TILE_PELLET, TUNNEL_Y,
 } from './rules.js';
 
 const DEFAULT_CONFIG: PacManConfig = { turnTimeLimitSec: 90, startLevel: 1 };
@@ -148,6 +148,9 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
   // global scatter/chase timer (only when not frightened)
   if (player.frightTicks > 0) {
     player.frightTicks -= 1;
+    for (const g of player.ghosts) {
+      if (g.frightTicks > 0) g.frightTicks = player.frightTicks;
+    }
     if (player.frightTicks === 0) {
       // fright ends: reset ghosts not eaten
       player.ghostStreak = 0;
@@ -262,12 +265,14 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
         player.frightTicks = ft;
         player.ghostStreak = 0;
         for (const g of player.ghosts) {
-          if (!g.eaten && !g.inHouse) {
+          if (!g.eaten) {
             g.mode = 'frightened';
             g.frightTicks = ft;
-            // reverse
-            const rev = g.dir === 'up' ? 'down' : g.dir === 'down' ? 'up' : g.dir === 'left' ? 'right' : 'left';
-            if (canMoveGhost(player.maze, g.pos.x, g.pos.y, rev, { canUseDoor: false })) g.dir = rev;
+            if (!g.inHouse) {
+              // reverse
+              const rev = g.dir === 'up' ? 'down' : g.dir === 'down' ? 'up' : g.dir === 'left' ? 'right' : 'left';
+              if (canMoveGhost(player.maze, g.pos.x, g.pos.y, rev, { canUseDoor: false })) g.dir = rev;
+            }
           }
         }
         logs.push('Power pellet!');
@@ -323,6 +328,7 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
         g.pos = { x: GHOST_HOUSE.x, y: 11 }; // just above door
         g.dir = 'left';
         g.mode = player.frightTicks > 0 ? 'frightened' : player.globalMode;
+        g.frightTicks = player.frightTicks > 0 ? player.frightTicks : 0;
         continue;
       }
     }
@@ -353,7 +359,7 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
         g.mode = player.frightTicks > 0 ? 'frightened' : player.globalMode;
         g.frightTicks = player.frightTicks;
         g.inHouse = true;
-        g.houseTicks = 0;
+        g.houseTicks = ghostReviveTicks(player.level);
         continue;
       }
       const nd = chooseGhostDir(player.maze, g.pos, g.dir, target, canUseDoor);
