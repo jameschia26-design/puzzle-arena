@@ -70,6 +70,8 @@ function PressButton({
   children: React.ReactNode;
 }): React.ReactElement {
   const timer = React.useRef<number | null>(null);
+  const onFireRef = React.useRef(onFire);
+  onFireRef.current = onFire;
   const [pressed, setPressed] = React.useState(false);
   const stop = React.useCallback(() => {
     if (timer.current !== null) {
@@ -87,13 +89,41 @@ function PressButton({
       onContextMenu={(e) => e.preventDefault()}
       onPointerDown={(e) => {
         e.preventDefault();
+        try {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+        } catch {
+          // ignore
+        }
         setPressed(true);
-        onFire();
-        if (repeatMs) timer.current = window.setInterval(onFire, repeatMs);
+        onFireRef.current();
+        if (repeatMs) {
+          if (timer.current !== null) window.clearInterval(timer.current);
+          timer.current = window.setInterval(() => {
+            onFireRef.current();
+          }, repeatMs);
+        }
       }}
-      onPointerUp={stop}
-      onPointerLeave={stop}
-      onPointerCancel={stop}
+      onPointerUp={(e) => {
+        try {
+          if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+            e.currentTarget.releasePointerCapture?.(e.pointerId);
+          }
+        } catch {
+          // ignore
+        }
+        stop();
+      }}
+      onPointerCancel={(e) => {
+        try {
+          if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+            e.currentTarget.releasePointerCapture?.(e.pointerId);
+          }
+        } catch {
+          // ignore
+        }
+        stop();
+      }}
+      onLostPointerCapture={stop}
     >
       {children}
     </button>
@@ -113,7 +143,8 @@ function useCellSize(): number {
     const vh = window.visualViewport?.height ?? window.innerHeight;
     if (vw >= 1024) return Math.max(14, Math.min(30, Math.floor((vh - 150) / 20)));
     // Mobile portrait: fit info strip, board, side controls, and action buttons without scrolling
-    const maxH = Math.max(160, vh - 228);
+    // Account for info strip (~76px), gaps (~18px), buttons (~120px with taller rotate), padding (~16px), borders (~8px)
+    const maxH = Math.max(160, vh - 256);
     const maxW = Math.max(160, vw - 64);
     return Math.max(14, Math.floor(Math.min(maxW / 10, maxH / 20, 32)));
   }, []);
@@ -216,24 +247,79 @@ export function TetrisBoard({
     if (clearFlashTimer.current !== null) window.clearTimeout(clearFlashTimer.current);
   }, []);
 
-  // Keyboard handling
+  // Keyboard handling with rapid soft-drop auto-repeat
+  const softDropTimerRef = React.useRef<number | null>(null);
+  const onActionRef = React.useRef(onAction);
+  onActionRef.current = onAction;
+  const youRef = React.useRef(you);
+  youRef.current = you;
+  const phaseRef = React.useRef(view.phase);
+  phaseRef.current = view.phase;
+
+  const stopSoftDrop = React.useCallback(() => {
+    if (softDropTimerRef.current !== null) {
+      window.clearInterval(softDropTimerRef.current);
+      softDropTimerRef.current = null;
+    }
+  }, []);
+
   React.useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if (!you || you.gameOver || view.phase === 'game_over') return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const curYou = youRef.current;
+      if (!curYou || curYou.gameOver || phaseRef.current === 'game_over') return;
+
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        if (!e.repeat && softDropTimerRef.current === null) {
+          onActionRef.current({ type: 'softDrop' });
+          sfx.chip();
+          softDropTimerRef.current = window.setInterval(() => {
+            const p = youRef.current;
+            if (!p || p.gameOver || phaseRef.current === 'game_over') {
+              stopSoftDrop();
+              return;
+            }
+            onActionRef.current({ type: 'softDrop' });
+            sfx.chip();
+          }, 45);
+        }
+        return;
+      }
+
+      if (e.repeat) return;
+
       switch (e.key) {
-        case 'ArrowLeft': e.preventDefault(); onAction({ type: 'move', dir: 'left' }); sfx.blip(); break;
-        case 'ArrowRight': e.preventDefault(); onAction({ type: 'move', dir: 'right' }); sfx.blip(); break;
-        case 'ArrowDown': e.preventDefault(); onAction({ type: 'softDrop' }); sfx.chip(); break;
-        case 'ArrowUp': e.preventDefault(); onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); break;
-        case 'z': case 'Z': e.preventDefault(); onAction({ type: 'rotate', dir: 'ccw' }); sfx.turn(); break;
-        case ' ': e.preventDefault(); onAction({ type: 'hardDrop' }); sfx.tembak(); break;
-        case 'g': case 'G': e.preventDefault(); onAction({ type: 'toggleAssist' }); sfx.blip(); break;
-        case 'c': case 'C': e.preventDefault(); onAction({ type: 'hold' }); sfx.deal(); break;
+        case 'ArrowLeft': case 'a': case 'A': e.preventDefault(); onActionRef.current({ type: 'move', dir: 'left' }); sfx.blip(); break;
+        case 'ArrowRight': case 'd': case 'D': e.preventDefault(); onActionRef.current({ type: 'move', dir: 'right' }); sfx.blip(); break;
+        case 'ArrowUp': case 'w': case 'W': e.preventDefault(); onActionRef.current({ type: 'rotate', dir: 'cw' }); sfx.turn(); break;
+        case 'z': case 'Z': e.preventDefault(); onActionRef.current({ type: 'rotate', dir: 'ccw' }); sfx.turn(); break;
+        case ' ': e.preventDefault(); onActionRef.current({ type: 'hardDrop' }); sfx.tembak(); break;
+        case 'g': case 'G': e.preventDefault(); onActionRef.current({ type: 'toggleAssist' }); sfx.blip(); break;
+        case 'c': case 'C': e.preventDefault(); onActionRef.current({ type: 'hold' }); sfx.deal(); break;
       }
     };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [you, view.phase, onAction]);
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        stopSoftDrop();
+      }
+    };
+
+    const handleBlur = () => {
+      stopSoftDrop();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+      stopSoftDrop();
+    };
+  }, [stopSoftDrop]);
 
   // Prevent browser scroll/zoom for gestures that begin in the playable area.
   // React's touch listeners are passive, so this must be native and non-passive.
@@ -272,11 +358,11 @@ export function TetrisBoard({
   }, [you?.board, you?.active]);
 
   // Gravity tick loop (client-driven). In-air drops at gravityMs(level); once grounded on floor/block,
-  // runs lock delay countdown of 450ms so piece locks within <= 500ms wall-clock duration.
+  // runs standard Tetris Guideline lock delay (5 ticks @ 100ms = 500ms).
   const tickRef = React.useRef<number | null>(null);
   React.useEffect(() => {
     if (!you || you.gameOver || view.phase === 'game_over' || paused || !you.active) return;
-    const interval = grounded ? 20 : tetrisRules.gravityMs(you.level);
+    const interval = grounded ? 100 : tetrisRules.gravityMs(you.level);
     const loop = () => {
       onAction({ type: 'tick' });
     };
@@ -539,6 +625,7 @@ export function TetrisBoard({
             <>
               <PressButton
                 label="Down"
+                repeatMs={45}
                 className="h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
                 onFire={guard(() => { onAction({ type: 'softDrop' }); sfx.chip(); })}
               >
@@ -563,6 +650,7 @@ export function TetrisBoard({
               </PressButton>
               <PressButton
                 label="Down"
+                repeatMs={45}
                 className="h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
                 onFire={guard(() => { onAction({ type: 'softDrop' }); sfx.chip(); })}
               >
@@ -572,15 +660,14 @@ export function TetrisBoard({
           )}
           <PressButton
             label="Rotate"
-            className="col-span-2 h-12 sm:h-14 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-sm sm:text-base font-bold flex items-center justify-center gap-1.5 touch-none shadow-[2px_2px_0_var(--color-pa-shadow)] active:bg-pa-surface-2"
+            className="col-span-2 h-[72px] sm:h-[80px] bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-lg sm:text-xl font-bold flex items-center justify-center gap-2 touch-none shadow-[2px_2px_0_var(--color-pa-shadow)] active:bg-pa-surface-2"
             onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
           >
-            <span>⟳</span>
+            <span className="text-2xl sm:text-3xl leading-none">⟳</span>
             <span>ROTATE</span>
           </PressButton>
         </div>
       </div>
-
       {/* Standings */}
       {view.players.length > 1 && (
         <div className="order-3 lg:order-5 w-full lg:w-[200px]">

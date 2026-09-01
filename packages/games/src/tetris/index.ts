@@ -268,19 +268,9 @@ function reduce(prev: TetrisState, playerId: string, action: TetrisAction): Redu
           player.lowestY = nxt.y;
           player.lockResets = 0;
         }
-      } else {
-        // if already grounded, soft drop attempts to lock
-        player.lockTicks += 1;
-        if (player.lockTicks >= 3) {
-          doLock(s, player, rng);
-          if (player.gameOver) {
-            logs.push(makeLog('TOP OUT', player.id));
-          } else if (player.lines > beforeLines) {
-            const cleared = player.lines - beforeLines;
-            logs.push(makeLog(`Clear ${cleared} — ${player.score - beforeScore} pts`, player.id));
-          }
-        }
       }
+      // Note: per Tetris Guideline, soft drop to floor grounds the piece but does
+      // NOT force an instant lock; the piece enjoys the full 500ms lock delay.
       break;
     }
     case 'hardDrop': {

@@ -114,6 +114,38 @@ describe('tetris: grounded lock (move-reset cap)', () => {
     expect(cur.players[0]!.lockTicks).toBe(4);
     expect(cur.players[0]!.board.some((c) => c === 'T')).toBe(false);
   });
+
+  it('soft drop to floor grounds piece without skipping 500ms lock delay', () => {
+    const s = tetris.setup(['p1', 'p2'], 42, {});
+    const p = s.players[0]!;
+    for (let x = 0; x < BOARD_W; x++) p.board[idx(x, BOARD_H - 1)] = 'I' as never;
+    p.active = { kind: 'T', x: 4, y: BOARD_H - 4, rot: 0 };
+    p.lowestY = p.active.y;
+    // Soft drop 1 cell down to the floor
+    const r1 = tetris.reduce(s, 'p1', { type: 'softDrop' });
+    expect(r1.ok).toBe(true);
+    const s1 = r1.state!;
+    expect(s1.players[0]!.active?.y).toBe(BOARD_H - 3); // now touching floor
+    expect(s1.players[0]!.board.some((c) => c === 'T')).toBe(false); // not locked!
+    expect(s1.players[0]!.lockTicks).toBe(0);
+
+    // Additional soft drop attempts while already grounded do NOT force a lock
+    const r2 = tetris.reduce(s1, 'p1', { type: 'softDrop' });
+    expect(r2.ok).toBe(true);
+    expect(r2.state!.players[0]!.board.some((c) => c === 'T')).toBe(false); // still not locked!
+    expect(r2.state!.players[0]!.lockTicks).toBe(0);
+
+    // Piece still requires the full 5 grounded ticks (500ms) to lock
+    let cur = r2.state!;
+    for (let i = 1; i <= 4; i++) {
+      cur = tetris.reduce(cur, 'p1', { type: 'tick' }).state!;
+      expect(cur.players[0]!.lockTicks).toBe(i);
+      expect(cur.players[0]!.board.some((c) => c === 'T')).toBe(false);
+    }
+    const r5 = tetris.reduce(cur, 'p1', { type: 'tick' });
+    expect(r5.ok).toBe(true);
+    expect(r5.state!.players[0]!.board.some((c) => c === 'T')).toBe(true);
+  });
 });
 
 describe('tetris: line clear', () => {
