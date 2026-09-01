@@ -20,6 +20,7 @@ const GHOST_ICON_SIZE = 22; // px; the SVG body has 1px of viewBox padding
 const TICK_MS = 250;
 
 type TilePosition = { x: number; y: number };
+type FloatingJoystick = { x: number; y: number; nubX: number; nubY: number };
 /** One sprite's lerp window: previous visual position -> current tick position. */
 type SpriteAnim = { from: TilePosition; to: TilePosition; start: number; duration: number };
 
@@ -307,33 +308,82 @@ export function PacManBoard({
     };
   }, [W, H]);
 
-  // --- Swipe steering on the maze -----------------------------------------
-  // Fires once per 20px of drag so one long swipe can steer through several
-  // intersections. The maze is a game surface, never a scroll surface.
-  const swipeRef = React.useRef<{ x: number; y: number } | null>(null);
+  // --- Floating touch joystick on the maze --------------------------------
+  // Touches that begin on the maze stay entirely on this game surface; the
+  // rest of the page remains free to scroll normally.
+  const swipeRef = React.useRef<{
+    id: number;
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const [floatingJoystick, setFloatingJoystick] = React.useState<FloatingJoystick | null>(null);
   const mazeTouchRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     const el = mazeTouchRef.current;
     if (!el) return;
     const THRESHOLD = 20;
+    const JOYSTICK_RADIUS = 48;
+    const MAX_NUB_DISTANCE = 38;
+    const reset = () => {
+      swipeRef.current = null;
+      setFloatingJoystick(null);
+    };
     const start = (e: TouchEvent) => {
-      const t = e.touches[0]!;
-      swipeRef.current = { x: t.clientX, y: t.clientY };
+      e.preventDefault();
+      if (swipeRef.current) return;
+      const t = e.changedTouches[0] ?? e.touches[0];
+      if (!t) return;
+      const rect = el.getBoundingClientRect();
+      const clampCenter = (point: number, size: number) => (
+        size <= JOYSTICK_RADIUS * 2
+          ? size / 2
+          : Math.min(Math.max(point, JOYSTICK_RADIUS), size - JOYSTICK_RADIUS)
+      );
+      swipeRef.current = {
+        id: t.identifier,
+        x: t.clientX,
+        y: t.clientY,
+        startX: t.clientX,
+        startY: t.clientY,
+      };
+      setFloatingJoystick({
+        x: clampCenter(t.clientX - rect.left, rect.width),
+        y: clampCenter(t.clientY - rect.top, rect.height),
+        nubX: 0,
+        nubY: 0,
+      });
     };
     const move = (e: TouchEvent) => {
       e.preventDefault();
       const from = swipeRef.current;
       if (!from) return;
-      const t = e.touches[0]!;
+      const t = Array.from(e.touches).find((touch) => touch.identifier === from.id);
+      if (!t) return;
+
+      const dragX = t.clientX - from.startX;
+      const dragY = t.clientY - from.startY;
+      const dragDistance = Math.hypot(dragX, dragY);
+      const nubScale = dragDistance > MAX_NUB_DISTANCE ? MAX_NUB_DISTANCE / dragDistance : 1;
+      setFloatingJoystick((joystick) => joystick && ({
+        ...joystick,
+        nubX: dragX * nubScale,
+        nubY: dragY * nubScale,
+      }));
+
       const dx = t.clientX - from.x;
       const dy = t.clientY - from.y;
       if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
       if (Math.abs(dx) > Math.abs(dy)) actionRef.current({ type: 'dir', dir: dx > 0 ? 'right' : 'left' });
       else actionRef.current({ type: 'dir', dir: dy > 0 ? 'down' : 'up' });
-      swipeRef.current = { x: t.clientX, y: t.clientY };
+      swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
     };
-    const end = () => { swipeRef.current = null; };
-    el.addEventListener('touchstart', start, { passive: true });
+    const end = (e: TouchEvent) => {
+      const from = swipeRef.current;
+      if (from && Array.from(e.changedTouches).some((touch) => touch.identifier === from.id)) reset();
+    };
+    el.addEventListener('touchstart', start, { passive: false });
     el.addEventListener('touchmove', move, { passive: false });
     el.addEventListener('touchend', end);
     el.addEventListener('touchcancel', end);
@@ -614,6 +664,27 @@ export function PacManBoard({
                   <path d={wallPath} fill="none" stroke="#9db4ff" strokeWidth={0.7} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
                 </svg>
               </div>
+              {floatingJoystick && (
+                <div
+                  className="pa-floating-joystick pointer-events-none absolute z-20 h-24 w-24 -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: floatingJoystick.x, top: floatingJoystick.y }}
+                  aria-hidden="true"
+                >
+                  <svg className="absolute inset-0 h-full w-full drop-shadow-[0_0_12px_rgba(0,216,255,0.7)]" viewBox="0 0 96 96">
+                    <circle cx="48" cy="48" r="46" fill="#00d8ff" fillOpacity="0.14" stroke="#00d8ff" strokeOpacity="0.9" strokeWidth="2" />
+                    <circle cx="48" cy="48" r="36" fill="none" stroke="#ffd426" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="3 5" />
+                    <path d="M48 10v12M48 74v12M10 48h12M74 48h12" stroke="#00d8ff" strokeOpacity="0.55" strokeWidth="2" />
+                  </svg>
+                  <svg
+                    className="absolute left-[29px] top-[29px] h-[38px] w-[38px] drop-shadow-[0_0_10px_rgba(255,212,38,0.9)] will-change-transform"
+                    viewBox="0 0 38 38"
+                    style={{ transform: `translate(${floatingJoystick.nubX}px, ${floatingJoystick.nubY}px)` }}
+                  >
+                    <circle cx="19" cy="19" r="17" fill="#ffd426" fillOpacity="0.74" stroke="#fff3ad" strokeWidth="2" />
+                    <circle cx="14" cy="14" r="4" fill="#fff7c2" fillOpacity="0.85" />
+                  </svg>
+                </div>
+              )}
               {(you.gameOver || view.phase === 'game_over') && (
                 <div className="absolute inset-0 bg-pa-bg/85 flex flex-col items-center justify-center gap-2">
                   <div className="font-display text-pa-danger text-sm">GAME OVER</div>
@@ -646,7 +717,7 @@ export function PacManBoard({
       </div>
       {/* Mobile Joypad — bottom thumb zone, below the maze and ghost legend */}
       <div className="lg:hidden w-full max-w-lg mx-auto px-2 flex flex-col items-center gap-1">
-        <span className="font-display text-[9px] text-pa-ink-dim tracking-wider">SWIPE MAZE OR TAP JOYPAD</span>
+        <span className="font-display text-[9px] text-pa-ink-dim tracking-wider">TOUCH MAZE OR TAP JOYPAD</span>
         <Joypad onDir={(dir) => onAction({ type: 'dir', dir })} />
       </div>
 

@@ -9,7 +9,6 @@ import Landing from './routes/Landing.js';
 import AdminLogin from './routes/AdminLogin.js';
 import AdminSignup from './routes/AdminSignup.js';
 import AdminDashboard from './routes/AdminDashboard.js';
-import AdminAi from './routes/AdminAi.js';
 import RoomPage from './routes/RoomPage.js';
 import ResultsPage from './routes/ResultsPage.js';
 import UiGallery from './routes/UiGallery.js';
@@ -26,7 +25,6 @@ function App() {
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin/signup" element={<AdminSignup />} />
         <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/ai" element={<AdminAi />} />
         <Route path="/r/:code" element={<RoomPage />} />
         <Route path="/r/:code/results" element={<ResultsPage />} />
         {/* The visual proof surface, dev only. */}

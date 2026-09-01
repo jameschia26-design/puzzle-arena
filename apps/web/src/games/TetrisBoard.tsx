@@ -533,6 +533,13 @@ export function TetrisBoard({
           >
             HARD DROP
           </PressButton>
+          <PressButton
+            label="Rotate"
+            className="col-span-2 h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
+            onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
+          >
+            ROTATE
+          </PressButton>
         </div>
       </div>
 

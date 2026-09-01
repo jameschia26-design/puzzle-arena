@@ -150,7 +150,8 @@ export default function RoomPage(): React.ReactElement {
   React.useEffect(() => {
     if (!room) return;
     if (room.status === 'running') {
-      if (gameId === 'animal-chess') bgm.play('animalchess');
+      if (store.paused) bgm.stop();
+      else if (gameId === 'animal-chess') bgm.play('animalchess');
       else if (gameId === 'property-tycoon') bgm.play('property');
       else if (gameId === 'manor-mystery') bgm.play('mystery');
       else if (gameId === 'reversi' || gameId === 'connect4' || gameId === 'minesweeper') bgm.play('arcade');
@@ -161,6 +162,8 @@ export default function RoomPage(): React.ReactElement {
       else if (gameId === 'chess') bgm.play('chess');
       else if (gameId === 'xiangqi') bgm.play('xiangqi');
       else if (GAME_REGISTRY[gameId].kind === 'puzzle') bgm.play('puzzle');
+      else if (gameId === 'pacman') bgm.play('pacman');
+      else if (gameId === 'tetris') bgm.play('tetris');
       else bgm.play('board');
     } else if (room.status === 'finished') {
       sfx.victory();
@@ -171,7 +174,7 @@ export default function RoomPage(): React.ReactElement {
     return () => {
       bgm.stop();
     };
-  }, [room?.status, gameId]);
+  }, [room?.status, gameId, store.paused]);
 
   /* ---------------- name gate ---------------- */
   if (!joined) {

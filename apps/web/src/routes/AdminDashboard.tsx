@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BarChart2, Copy, Cpu, Link2, LogOut, Plus, Trash2, XCircle } from 'lucide-react';
+import { BarChart2, Copy, Link2, LogOut, Plus, Trash2, XCircle } from 'lucide-react';
 import { GAME_IDS, GAME_REGISTRY, WORD_SEARCH_THEMES, type GameId } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -123,12 +123,6 @@ export default function AdminDashboard(): React.ReactElement {
       <header className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="font-display text-[18px]">Host dashboard</h1>
         <div className="flex gap-2">
-          <Link to="/admin/ai">
-            <PixelButton variant="ghost" size="sm">
-              <Cpu size={16} strokeWidth={3} className="lucide" />
-              AI providers
-            </PixelButton>
-          </Link>
           <PixelButton variant="ghost" size="sm" onClick={() => void signOut()}>
             <LogOut size={16} strokeWidth={3} className="lucide" />
             Sign out
