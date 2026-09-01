@@ -144,6 +144,7 @@ export class LiveRoom {
   /** Chess-clock games: fires the "still thinking?" prompts every 60s of idling on one move. */
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private arcadeTickTimer: NodeJS.Timeout | null = null;
+  private playerLastActionMs = new Map<string, number>();
   private idleStrikes = 0;
   constructor(row: {
     id: string;
@@ -483,6 +484,8 @@ export class LiveRoom {
       if (this.status !== 'running' || !this.gameState) return;
       for (const player of this.players) {
         if (player.isBot || player.left) continue;
+        const lastAt = this.playerLastActionMs.get(player.id) ?? 0;
+        if (Date.now() - lastAt < 1500) continue; // Player is actively ticking on client; do not inject extra ticks!
         const view = this.engine().view(this.gameState as never, player.id) as unknown as { you: { gameOver?: boolean } | null };
         const you = view?.you;
         if (!you || you.gameOver) continue;
@@ -745,6 +748,7 @@ export class LiveRoom {
     }
 
     this.gameState = result.state;
+    this.playerLastActionMs.set(playerId, Date.now());
     if (fromTimeout) {
       const player = this.player(playerId);
       if (player) player.penalties += 1;
