@@ -361,7 +361,10 @@ export default function RoomPage(): React.ReactElement {
           </PixelPopover>
         </div>
       </header>
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4">
+      <div className={cn(
+        'flex-1 flex flex-col lg:flex-row gap-4 p-4',
+        gameId === 'pacman' && 'gap-2 p-0 lg:gap-4 lg:p-4',
+      )}>
         {/* ------------------------------ main ------------------------------ */}
         <section
           className={cn('flex-1 min-w-0', mobileTab !== 'board' && 'hidden lg:block')}

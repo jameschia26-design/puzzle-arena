@@ -951,6 +951,7 @@ const TRACK_SEQUENCES: Record<MusicTrack, { tempo: number; lead: NoteEvent[]; ba
 };
 let currentBgmTrack: MusicTrack | null = null;
 let bgmLoopTimer: NodeJS.Timeout | null = null;
+let activeBgmVoices: { osc: OscillatorNode; gain: GainNode }[] = [];
 
 function scheduleVoice(
   ctx: AudioContext,
@@ -981,6 +982,11 @@ function scheduleVoice(
 
       osc.start(t);
       osc.stop(t + durSec);
+      activeBgmVoices.push({ osc, gain });
+      osc.addEventListener('ended', () => {
+        activeBgmVoices = activeBgmVoices.filter((voice) => voice.osc !== osc);
+      });
+
     }
     t += durSec;
   });
@@ -1022,8 +1028,24 @@ export const bgm = {
   },
 
   stop() {
-    if (bgmLoopTimer) clearTimeout(bgmLoopTimer);
+    clearTimeout(bgmLoopTimer);
     bgmLoopTimer = null;
+    const ctx = audioCtx;
+    if (ctx) {
+      const now = ctx.currentTime;
+      for (const { osc, gain } of activeBgmVoices) {
+        try {
+          gain.gain.cancelScheduledValues(now);
+          gain.gain.setValueAtTime(gain.gain.value, now);
+          gain.gain.linearRampToValueAtTime(0.0001, now + 0.03);
+          osc.stop(now + 0.04);
+        } catch {
+          // Oscillator may have already stopped naturally (its own scheduled stop
+          // time already passed) — calling .stop() on an already-stopped node throws.
+        }
+      }
+    }
+    activeBgmVoices = [];
   },
 
   setMusicEnabled(enabled: boolean) {

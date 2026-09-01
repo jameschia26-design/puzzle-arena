@@ -214,7 +214,6 @@ export function TetrisBoard({
   // Prevent browser scroll/zoom for gestures that begin in the playable area.
   // React's touch listeners are passive, so this must be native and non-passive.
   const playAreaRef = React.useRef<HTMLDivElement | null>(null);
-  const boardTap = React.useRef<{ id: number; x: number; y: number } | null>(null);
   React.useEffect(() => {
     const playArea = playAreaRef.current;
     if (!playArea) return;
@@ -229,6 +228,23 @@ export function TetrisBoard({
       playArea.removeEventListener('gesturechange', preventDefault);
       playArea.removeEventListener('dblclick', preventDefault);
     };
+  }, []);
+
+  // The board supports horizontal drag-steering plus delayed single-tap
+  // rotation, so a second tap can be recognized as a soft drop.
+  const boardTap = React.useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    refX: number;
+    refY: number;
+    startedAt: number;
+    moved: boolean;
+  } | null>(null);
+  const tapTimerRef = React.useRef<number | null>(null);
+  const lastTapAtRef = React.useRef<number | null>(null);
+  React.useEffect(() => () => {
+    window.clearTimeout(tapTimerRef.current);
   }, []);
 
   // Gravity tick loop (client-driven). Level determines interval; we tick the server while alive.
@@ -258,20 +274,86 @@ export function TetrisBoard({
     onPointerDown: (e: React.PointerEvent) => {
       if (window.innerWidth >= 1024) return;
       e.preventDefault();
-      boardTap.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      boardTap.current = {
+        id: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        refX: e.clientX,
+        refY: e.clientY,
+        startedAt: Date.now(),
+        moved: false,
+      };
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const tap = boardTap.current;
+      if (!tap || tap.id !== e.pointerId || dead || window.innerWidth >= 1024) return;
+      const totalDistance = Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY);
+      if (totalDistance >= 14) {
+        tap.moved = true;
+        if (tapTimerRef.current !== null) {
+          window.clearTimeout(tapTimerRef.current);
+          tapTimerRef.current = null;
+          lastTapAtRef.current = null;
+        }
+      }
+
+      // Keep the original y reference, but advance x by exactly one cell for
+      // every crossed threshold so a long continuous drag keeps moving.
+      let dx = e.clientX - tap.refX;
+      while (Math.abs(dx) >= cell) {
+        const dir = dx > 0 ? 'right' : 'left';
+        onAction({ type: 'move', dir });
+        sfx.blip();
+        tap.moved = true;
+        tap.refX += dir === 'right' ? cell : -cell;
+        dx = e.clientX - tap.refX;
+      }
+      e.preventDefault();
     },
     onPointerUp: (e: React.PointerEvent) => {
-      const start = boardTap.current;
+      const tap = boardTap.current;
       boardTap.current = null;
-      if (!start || start.id !== e.pointerId || dead || window.innerWidth >= 1024) return;
-      e.preventDefault();
-      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 14) {
-        onAction({ type: 'rotate', dir: 'cw' });
-        sfx.turn();
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
       }
+      if (!tap || tap.id !== e.pointerId || dead || window.innerWidth >= 1024) return;
+      e.preventDefault();
+      const isTap = !tap.moved && Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY) < 14;
+      if (!isTap) {
+        if (tapTimerRef.current !== null) {
+          window.clearTimeout(tapTimerRef.current);
+          tapTimerRef.current = null;
+          lastTapAtRef.current = null;
+        }
+        return;
+      }
+
+      const now = Date.now();
+      const previousTapAt = lastTapAtRef.current;
+      if (tapTimerRef.current !== null && previousTapAt !== null && now - previousTapAt <= 280) {
+        window.clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
+        lastTapAtRef.current = null;
+        onAction({ type: 'softDrop' });
+        sfx.chip();
+        return;
+      }
+
+      window.clearTimeout(tapTimerRef.current);
+      lastTapAtRef.current = now;
+      tapTimerRef.current = window.setTimeout(() => {
+        tapTimerRef.current = null;
+        lastTapAtRef.current = null;
+        if (!dead) {
+          onAction({ type: 'rotate', dir: 'cw' });
+          sfx.turn();
+        }
+      }, 280);
     },
     onPointerCancel: () => { boardTap.current = null; },
   };
+
 
   // Build cell set for ghost and active to render
   const activeCells = new Set<string>();

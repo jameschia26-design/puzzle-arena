@@ -18,10 +18,11 @@ const TICK_MS = 250;
 
 type TilePosition = { x: number; y: number };
 /** One sprite's lerp window: previous visual position -> current tick position. */
-type SpriteAnim = { from: TilePosition; to: TilePosition; start: number };
+type SpriteAnim = { from: TilePosition; to: TilePosition; start: number; duration: number };
 
 function spritePosition(a: SpriteAnim, now: number): TilePosition {
-  const t = Math.min(1, (now - a.start) / TICK_MS);
+  const dur = a.duration > 0 ? a.duration : TICK_MS;
+  const t = Math.min(1, Math.max(0, (now - a.start) / dur));
   return {
     x: a.from.x + (a.to.x - a.from.x) * t,
     y: a.from.y + (a.to.y - a.from.y) * t,
@@ -279,14 +280,17 @@ export function PacManBoard({
     const update = () => {
       const el = mazeBoxRef.current;
       if (!el) return;
-      // Reserve the maze shell's chrome (padding+border, 2x10px) so the
-      // scaled shell never exceeds the viewport and causes horizontal scroll.
-      const availW = el.clientWidth - 20;
+      // Keep the shell's 8px padding and 2px border on each side in the
+      // available-space calculation. The fixed geometry stays inside the
+      // viewport even when a phone is wider than the original 1.35 cap.
+      const shellChrome = 20;
+      const availW = Math.max(0, el.clientWidth - shellChrome);
       const top = el.getBoundingClientRect().top;
-      const dpadH = window.innerWidth < 1024 ? 160 : 0; // bottom Joypad reserve on touch layout
+      const dpadH = window.innerWidth < 1024 ? 140 : 0; // Joypad is 136px tall on touch layout
       const availH = Math.max(220, window.innerHeight - top - dpadH);
       const s = Math.min(availW / (W * CELL), availH / (H * CELL));
-      setScale(Math.max(0.35, Math.min(s, 1.35)));
+      const maxScale = window.innerWidth < 1024 ? 2.5 : 1.35;
+      setScale(Math.max(0.35, Math.min(s, maxScale)));
     };
     update();
     const ro = new ResizeObserver(update);
@@ -403,7 +407,8 @@ export function PacManBoard({
       if (!last || last.x !== cur.x || last.y !== cur.y) {
         const snap = !last || Math.abs(cur.x - last.x) > 1 || Math.abs(cur.y - last.y) > 1;
         const from = snap ? { ...cur } : (visual.pac ?? { ...last });
-        anim.pac = { from, to: { ...cur }, start: now };
+        const duration = Math.max(1, Math.hypot(cur.x - from.x, cur.y - from.y) * TICK_MS);
+        anim.pac = { from, to: { ...cur }, start: now, duration };
         visual.pac = from;
         if (snap) stopPacChomp();
         else startPacChomp();
@@ -414,7 +419,8 @@ export function PacManBoard({
         if (!gLast || gLast.x !== g.pos.x || gLast.y !== g.pos.y) {
           const snap = !gLast || Math.abs(g.pos.x - gLast.x) > 1 || Math.abs(g.pos.y - gLast.y) > 1;
           const from = snap ? { ...g.pos } : (visual.ghosts.get(g.id) ?? { ...gLast });
-          anim.ghosts.set(g.id, { from, to: { ...g.pos }, start: now });
+          const duration = Math.max(1, Math.hypot(g.pos.x - from.x, g.pos.y - from.y) * TICK_MS);
+          anim.ghosts.set(g.id, { from, to: { ...g.pos }, start: now, duration });
           visual.ghosts.set(g.id, from);
         }
         lastGhostPosRef.current.set(g.id, { ...g.pos });
@@ -471,7 +477,7 @@ export function PacManBoard({
   }
   return (
 
-    <div className="flex flex-col lg:flex-row gap-4 items-center lg:items-start w-full">
+    <div className="flex flex-col lg:flex-row gap-2 lg:gap-4 items-center lg:items-start w-full">
       {/* Desktop left HUD rail */}
       <div className="hidden lg:flex flex-col gap-3 min-w-[160px]">
         <div className="bg-pa-surface border-2 border-pa-border p-3 shadow-[4px_4px_0_var(--color-pa-shadow)]">
@@ -525,9 +531,9 @@ export function PacManBoard({
           <span className="text-pa-ink-dim ml-1.5">Dots</span><span className="text-pa-ink">{you.dotsRemaining}</span>
         </div>
       </div>
-
       {/* Maze — fixed CELL geometry scaled to fill portrait; swipe to steer */}
-      <div className="w-full lg:w-auto flex flex-col items-center gap-2">
+      <div className="w-full lg:w-auto flex flex-col items-center gap-1 lg:gap-2">
+
         <div ref={mazeBoxRef} className="w-full flex justify-center">
           <div
             className="relative pa-maze-shell"
@@ -619,11 +625,11 @@ export function PacManBoard({
                   <div className="font-display text-pa-amber text-sm animate-pulse">LEVEL CLEAR!</div>
                 </div>
               )}
+              </div>
             </div>
-          </div>
         </div>
         {/* Ghost legend */}
-        <div className="flex gap-2 justify-center">
+        <div className="flex gap-1 lg:gap-2 justify-center">
           {GHOST_NAMES.map((n, i) => (
             <span key={i} className="pa-chip text-[9px] font-display px-2 py-0.5 border flex items-center gap-1" style={{ borderColor: GHOST_COLORS[i], color: GHOST_COLORS[i], background: 'rgba(0,0,0,0.35)' }}>
               <MiniGhostIcon color={GHOST_COLORS[i] ?? '#fff'} />
@@ -632,9 +638,8 @@ export function PacManBoard({
           <span className="pa-chip text-[9px] font-display text-pa-amber border border-pa-amber px-2">○ POWER</span>
         </div>
       </div>
-
       {/* Mobile Joypad — bottom thumb zone, below the maze and ghost legend */}
-      <div className="lg:hidden w-full max-w-lg mx-auto px-2 flex flex-col items-center gap-1.5">
+      <div className="lg:hidden w-full max-w-lg mx-auto px-2 flex flex-col items-center gap-1">
         <span className="font-display text-[9px] text-pa-ink-dim tracking-wider">SWIPE MAZE OR TAP JOYPAD</span>
         <Joypad onDir={(dir) => onAction({ type: 'dir', dir })} />
       </div>
