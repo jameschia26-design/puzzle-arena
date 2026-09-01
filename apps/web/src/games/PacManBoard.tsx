@@ -336,6 +336,7 @@ export function PacManBoard({
     const el = mazeTouchRef.current;
     if (!el) return;
     const THRESHOLD = 14;
+    const MARGIN_RATIO = 0.65;
     const JOYSTICK_RADIUS = 48;
     const MAX_NUB_DISTANCE = 38;
     const reset = () => {
@@ -386,10 +387,16 @@ export function PacManBoard({
 
       const dx = t.clientX - from.x;
       const dy = t.clientY - from.y;
-      if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
-      if (Math.abs(dx) > Math.abs(dy)) actionRef.current({ type: 'dir', dir: dx > 0 ? 'right' : 'left' });
-      else actionRef.current({ type: 'dir', dir: dy > 0 ? 'down' : 'up' });
-      swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+
+      if (absDx >= THRESHOLD && absDy <= absDx * MARGIN_RATIO) {
+        actionRef.current({ type: 'dir', dir: dx > 0 ? 'right' : 'left' });
+        swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
+      } else if (absDy >= THRESHOLD && absDx <= absDy * MARGIN_RATIO) {
+        actionRef.current({ type: 'dir', dir: dy > 0 ? 'down' : 'up' });
+        swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
+      }
     };
     const end = (e: TouchEvent) => {
       const from = swipeRef.current;
