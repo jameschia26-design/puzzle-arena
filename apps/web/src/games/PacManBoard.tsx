@@ -12,6 +12,8 @@ const GHOST_COLORS: Record<number, string> = {
 const GHOST_NAMES = ['Blinky', 'Pinky', 'Inky', 'Clyde'];
 
 const CELL = 18; // px per maze cell
+const PAC_ICON_SIZE = 22; // px; intentionally slightly wider than a corridor tile
+const GHOST_ICON_SIZE = 22; // px; the SVG body has 1px of viewBox padding
 // Engine tick cadence (ms per tile step). The rAF interpolator and chomping
 // window use the same cadence so motion and animation stay in sync.
 const TICK_MS = 250;
@@ -94,7 +96,7 @@ function PacIcon({ dir, moving }: { dir: string; moving: boolean }) {
   const flipped = dir === 'left';
   const rot = dir === 'up' ? -90 : dir === 'down' ? 90 : 0;
   return (
-    <div className="relative shrink-0" style={{ width: 20, height: 20, transform: flipped ? 'scaleX(-1)' : `rotate(${rot}deg)` }}>
+    <div className="relative shrink-0" style={{ width: PAC_ICON_SIZE, height: PAC_ICON_SIZE, transform: flipped ? 'scaleX(-1)' : `rotate(${rot}deg)` }}>
       <div className={`pa-pac-trail ${moving ? 'pa-pac-trail-on' : ''}`} />
       <div className="pa-pac-body" style={{ filter: 'drop-shadow(0 0 4px rgba(255,212,38,0.6))' }}>
         {/* Two half-disc jaws hinged at the body center. At rest they sit
@@ -105,7 +107,7 @@ function PacIcon({ dir, moving }: { dir: string; moving: boolean }) {
             interpolation, which many SVG renderers ignore or refuse to
             animate across differing path structures. */}
         <div className={`pa-pac-jaw pa-pac-jaw-top${moving ? ' pa-pac-chomping' : ''}`}>
-          <svg width={20} height={20} viewBox="0 0 18 18" aria-hidden="true">
+          <svg width={PAC_ICON_SIZE} height={PAC_ICON_SIZE} viewBox="0 0 18 18" aria-hidden="true">
             <defs>
               <radialGradient id="paPacGlossTop" cx="35%" cy="28%" r="80%">
                 <stop offset="0%" stopColor="#fff7c2" />
@@ -117,7 +119,7 @@ function PacIcon({ dir, moving }: { dir: string; moving: boolean }) {
           </svg>
         </div>
         <div className={`pa-pac-jaw pa-pac-jaw-bottom${moving ? ' pa-pac-chomping' : ''}`}>
-          <svg width={20} height={20} viewBox="0 0 18 18" aria-hidden="true">
+          <svg width={PAC_ICON_SIZE} height={PAC_ICON_SIZE} viewBox="0 0 18 18" aria-hidden="true">
             <defs>
               <radialGradient id="paPacGlossBottom" cx="35%" cy="28%" r="80%">
                 <stop offset="0%" stopColor="#fff7c2" />
@@ -131,7 +133,7 @@ function PacIcon({ dir, moving }: { dir: string; moving: boolean }) {
         {/* eye + gleam sit at ~63° off the mouth axis so they survive a
             fully-open chomp; frame rotation makes them direction-aware.
             Rendered outside the jaws so the chomp never rotates them. */}
-        <svg width={20} height={20} viewBox="0 0 18 18" className="pa-pac-eye-layer" aria-hidden="true">
+        <svg width={PAC_ICON_SIZE} height={PAC_ICON_SIZE} viewBox="0 0 18 18" className="pa-pac-eye-layer" aria-hidden="true">
           <circle cx={11.6} cy={3.8} r={1.4} fill="#10142e" />
           <circle cx={12.1} cy={3.3} r={0.5} fill="#ffffff" opacity={0.85} />
         </svg>
@@ -151,7 +153,7 @@ function GhostIcon({ ghost }: { ghost: GhostState }) {
   if (isEaten) {
     // eaten ghosts are just drifting eyes
     return (
-      <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden="true">
+      <svg className="shrink-0" width={GHOST_ICON_SIZE} height={GHOST_ICON_SIZE} viewBox="0 0 16 16" aria-hidden="true">
         <ellipse cx={5.4} cy={7} rx={2.6} ry={3.1} fill="#fff" />
         <ellipse cx={10.6} cy={7} rx={2.6} ry={3.1} fill="#fff" />
         <circle cx={5.4 + dx} cy={7 + dy} r={1.3} fill="#2f6bff" />
@@ -161,9 +163,9 @@ function GhostIcon({ ghost }: { ghost: GhostState }) {
   }
   return (
     <svg
-      className={`pa-ghost-walk ${isFright ? 'pa-ghost-fright' : ''}`}
-      width={16}
-      height={16}
+      className={`pa-ghost-walk shrink-0 ${isFright ? 'pa-ghost-fright' : ''}`}
+      width={GHOST_ICON_SIZE}
+      height={GHOST_ICON_SIZE}
       viewBox="0 0 16 16"
       style={{ filter: `drop-shadow(0 0 3px ${bg}66)` }}
       aria-hidden="true"

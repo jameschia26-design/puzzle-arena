@@ -269,14 +269,24 @@ export default function RoomPage(): React.ReactElement {
       )}
 
       {/* ------------------------------ header ------------------------------ */}
-      <header className="flex items-center justify-between gap-3 border-b-2 border-pa-border bg-pa-surface px-4 py-3 sticky top-0 z-40">
-        <div className="flex items-center gap-3 min-w-0">
+      <header
+        className={cn(
+          'flex items-center justify-between gap-3 border-b-2 border-pa-border bg-pa-surface px-4 py-3 sticky top-0 z-40',
+          running && 'flex-wrap gap-2',
+        )}
+      >
+        <div className={cn('flex items-center gap-3 min-w-0', running && 'w-full sm:w-auto sm:flex-1')}>
           <h1 className="font-display text-[12px] md:text-[14px] truncate">{meta.title}</h1>
           <PixelBadge tone={running ? (store.paused ? 'danger' : 'success') : finished ? 'default' : 'cyan'}>
             {store.paused ? 'paused' : room.status}
           </PixelBadge>
         </div>
-        <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            'flex items-center gap-3',
+            running && 'w-full min-w-0 justify-end gap-2 sm:w-auto sm:gap-3',
+          )}
+        >
           {running && store.endsAt && <Countdown endsAt={store.endsAt} className="text-[16px] md:text-[24px]" />}
           {isHost && running && (
             <PixelButton
@@ -449,7 +459,8 @@ export default function RoomPage(): React.ReactElement {
       </div>
 
       {/* Under lg the rail collapses into a bottom tab bar. */}
-      <nav className="lg:hidden sticky bottom-0 flex border-t-2 border-pa-border bg-pa-surface">
+      {running && <div className="lg:hidden h-32" aria-hidden="true" />}
+      <nav className="lg:hidden flex border-t-2 border-pa-border bg-pa-surface">
         {(['board', 'leaderboard', 'chat'] as const).map((tab) => (
           <button
             key={tab}

@@ -58,7 +58,7 @@ export default function AdminSignup(): React.ReactElement {
   };
 
   return (
-    <main className="min-h-screen grid place-items-center p-6">
+    <main className="min-h-screen grid place-items-center p-6 pb-20 sm:pb-6">
       <PixelCard className="w-full max-w-md">
         <h1 className="font-display text-[18px] mb-6">Register as host</h1>
 

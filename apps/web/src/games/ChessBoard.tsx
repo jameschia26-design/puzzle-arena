@@ -296,7 +296,7 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
           </div>
         </PixelCard>
 
-        <div className="flex items-center justify-between px-1">
+        <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
           <PlayerRow player={oppPlayer} label="Opponent">
             <ClockChip
               remainingMs={oppClock?.remainingMs}

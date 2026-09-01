@@ -107,7 +107,65 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="flex flex-col gap-3 sm:hidden">
+        {results.map((row, i) => (
+          <motion.div
+            key={row.playerId}
+            initial={reduced ? {} : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{
+              ...stepTransition(reduced ? 0 : RESULT_ROW_MS),
+              delay: reduced ? 0 : (i * RESULT_ROW_MS) / 1000,
+            }}
+            className="border-2 border-pa-border bg-pa-surface-2 p-3"
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-pa-border pb-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="font-display text-[12px] text-pa-ink-dim">{row.rank}.</span>
+                <SeatAvatar
+                  seat={row.seat}
+                  displayName={row.displayName}
+                  avatar={row.avatar}
+                  isBot={row.isBot}
+                  size={24}
+                />
+                <span className="min-w-0 truncate text-[13px]">{row.displayName}</span>
+              </div>
+              <span className="shrink-0 font-display text-[16px] tabular text-pa-cyan">{row.score}</span>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px] tabular">
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-pa-ink-dim">Progress</dt>
+                <dd>{Math.round(row.progress * 100)}%</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-pa-ink-dim">Accuracy</dt>
+                <dd>{Math.round(row.accuracy * 100)}%</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-pa-ink-dim">Speed</dt>
+                <dd>{Math.round(row.speed * 100)}%</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-pa-ink-dim">Penalties</dt>
+                <dd>{row.penalties}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-pa-ink-dim">Finish</dt>
+                <dd>
+                  {row.completedAtMs === null
+                    ? '—'
+                    : `${Math.floor(row.completedAtMs / 60000)}:${String(
+                        Math.floor((row.completedAtMs % 60000) / 1000),
+                      ).padStart(2, '0')}`}
+                </dd>
+              </div>
+            </dl>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[560px] text-[13px] tabular">
           <thead>
             <tr className="border-b-2 border-pa-border text-pa-ink-dim">
