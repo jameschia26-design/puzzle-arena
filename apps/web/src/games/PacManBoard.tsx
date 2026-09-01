@@ -330,8 +330,8 @@ export function PacManBoard({
       const vh = window.visualViewport?.height ?? window.innerHeight;
       const availW = Math.max(0, (vw < 1024 ? vw : el.clientWidth) - shellChrome - 16);
       if (vw < 1024) {
-        // Mobile portrait: top HUD (~42px), ghost legend (~24px), Joypad/Joystick (~165px), safe areas + gaps (~45px)
-        const nonMazeHeight = 275;
+        // Mobile portrait: top HUD (~42px), ghost legend (~24px), Joypad/Joystick (~196px), safe areas + gaps (~48px)
+        const nonMazeHeight = 310;
         const availH = Math.max(180, vh - nonMazeHeight);
         const s = Math.min(availW / (W * CELL), availH / (H * CELL));
         setScale(Math.max(0.35, Math.min(s, 2.5)));
@@ -811,12 +811,12 @@ function Joypad({
 
   return (
     <div className={`w-full flex ${alignClass} py-0.5`} role="group" aria-label="Mobile Joypad">
-      <div className="grid grid-cols-3 grid-rows-3 w-[156px] h-[156px] touch-none select-none">
+      <div className="grid grid-cols-3 grid-rows-3 w-[192px] h-[192px] touch-none select-none">
         {/* Row 1: UP */}
         <div className="invisible pointer-events-none" />
         <button
           type="button"
-          className={`${btnBase} w-full h-full text-sm`}
+          className={`${btnBase} w-full h-full text-2xl`}
           onPointerDown={press('up')}
           aria-label="Move up"
         >
@@ -827,7 +827,7 @@ function Joypad({
         {/* Row 2: LEFT - CENTER HUB - RIGHT */}
         <button
           type="button"
-          className={`${btnBase} w-full h-full text-sm`}
+          className={`${btnBase} w-full h-full text-2xl`}
           onPointerDown={press('left')}
           aria-label="Move left"
         >
@@ -837,11 +837,11 @@ function Joypad({
           className="bg-pa-surface border-2 border-pa-border flex items-center justify-center pointer-events-none select-none shadow-[2px_2px_0_var(--color-pa-shadow)]"
           aria-hidden="true"
         >
-          <div className="w-2 h-2 rounded-full bg-pa-border/70" />
+          <div className="w-2.5 h-2.5 rounded-full bg-pa-border/70" />
         </div>
         <button
           type="button"
-          className={`${btnBase} w-full h-full text-sm`}
+          className={`${btnBase} w-full h-full text-2xl`}
           onPointerDown={press('right')}
           aria-label="Move right"
         >
@@ -852,7 +852,7 @@ function Joypad({
         <div className="invisible pointer-events-none" />
         <button
           type="button"
-          className={`${btnBase} w-full h-full text-sm`}
+          className={`${btnBase} w-full h-full text-2xl`}
           onPointerDown={press('down')}
           aria-label="Move down"
         >
@@ -884,7 +884,7 @@ function Joystick({
 
   const THRESHOLD = 14;
   const MARGIN_RATIO = 0.65;
-  const MAX_NUB_DISTANCE = 55;
+  const MAX_NUB_DISTANCE = 68;
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -962,7 +962,7 @@ function Joystick({
   return (
     <div className={`w-full flex ${alignClass} py-0.5`} role="group" aria-label="Mobile Joystick">
       <div
-        className="relative w-[160px] h-[160px] touch-none select-none cursor-pointer flex items-center justify-center"
+        className="relative w-[192px] h-[192px] touch-none select-none cursor-pointer flex items-center justify-center"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -972,18 +972,18 @@ function Joystick({
         {/* Cyan base ring */}
         <svg
           className="absolute inset-0 h-full w-full drop-shadow-[0_0_12px_rgba(0,216,255,0.7)] pointer-events-none"
-          viewBox="0 0 160 160"
+          viewBox="0 0 192 192"
           aria-hidden="true"
         >
-          <circle cx="80" cy="80" r="76" fill="#00d8ff" fillOpacity="0.14" stroke="#00d8ff" strokeOpacity="0.9" strokeWidth="2" />
-          <circle cx="80" cy="80" r="59" fill="none" stroke="#ffd426" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="4 6" />
-          <path d="M80 13v21M80 126v21M13 80h21M126 80h21" stroke="#00d8ff" strokeOpacity="0.55" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="96" cy="96" r="91" fill="#00d8ff" fillOpacity="0.14" stroke="#00d8ff" strokeOpacity="0.9" strokeWidth="2" />
+          <circle cx="96" cy="96" r="70" fill="none" stroke="#ffd426" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="4 6" />
+          <path d="M96 15v25M96 152v25M15 96h25M152 96h25" stroke="#00d8ff" strokeOpacity="0.55" strokeWidth="2" strokeLinecap="round" />
         </svg>
 
         {/* Amber draggable nub */}
         <svg
-          className="absolute left-[50px] top-[50px] h-[60px] w-[60px] drop-shadow-[0_0_10px_rgba(255,212,38,0.9)] will-change-transform pointer-events-none"
-          viewBox="0 0 60 60"
+          className="absolute left-[58px] top-[58px] h-[76px] w-[76px] drop-shadow-[0_0_10px_rgba(255,212,38,0.9)] will-change-transform pointer-events-none"
+          viewBox="0 0 76 76"
           style={{
             transform: `translate(${nub.x}px, ${nub.y}px)`,
             transition: isDragging ? 'none' : 'transform 120ms ease-out',
@@ -991,8 +991,8 @@ function Joystick({
           data-testid="pacman-joystick-nub"
           aria-hidden="true"
         >
-          <circle cx="30" cy="30" r="27" fill="#ffd426" fillOpacity="0.74" stroke="#fff3ad" strokeWidth="2" />
-          <circle cx="22" cy="22" r="6.5" fill="#fff7c2" fillOpacity="0.85" />
+          <circle cx="38" cy="38" r="34" fill="#ffd426" fillOpacity="0.74" stroke="#fff3ad" strokeWidth="2" />
+          <circle cx="28" cy="28" r="8" fill="#fff7c2" fillOpacity="0.85" />
         </svg>
       </div>
     </div>
