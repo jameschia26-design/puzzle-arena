@@ -233,6 +233,7 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
     }
   }
 
+  const pacPrev = { ...player.pacPos };
   // Pac-Man movement: try nextDir first (buffered turn)
   const tryDir = (dir: Dir): boolean => canMovePac(player.maze, player.pacPos.x, player.pacPos.y, dir);
   if (player.nextDir !== player.pacDir && tryDir(player.nextDir)) {
@@ -296,6 +297,7 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
   }
 
   // Ghost movement
+  const ghostPrev = player.ghosts.map(g => ({ ...g.pos }));
   for (const g of player.ghosts) {
     // house exit logic
     if (g.inHouse) {
@@ -394,8 +396,12 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
   }
 
   // Collision checks after movement
-  for (const g of player.ghosts) {
-    if (g.pos.x === player.pacPos.x && g.pos.y === player.pacPos.y) {
+  for (let gi = 0; gi < player.ghosts.length; gi++) {
+    const g = player.ghosts[gi]!;
+    const prev = ghostPrev[gi]!;
+    const isOverlap = g.pos.x === player.pacPos.x && g.pos.y === player.pacPos.y;
+    const isSwap = g.pos.x === pacPrev.x && g.pos.y === pacPrev.y && prev.x === player.pacPos.x && prev.y === player.pacPos.y;
+    if (isOverlap || isSwap) {
       if (g.eaten) {
         // already eaten eyes, ignore
         continue;

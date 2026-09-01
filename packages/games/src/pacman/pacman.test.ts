@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mulberry32 } from '@puzzle-arena/shared';
 import { pacman, type PacManState } from './index.js';
-import { buildMaze, countPellets, frightTicksForLevel, fruitForLevel, TILE_PELLET, TILE_DOT } from './rules.js';
+import { buildMaze, countPellets, frightTicksForLevel, fruitForLevel, ghostScore, TILE_PELLET, TILE_DOT } from './rules.js';
 import { MAZE_W } from './state.js';
 
 describe('pacman maze', () => {
@@ -321,5 +321,104 @@ describe('pacman determinism', () => {
     expect(s1.players[0]!.pacPos).toEqual(s2.players[0]!.pacPos);
     expect(s1.players[0]!.score).toBe(s2.players[0]!.score);
     expect(s1.log).toEqual(s2.log);
+  });
+});
+
+describe('pacman swap collision', () => {
+  it('frightened ghost swap: ghost eaten, mode set to eaten, score increased by ghostScore(0)', () => {
+    let s = pacman.setup(['p1'], 1, {});
+    const p = s.players[0]!;
+    // Clear pellets on the test path so score only changes from ghost eat
+    p.maze[1 * MAZE_W + 1] = 0;
+    p.maze[1 * MAZE_W + 2] = 0;
+    p.pacPos = { x: 1, y: 1 };
+    p.pacDir = 'right';
+    p.nextDir = 'right';
+    p.frightTicks = 30;
+    p.ghostStreak = 0;
+
+    const g = p.ghosts[0]!;
+    g.pos = { x: 2, y: 1 };
+    g.dir = 'left';
+    g.mode = 'frightened';
+    g.frightTicks = 30;
+    g.inHouse = false;
+    g.moveCounter = 1; // ensures it moves this tick
+
+    const beforeScore = p.score;
+    const r = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const pAfter = r.state.players[0]!;
+      const gAfter = pAfter.ghosts[0]!;
+      expect(pAfter.pacPos).toEqual({ x: 2, y: 1 });
+      expect(gAfter.pos).toEqual({ x: 1, y: 1 });
+      expect(gAfter.eaten).toBe(true);
+      expect(gAfter.mode).toBe('eaten');
+      expect(gAfter.frightTicks).toBe(0);
+      expect(pAfter.ghostsEatenTotal).toBe(1);
+      expect(pAfter.score).toBe(beforeScore + ghostScore(0));
+    }
+  });
+
+  it('non-frightened ghost swap: kills Pac-Man, decrementing lives and setting dyingTicks', () => {
+    let s = pacman.setup(['p1'], 1, {});
+    const p = s.players[0]!;
+    p.pacPos = { x: 1, y: 1 };
+    p.pacDir = 'right';
+    p.nextDir = 'right';
+    p.frightTicks = 0;
+    p.lives = 3;
+
+    const g = p.ghosts[0]!;
+    g.pos = { x: 2, y: 1 };
+    g.dir = 'left';
+    g.mode = 'scatter';
+    g.frightTicks = 0;
+    g.inHouse = false;
+    g.scatterTarget = { x: 0, y: 0 };
+
+    const r = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const pAfter = r.state.players[0]!;
+      expect(pAfter.lives).toBe(2);
+      expect(pAfter.dyingTicks).toBe(20);
+    }
+  });
+
+  it('regression guard: frightened ghost one tile behind Pac moving same direction does not collide', () => {
+    let s = pacman.setup(['p1'], 1, {});
+    const p = s.players[0]!;
+    p.maze[1 * MAZE_W + 2] = 0;
+    p.maze[1 * MAZE_W + 3] = 0;
+    p.pacPos = { x: 2, y: 1 };
+    p.pacDir = 'right';
+    p.nextDir = 'right';
+    p.frightTicks = 30;
+    p.ghostStreak = 0;
+    p.lives = 3;
+
+    const g = p.ghosts[0]!;
+    g.pos = { x: 1, y: 1 };
+    g.dir = 'right';
+    g.mode = 'frightened';
+    g.frightTicks = 30;
+    g.inHouse = false;
+    g.moveCounter = 1;
+
+    const r = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const pAfter = r.state.players[0]!;
+      const gAfter = pAfter.ghosts[0]!;
+      expect(pAfter.pacPos).toEqual({ x: 3, y: 1 });
+      expect(gAfter.pos).toEqual({ x: 2, y: 1 });
+      expect(gAfter.eaten).toBe(false);
+      expect(gAfter.mode).toBe('frightened');
+      expect(pAfter.lives).toBe(3);
+      expect(pAfter.dyingTicks).toBe(0);
+      expect(pAfter.ghostsEatenTotal).toBe(0);
+    }
   });
 });
