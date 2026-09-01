@@ -110,10 +110,10 @@ function useCellSize(): number {
     const vw = window.innerWidth;
     const vh = window.visualViewport?.height ?? window.innerHeight;
     if (vw >= 1024) return Math.max(14, Math.min(30, Math.floor((vh - 150) / 20)));
-    // Mobile portrait: reserve room for the side controls beside the 10-column
-    // board, plus the header, info strip, action buttons, and bottom tab bar.
-    const maxH = Math.max(240, vh - 400);
-    return Math.max(14, Math.floor(Math.min((vw - 72) / 10, maxH / 20, 30)));
+    // Mobile portrait: fit info strip, board, side controls, and action buttons without scrolling
+    const maxH = Math.max(200, vh - 220);
+    const maxW = Math.max(160, vw - 64);
+    return Math.max(14, Math.floor(Math.min(maxW / 10, maxH / 20, 30)));
   }, []);
   const [cell, setCell] = React.useState<number>(() => {
     if (typeof window === 'undefined') return 22;
@@ -384,42 +384,50 @@ export function TetrisBoard({
   };
 
   return (
-    <div className="w-full max-w-full overflow-x-hidden flex flex-col lg:flex-row gap-3 lg:gap-4 items-center lg:items-start min-w-0">
+    <div
+      className="w-full h-full max-h-full overflow-hidden flex flex-col lg:flex-row gap-2 lg:gap-4 items-center lg:items-start justify-between min-w-0 p-2 sm:p-3"
+      style={{
+        paddingTop: 'max(8px, env(safe-area-inset-top))',
+        paddingBottom: 'max(8px, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(8px, env(safe-area-inset-left))',
+        paddingRight: 'max(8px, env(safe-area-inset-right))',
+      }}
+    >
       {/*
         Mobile: one info strip (hold | stats | next). On desktop (`lg:contents`)
         the strip dissolves so its children flow as columns of the row layout.
         Stacked/flex-wrapped so narrow 360px viewports never overflow.
       */}
-      <div className="order-1 w-full max-w-full overflow-x-hidden flex items-start justify-between gap-2 lg:contents min-w-0">
+      <div className="order-1 w-full max-w-full overflow-x-hidden flex items-start justify-between gap-2 lg:contents min-w-0 pr-9 lg:pr-0">
         {/* Hold */}
         <div className="flex flex-col gap-1 lg:gap-2 shrink-0 lg:order-1">
           <div className="font-display text-[10px] tracking-widest text-pa-ink-dim">HOLD</div>
-          <div className="w-[76px] h-[58px] lg:w-[92px] lg:h-[72px] bg-pa-surface border-2 border-pa-border flex items-center justify-center">
+          <div className="w-[70px] h-[54px] sm:w-[76px] sm:h-[58px] lg:w-[92px] lg:h-[72px] bg-pa-surface border-2 border-pa-border flex items-center justify-center">
             {you.hold ? <MiniGrid cells={kindToMini(you.hold)} color={COLORS[you.hold]} /> : <span className="text-pa-ink-dim text-xs">—</span>}
           </div>
         </div>
 
         {/* Stats + assist + (desktop) mouse controls */}
-        <div className="flex flex-row flex-wrap items-center gap-x-3 gap-y-1 text-xs font-body min-w-0 lg:flex-col lg:items-stretch lg:gap-2 lg:min-w-[92px] lg:order-2">
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 lg:block lg:space-y-1">
+        <div className="flex flex-row flex-wrap items-center gap-x-2.5 gap-y-1 text-xs font-body min-w-0 lg:flex-col lg:items-stretch lg:gap-2 lg:min-w-[92px] lg:order-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 lg:block lg:space-y-1">
             <div className="flex items-baseline gap-1 lg:justify-between">
-              <span className="text-pa-ink-dim">Score</span><span className="font-display text-pa-cyan tabular">{you.score}</span>
+              <span className="text-pa-ink-dim text-[11px] sm:text-xs">Score</span><span className="font-display text-pa-cyan text-[11px] sm:text-xs tabular">{you.score}</span>
             </div>
             <div className="flex items-baseline gap-1 lg:justify-between">
-              <span className="text-pa-ink-dim">Lines</span><span className="font-display text-pa-ink tabular">{you.lines}</span>
+              <span className="text-pa-ink-dim text-[11px] sm:text-xs">Lines</span><span className="font-display text-pa-ink text-[11px] sm:text-xs tabular">{you.lines}</span>
             </div>
-            <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 border border-pa-amber/60 bg-pa-surface lg:border-0 lg:bg-transparent lg:p-0 lg:flex lg:justify-between ${levelUpFlash ? 'animate-pulse border-pa-amber bg-pa-amber/20' : ''}`}>
-              <span className="font-display text-[9px] text-pa-ink-dim tracking-wider lg:hidden">LVL</span>
+            <div className={`inline-flex items-center gap-1 px-1 py-0.5 border border-pa-amber/60 bg-pa-surface lg:border-0 lg:bg-transparent lg:p-0 lg:flex lg:justify-between ${levelUpFlash ? 'animate-pulse border-pa-amber bg-pa-amber/20' : ''}`}>
+              <span className="font-display text-[8px] sm:text-[9px] text-pa-ink-dim tracking-wider lg:hidden">LVL</span>
               <span className="text-pa-ink-dim text-xs hidden lg:inline">Level</span>
-              <span className="font-display text-pa-amber text-xs font-bold tabular">{you.level}</span>
+              <span className="font-display text-pa-amber text-[10px] sm:text-xs font-bold tabular">{you.level}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            {you.combo >= 0 && <span className="text-pa-lime text-xs">Combo x{you.combo + 1}</span>}
-            {you.backToBack && <span className="text-pa-magenta text-xs">B2B</span>}
+            {you.combo >= 0 && <span className="text-pa-lime text-[10px] sm:text-xs">Combo x{you.combo + 1}</span>}
+            {you.backToBack && <span className="text-pa-magenta text-[10px] sm:text-xs">B2B</span>}
           </div>
           <button
-            className={`h-8 px-2 lg:px-0 lg:w-full border-2 text-[9px] lg:text-[10px] font-display tracking-widest ${view.config.assist ? 'bg-pa-cyan text-pa-bg border-pa-cyan' : 'bg-pa-surface text-pa-ink-dim border-pa-border hover:bg-pa-surface-2'}`}
+            className={`h-7 sm:h-8 px-2 lg:px-0 lg:w-full border-2 text-[8px] sm:text-[9px] lg:text-[10px] font-display tracking-widest ${view.config.assist ? 'bg-pa-cyan text-pa-bg border-pa-cyan' : 'bg-pa-surface text-pa-ink-dim border-pa-border hover:bg-pa-surface-2'}`}
             onClick={() => { onAction({ type: 'toggleAssist' }); sfx.blip(); }}
           >
             ASSIST {view.config.assist ? 'ON' : 'OFF'}
@@ -456,17 +464,17 @@ export function TetrisBoard({
       </div>
 
       {/* On phones, broad side zones flank the board; the board itself is the rotate target. */}
-      <div className="order-2 lg:order-3 flex flex-col items-center gap-2 lg:gap-4 min-w-0 w-full max-w-full overflow-hidden">
+      <div className="order-2 lg:order-3 flex flex-col items-center gap-1.5 sm:gap-2 lg:gap-4 min-w-0 w-full max-w-full overflow-hidden flex-1 justify-center">
         <div ref={playAreaRef} className="flex items-stretch justify-center w-full touch-none lg:contents">
           <PressButton
             label="Move left"
-            className="lg:hidden flex-1 min-w-7 self-stretch bg-pa-surface/30 border border-pa-border/40 text-[9px] font-display text-pa-ink-dim touch-none"
+            className="lg:hidden flex-1 min-w-6 self-stretch bg-pa-surface/30 border border-pa-border/40 text-[9px] font-display text-pa-ink-dim touch-none active:bg-pa-surface/60"
             onFire={guard(() => { onAction({ type: 'move', dir: 'left' }); sfx.blip(); })}
           >
             <span className="[writing-mode:vertical-rl]">LEFT</span>
           </PressButton>
           <div
-            className="relative bg-pa-bg border-2 border-pa-border p-1 shadow-[4px_4px_0_var(--color-pa-shadow)] touch-none select-none shrink-0 mx-auto"
+            className="relative bg-pa-bg border-2 border-pa-border p-0.5 sm:p-1 shadow-[4px_4px_0_var(--color-pa-shadow)] touch-none select-none shrink-0 mx-auto"
             onContextMenu={(e) => e.preventDefault()}
             {...boardTouch}
           >
@@ -498,7 +506,7 @@ export function TetrisBoard({
               <div
                 key={y}
                 className="pointer-events-none absolute z-10 bg-pa-cyan/90 animate-pulse"
-                style={{ left: 6, top: 6 + y * (cell + 1), width: cell * 10 + 9, height: cell, animationDuration: '240ms' }}
+                style={{ left: 4, top: 4 + y * (cell + 1), width: cell * 10 + 9, height: cell, animationDuration: '240ms' }}
               />
             ))}
             {(you.gameOver || view.phase === 'game_over') && (
@@ -510,7 +518,7 @@ export function TetrisBoard({
           </div>
           <PressButton
             label="Move right"
-            className="lg:hidden flex-1 min-w-7 self-stretch bg-pa-surface/30 border border-pa-border/40 text-[9px] font-display text-pa-ink-dim touch-none"
+            className="lg:hidden flex-1 min-w-6 self-stretch bg-pa-surface/30 border border-pa-border/40 text-[9px] font-display text-pa-ink-dim touch-none active:bg-pa-surface/60"
             onFire={guard(() => { onAction({ type: 'move', dir: 'right' }); sfx.blip(); })}
           >
             <span className="[writing-mode:vertical-rl]">RIGHT</span>
@@ -518,26 +526,26 @@ export function TetrisBoard({
         </div>
 
         <div
-          className="lg:hidden w-full max-w-[440px] grid grid-cols-2 gap-2 select-none"
-          style={{ touchAction: 'none', paddingBottom: 'env(safe-area-inset-bottom)' }}
+          className="lg:hidden w-full max-w-[440px] grid grid-cols-2 gap-1.5 sm:gap-2 select-none px-1"
+          style={{ touchAction: 'none' }}
         >
           <PressButton
             label="Down"
-            className="h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
+            className="h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
             onFire={guard(() => { onAction({ type: 'softDrop' }); sfx.chip(); })}
           >
             DOWN
           </PressButton>
           <PressButton
             label="Hard Drop"
-            className="h-12 bg-pa-cyan text-pa-bg border-2 border-pa-cyan font-display text-xs touch-none"
+            className="h-10 sm:h-12 bg-pa-cyan text-pa-bg border-2 border-pa-cyan font-display text-xs touch-none"
             onFire={guard(() => { onAction({ type: 'hardDrop' }); sfx.tembak(); })}
           >
             HARD DROP
           </PressButton>
           <PressButton
             label="Rotate"
-            className="col-span-2 h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
+            className="col-span-2 h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
             onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
           >
             ROTATE

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import { Bot, Copy, Lightbulb, Link2, Pause, Play, RotateCcw, Send, Settings, Trash2, User, X } from 'lucide-react';
+import { Bot, Copy, Lightbulb, Link2, Menu, Pause, Play, RotateCcw, Send, Settings, Trash2, User, X } from 'lucide-react';
 import {
   AVATAR_EMOJI,
   BOT_DIFFICULTIES,
@@ -106,6 +106,7 @@ export default function RoomPage(): React.ReactElement {
   const [joined, setJoined] = React.useState(false);
   const [joinError, setJoinError] = React.useState<string | null>(null);
   const [mobileTab, setMobileTab] = React.useState<'board' | 'leaderboard' | 'chat'>('board');
+  const [inGameMode, setInGameMode] = React.useState(true);
 
   const join = React.useCallback(
     async (displayName: string, chosenAvatar: string | null) => {
@@ -146,6 +147,14 @@ export default function RoomPage(): React.ReactElement {
   const meta = GAME_REGISTRY[gameId];
   const you = store.you;
   const isHost = you?.isHost ?? false;
+  const isFullscreenEligible = (gameId === 'tetris' || gameId === 'pacman') && room?.status === 'running';
+  const isGameFullscreen = isFullscreenEligible && inGameMode;
+
+  React.useEffect(() => {
+    if (room?.status === 'running') {
+      setInGameMode(true);
+    }
+  }, [room?.status, room?.id]);
   // Play game-specific background music when room is active
   React.useEffect(() => {
     if (!room) return;
@@ -245,7 +254,19 @@ export default function RoomPage(): React.ReactElement {
   const finished = room.status === 'finished';
 
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className={cn('min-h-screen flex flex-col', isGameFullscreen && 'h-dvh max-h-dvh overflow-hidden')}>
+      {/* In-game fullscreen menu button (mobile only) */}
+      {isGameFullscreen && (
+        <button
+          type="button"
+          aria-label="Open menu and options"
+          onClick={() => setInGameMode(false)}
+          className="fixed top-[max(8px,env(safe-area-inset-top))] right-[max(8px,env(safe-area-inset-right))] z-50 lg:hidden flex items-center justify-center w-8 h-8 bg-pa-surface/85 hover:bg-pa-surface border-2 border-pa-border text-pa-ink-dim hover:text-pa-ink active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)]"
+          title="Menu & Options"
+        >
+          <Menu size={16} strokeWidth={2.5} className="lucide" />
+        </button>
+      )}
       <StartOverlay startsAt={store.startsAt} />
 
       {/* Obscuring Pause Overlay — hides board and cards while paused */}
@@ -276,6 +297,7 @@ export default function RoomPage(): React.ReactElement {
         className={cn(
           'flex items-center justify-between gap-3 border-b-2 border-pa-border bg-pa-surface px-4 py-3 sticky top-0 z-40',
           running && 'flex-wrap gap-2',
+          isGameFullscreen && 'hidden lg:flex',
         )}
       >
         <div className={cn('flex items-center gap-3 min-w-0', running && 'w-full sm:w-auto sm:flex-1')}>
@@ -290,6 +312,17 @@ export default function RoomPage(): React.ReactElement {
             running && 'w-full min-w-0 justify-end gap-2 sm:w-auto sm:gap-3',
           )}
         >
+          {isFullscreenEligible && !inGameMode && (
+            <PixelButton
+              size="sm"
+              variant="cyan"
+              onClick={() => setInGameMode(true)}
+              className="font-display text-[10px]"
+            >
+              <Play size={12} strokeWidth={3} className="lucide" />
+              Play View
+            </PixelButton>
+          )}
           {running && store.endsAt && <Countdown endsAt={store.endsAt} className="text-[16px] md:text-[24px]" />}
           {isHost && running && (
             <PixelButton
@@ -377,10 +410,15 @@ export default function RoomPage(): React.ReactElement {
       <div className={cn(
         'flex-1 flex flex-col lg:flex-row gap-4 p-4',
         gameId === 'pacman' && 'gap-2 p-0 lg:gap-4 lg:p-4',
+        isGameFullscreen && 'p-0 gap-0 h-full overflow-hidden',
       )}>
         {/* ------------------------------ main ------------------------------ */}
         <section
-          className={cn('flex-1 min-w-0', mobileTab !== 'board' && 'hidden lg:block')}
+          className={cn(
+            'flex-1 min-w-0',
+            mobileTab !== 'board' && 'hidden lg:block',
+            isGameFullscreen && 'h-full overflow-hidden flex flex-col',
+          )}
         >
           {room.status === 'lobby' && (
             <Lobby code={room.code} roomId={room.id} isHost={isHost} players={store.players} gameId={gameId} />
@@ -462,22 +500,24 @@ export default function RoomPage(): React.ReactElement {
       </div>
 
       {/* Under lg the rail collapses into a bottom tab bar. */}
-      {running && <div className="lg:hidden h-32" aria-hidden="true" />}
-      <nav className="lg:hidden flex border-t-2 border-pa-border bg-pa-surface">
-        {(['board', 'leaderboard', 'chat'] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setMobileTab(tab)}
-            className={cn(
-              'flex-1 font-display text-[10px] uppercase min-h-[52px] cursor-pointer',
-              mobileTab === tab ? 'text-pa-cyan border-t-2 border-pa-cyan' : 'text-pa-ink-dim',
-            )}
-          >
-            {tab}
-          </button>
-        ))}
-      </nav>
+      {running && !isGameFullscreen && <div className="lg:hidden h-32" aria-hidden="true" />}
+      {!isGameFullscreen && (
+        <nav className="lg:hidden flex border-t-2 border-pa-border bg-pa-surface">
+          {(['board', 'leaderboard', 'chat'] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setMobileTab(tab)}
+              className={cn(
+                'flex-1 font-display text-[10px] uppercase min-h-[52px] cursor-pointer',
+                mobileTab === tab ? 'text-pa-cyan border-t-2 border-pa-cyan' : 'text-pa-ink-dim',
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+      )}
     </main>
   );
 }

@@ -291,17 +291,22 @@ export function PacManBoard({
     const update = () => {
       const el = mazeBoxRef.current;
       if (!el) return;
-      // Keep the shell's 8px padding and 2px border on each side in the
-      // available-space calculation. The fixed geometry stays inside the
-      // viewport even when a phone is wider than the original 1.35 cap.
       const shellChrome = 20;
-      const availW = Math.max(0, el.clientWidth - shellChrome);
-      const top = el.getBoundingClientRect().top;
-      const dpadH = window.innerWidth < 1024 ? 140 : 0; // Joypad is 136px tall on touch layout
-      const availH = Math.max(220, window.innerHeight - top - dpadH);
-      const s = Math.min(availW / (W * CELL), availH / (H * CELL));
-      const maxScale = window.innerWidth < 1024 ? 2.5 : 1.35;
-      setScale(Math.max(0.35, Math.min(s, maxScale)));
+      const vw = window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const availW = Math.max(0, (vw < 1024 ? vw : el.clientWidth) - shellChrome - 16);
+      if (vw < 1024) {
+        // Mobile portrait: top HUD (~42px), ghost legend (~24px), Joypad (~135px), safe areas + gaps (~30px)
+        const nonMazeHeight = 235;
+        const availH = Math.max(180, vh - nonMazeHeight);
+        const s = Math.min(availW / (W * CELL), availH / (H * CELL));
+        setScale(Math.max(0.35, Math.min(s, 2.5)));
+      } else {
+        const top = el.getBoundingClientRect().top;
+        const availH = Math.max(220, vh - top - 40);
+        const s = Math.min(availW / (W * CELL), availH / (H * CELL));
+        setScale(Math.max(0.35, Math.min(s, 1.35)));
+      }
     };
     update();
     const ro = new ResizeObserver(update);
@@ -554,7 +559,15 @@ export function PacManBoard({
   }
   return (
 
-    <div className="flex flex-col lg:flex-row gap-2 lg:gap-4 items-center lg:items-start w-full">
+    <div
+      className="w-full h-full max-h-full overflow-hidden flex flex-col lg:flex-row gap-1.5 lg:gap-4 items-center lg:items-start justify-between min-w-0 p-1.5 sm:p-2"
+      style={{
+        paddingTop: 'max(6px, env(safe-area-inset-top))',
+        paddingBottom: 'max(6px, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(6px, env(safe-area-inset-left))',
+        paddingRight: 'max(6px, env(safe-area-inset-right))',
+      }}
+    >
       {/* Desktop left HUD rail */}
       <div className="hidden lg:flex flex-col gap-3 min-w-[160px]">
         <div className="bg-pa-surface border-2 border-pa-border p-3 shadow-[4px_4px_0_var(--color-pa-shadow)]">
@@ -591,10 +604,10 @@ export function PacManBoard({
       </div>
 
       {/* Mobile compact HUD (top bar) */}
-      <div className="lg:hidden w-full flex items-center justify-between gap-2 bg-pa-surface border-2 border-pa-border px-3 py-2 pa-shadow">
+      <div className="lg:hidden w-full flex items-center justify-between gap-2 bg-pa-surface border-2 border-pa-border px-3 py-1.5 pa-shadow pr-10">
         <div className="flex items-baseline gap-2">
           <span className="font-display text-[9px] text-pa-ink-dim">SCORE</span>
-          <span className="font-display text-[14px] text-pa-amber tabular-nums">{you.score.toLocaleString()}</span>
+          <span className="font-display text-[13px] text-pa-amber tabular-nums">{you.score.toLocaleString()}</span>
         </div>
         {you.fruit && <span className="text-pa-lime animate-pulse text-sm">{fruitIcon(you.fruit.kind)}</span>}
         <span className="flex gap-1 items-center" aria-label={`Lives ${you.lives}`}>
@@ -738,7 +751,7 @@ export function PacManBoard({
       </div>
       {/* Mobile Joypad — bottom thumb zone, below the maze and ghost legend */}
       <div className="lg:hidden w-full max-w-lg mx-auto px-2 flex flex-col items-center gap-1">
-        <span className="font-display text-[9px] text-pa-ink-dim tracking-wider">TOUCH MAZE OR TAP JOYPAD</span>
+        <span className="font-display text-[8px] sm:text-[9px] text-pa-ink-dim tracking-wider">TOUCH MAZE OR TAP JOYPAD</span>
         <Joypad onDir={(dir) => onAction({ type: 'dir', dir })} />
       </div>
 
@@ -770,7 +783,7 @@ function Joypad({ onDir }: { onDir: (dir: 'up' | 'down' | 'left' | 'right') => v
 
   return (
     <div
-      className="grid grid-cols-3 gap-2 w-full h-[136px] touch-none select-none"
+      className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full h-[116px] sm:h-[132px] touch-none select-none"
       role="group"
       aria-label="Mobile Joypad"
     >
@@ -786,27 +799,26 @@ function Joypad({ onDir }: { onDir: (dir: 'up' | 'down' | 'left' | 'right') => v
       </button>
 
       {/* Middle Column: Stacked UP / DOWN */}
-      <div className="flex flex-col gap-2 h-full">
+      <div className="flex flex-col gap-1.5 sm:gap-2 h-full">
         <button
           type="button"
-          className={`${btnBase} flex-1 gap-1.5 text-xs md:text-sm`}
+          className={`${btnBase} flex-1 gap-1 text-xs md:text-sm`}
           onPointerDown={press('up')}
           aria-label="Move up"
         >
-          <span className="text-base leading-none">▲</span>
-          <span className="text-[10px] tracking-wider">UP</span>
+          <span className="text-sm leading-none">▲</span>
+          <span className="text-[9px] tracking-wider">UP</span>
         </button>
         <button
           type="button"
-          className={`${btnBase} flex-1 gap-1.5 text-xs md:text-sm`}
+          className={`${btnBase} flex-1 gap-1 text-xs md:text-sm`}
           onPointerDown={press('down')}
           aria-label="Move down"
         >
-          <span className="text-base leading-none">▼</span>
-          <span className="text-[10px] tracking-wider">DOWN</span>
+          <span className="text-sm leading-none">▼</span>
+          <span className="text-[9px] tracking-wider">DOWN</span>
         </button>
       </div>
-
       {/* Right Column: Big Right */}
       <button
         type="button"
