@@ -113,9 +113,9 @@ function useCellSize(): number {
     const vh = window.visualViewport?.height ?? window.innerHeight;
     if (vw >= 1024) return Math.max(14, Math.min(30, Math.floor((vh - 150) / 20)));
     // Mobile portrait: fit info strip, board, side controls, and action buttons without scrolling
-    const maxH = Math.max(160, vh - 340);
+    const maxH = Math.max(160, vh - 228);
     const maxW = Math.max(160, vw - 64);
-    return Math.max(14, Math.floor(Math.min(maxW / 10, maxH / 20, 28)));
+    return Math.max(14, Math.floor(Math.min(maxW / 10, maxH / 20, 32)));
   }, []);
   const [cell, setCell] = React.useState<number>(() => {
     if (typeof window === 'undefined') return 22;
@@ -439,7 +439,19 @@ export function TetrisBoard({
 
         {/* Next queue (+ keyboard legend on desktop) */}
         <div className="flex flex-col gap-1 lg:gap-2 shrink-0 lg:order-4">
-          <div className="font-display text-[10px] tracking-widest text-pa-ink-dim">NEXT</div>
+          <div className="flex items-center justify-between gap-1">
+            <div className="font-display text-[10px] tracking-widest text-pa-ink-dim">NEXT</div>
+            <button
+              type="button"
+              aria-label="Flip drop buttons layout (left/right hand)"
+              title="Flip drop buttons layout (left/right hand)"
+              onClick={toggleFlip}
+              className="lg:hidden h-5 px-1.5 bg-pa-surface border border-pa-border text-pa-amber hover:text-pa-ink font-display text-[8px] sm:text-[9px] font-semibold flex items-center gap-1 active:bg-pa-surface-2 cursor-pointer shadow-[1px_1px_0_var(--color-pa-shadow)] select-none touch-manipulation"
+            >
+              <span className="text-[10px] leading-none">⇄</span>
+              <span>FLIP</span>
+            </button>
+          </div>
           <div className="flex lg:flex-col gap-1.5 lg:gap-2">
             {you.next.slice(0, 5).map((k, i) => (
               <div
@@ -558,26 +570,14 @@ export function TetrisBoard({
               </PressButton>
             </>
           )}
-          <div className="col-span-2 flex gap-1.5 sm:gap-2 items-stretch">
-            <PressButton
-              label="Rotate"
-              className="flex-1 h-12 sm:h-14 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-sm sm:text-base font-bold flex items-center justify-center gap-1.5 touch-none shadow-[2px_2px_0_var(--color-pa-shadow)] active:bg-pa-surface-2"
-              onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
-            >
-              <span>⟳</span>
-              <span>ROTATE</span>
-            </PressButton>
-            <button
-              type="button"
-              aria-label="Flip drop buttons layout (left/right hand)"
-              title="Flip drop buttons layout (left/right hand)"
-              className="h-12 sm:h-14 px-3.5 sm:px-4 bg-pa-surface border-2 border-pa-border text-pa-amber hover:text-pa-ink font-display text-xs sm:text-sm font-semibold shrink-0 flex items-center justify-center gap-1.5 active:bg-pa-surface-2 touch-none shadow-[2px_2px_0_var(--color-pa-shadow)] cursor-pointer"
-              onClick={toggleFlip}
-            >
-              <span className="text-sm">⇄</span>
-              <span>FLIP</span>
-            </button>
-          </div>
+          <PressButton
+            label="Rotate"
+            className="col-span-2 h-12 sm:h-14 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-sm sm:text-base font-bold flex items-center justify-center gap-1.5 touch-none shadow-[2px_2px_0_var(--color-pa-shadow)] active:bg-pa-surface-2"
+            onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
+          >
+            <span>⟳</span>
+            <span>ROTATE</span>
+          </PressButton>
         </div>
       </div>
 
