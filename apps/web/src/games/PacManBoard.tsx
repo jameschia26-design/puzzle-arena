@@ -222,11 +222,49 @@ export function PacManBoard({
   const paused = useRoom((s) => s.paused);
   const W = view.mazeW;
   const H = view.mazeH;
+
+  type ControlMode = 'joystick' | 'pad';
+  type PadAlign = 'left' | 'center' | 'right';
+
+  const [controlMode, setControlMode] = React.useState<ControlMode>(() => {
+    try {
+      const saved = localStorage.getItem('pa:pacman-controls');
+      return saved === 'pad' ? 'pad' : 'joystick';
+    } catch {
+      return 'joystick';
+    }
+  });
+
+  const [padAlign, setPadAlign] = React.useState<PadAlign>(() => {
+    try {
+      const saved = localStorage.getItem('pa:pacman-pad-align');
+      return saved === 'left' || saved === 'right' ? saved : 'center';
+    } catch {
+      return 'center';
+    }
+  });
+
+  const handleSetControlMode = (mode: ControlMode) => {
+    setControlMode(mode);
+    try {
+      localStorage.setItem('pa:pacman-controls', mode);
+    } catch {}
+  };
+
+  const handleSetPadAlign = (align: PadAlign) => {
+    setPadAlign(align);
+    try {
+      localStorage.setItem('pa:pacman-pad-align', align);
+    } catch {}
+  };
+
+  const controlModeRef = React.useRef(controlMode);
+  controlModeRef.current = controlMode;
+
   // Touch and tick loops outlive individual room snapshots; keep them pointed
   // at the latest socket action callback without re-arming the loops.
   const actionRef = React.useRef(onAction);
   actionRef.current = onAction;
-
 
   React.useEffect(() => {
     bgm.play('pacman' as never);
@@ -344,6 +382,7 @@ export function PacManBoard({
       setFloatingJoystick(null);
     };
     const start = (e: TouchEvent) => {
+      if (controlModeRef.current !== 'joystick') return;
       e.preventDefault();
       if (swipeRef.current) return;
       const t = e.changedTouches[0] ?? e.touches[0];
@@ -377,12 +416,24 @@ export function PacManBoard({
 
       const dragX = t.clientX - from.startX;
       const dragY = t.clientY - from.startY;
-      const dragDistance = Math.hypot(dragX, dragY);
-      const nubScale = dragDistance > MAX_NUB_DISTANCE ? MAX_NUB_DISTANCE / dragDistance : 1;
+      const absDragX = Math.abs(dragX);
+      const absDragY = Math.abs(dragY);
+
+      // Snap to dominant compass direction; nub locks visually to that single axis line only
+      let nubX = 0;
+      let nubY = 0;
+      if (absDragX >= absDragY) {
+        nubX = Math.sign(dragX) * Math.min(absDragX, MAX_NUB_DISTANCE);
+        nubY = 0;
+      } else {
+        nubX = 0;
+        nubY = Math.sign(dragY) * Math.min(absDragY, MAX_NUB_DISTANCE);
+      }
+
       setFloatingJoystick((joystick) => joystick && ({
         ...joystick,
-        nubX: dragX * nubScale,
-        nubY: dragY * nubScale,
+        nubX,
+        nubY,
       }));
 
       const dx = t.clientX - from.x;
@@ -390,12 +441,17 @@ export function PacManBoard({
       const absDx = Math.abs(dx);
       const absDy = Math.abs(dy);
 
-      if (absDx >= THRESHOLD && absDy <= absDx * MARGIN_RATIO) {
-        actionRef.current({ type: 'dir', dir: dx > 0 ? 'right' : 'left' });
-        swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
-      } else if (absDy >= THRESHOLD && absDx <= absDy * MARGIN_RATIO) {
-        actionRef.current({ type: 'dir', dir: dy > 0 ? 'down' : 'up' });
-        swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
+      // Dispatch only along the locked dominant axis; preserve hysteresis thresholds
+      if (absDragX >= absDragY) {
+        if (absDx >= THRESHOLD && absDy <= absDx * MARGIN_RATIO) {
+          actionRef.current({ type: 'dir', dir: dx > 0 ? 'right' : 'left' });
+          swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
+        }
+      } else {
+        if (absDy >= THRESHOLD && absDx <= absDy * MARGIN_RATIO) {
+          actionRef.current({ type: 'dir', dir: dy > 0 ? 'down' : 'up' });
+          swipeRef.current = { ...from, x: t.clientX, y: t.clientY };
+        }
       }
     };
     const end = (e: TouchEvent) => {
@@ -567,7 +623,7 @@ export function PacManBoard({
   return (
 
     <div
-      className="w-full h-full max-h-full overflow-hidden flex flex-col lg:flex-row gap-1.5 lg:gap-4 items-center lg:items-start justify-between min-w-0 p-1.5 sm:p-2"
+      className="w-full h-full max-h-full overflow-hidden flex flex-col lg:flex-row gap-1 lg:gap-4 items-center lg:items-start justify-start lg:justify-between min-w-0 p-1.5 sm:p-2"
       style={{
         paddingTop: 'max(6px, env(safe-area-inset-top))',
         paddingBottom: 'max(6px, env(safe-area-inset-bottom))',
@@ -756,12 +812,101 @@ export function PacManBoard({
           <span className="pa-chip text-[9px] font-display text-pa-amber border border-pa-amber px-2">○ POWER</span>
         </div>
       </div>
-      {/* Mobile Joypad — bottom thumb zone, below the maze and ghost legend */}
-      <div className="lg:hidden w-full max-w-lg mx-auto px-2 flex flex-col items-center gap-1">
-        <span className="font-display text-[8px] sm:text-[9px] text-pa-ink-dim tracking-wider">
-          SWIPE OR TAP ◀ ▲ ▼ ▶ TO STEER
-        </span>
-        <Joypad onDir={(dir) => onAction({ type: 'dir', dir })} />
+      {/* Mobile Controls & Mode / Alignment Settings */}
+      <div className="lg:hidden w-full max-w-sm mx-auto px-2 flex flex-col items-center gap-1">
+        {/* Compact Settings row */}
+        <div className="w-full flex items-center justify-between gap-2 px-1 text-[9px] font-display">
+          {/* Mode toggle: STICK | PAD */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-pa-ink-dim tracking-wider">CTRL:</span>
+            <div className="inline-flex border-2 border-pa-border bg-pa-surface shadow-[1px_1px_0_var(--color-pa-shadow)]">
+              <button
+                type="button"
+                onClick={() => handleSetControlMode('joystick')}
+                className={`px-2 py-0.5 cursor-pointer transition-colors ${
+                  controlMode === 'joystick'
+                    ? 'bg-pa-cyan text-pa-bg font-bold'
+                    : 'text-pa-ink-dim hover:text-pa-ink'
+                }`}
+                aria-pressed={controlMode === 'joystick'}
+              >
+                STICK
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetControlMode('pad')}
+                className={`px-2 py-0.5 cursor-pointer transition-colors border-l-2 border-pa-border ${
+                  controlMode === 'pad'
+                    ? 'bg-pa-cyan text-pa-bg font-bold'
+                    : 'text-pa-ink-dim hover:text-pa-ink'
+                }`}
+                aria-pressed={controlMode === 'pad'}
+              >
+                PAD
+              </button>
+            </div>
+          </div>
+
+          {/* Alignment toggle (in PAD mode) or Swipe Hint (in STICK mode) */}
+          {controlMode === 'pad' ? (
+            <div className="flex items-center gap-1.5">
+              <span className="text-pa-ink-dim tracking-wider">ALIGN:</span>
+              <div className="inline-flex border-2 border-pa-border bg-pa-surface shadow-[1px_1px_0_var(--color-pa-shadow)]">
+                <button
+                  type="button"
+                  onClick={() => handleSetPadAlign('left')}
+                  className={`px-1.5 py-0.5 cursor-pointer transition-colors ${
+                    padAlign === 'left'
+                      ? 'bg-pa-amber text-pa-bg font-bold'
+                      : 'text-pa-ink-dim hover:text-pa-ink'
+                  }`}
+                  aria-label="Align pad left"
+                  title="Align left"
+                >
+                  L
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetPadAlign('center')}
+                  className={`px-1.5 py-0.5 cursor-pointer transition-colors border-l-2 border-pa-border ${
+                    padAlign === 'center'
+                      ? 'bg-pa-amber text-pa-bg font-bold'
+                      : 'text-pa-ink-dim hover:text-pa-ink'
+                  }`}
+                  aria-label="Align pad center"
+                  title="Align center"
+                >
+                  C
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetPadAlign('right')}
+                  className={`px-1.5 py-0.5 cursor-pointer transition-colors border-l-2 border-pa-border ${
+                    padAlign === 'right'
+                      ? 'bg-pa-amber text-pa-bg font-bold'
+                      : 'text-pa-ink-dim hover:text-pa-ink'
+                  }`}
+                  aria-label="Align pad right"
+                  title="Align right"
+                >
+                  R
+                </button>
+              </div>
+            </div>
+          ) : (
+            <span className="text-[8px] text-pa-ink-dim tracking-wider">
+              SWIPE MAZE TO STEER
+            </span>
+          )}
+        </div>
+
+        {/* Cross-shaped Joypad (rendered in pad mode) */}
+        {controlMode === 'pad' && (
+          <Joypad
+            align={padAlign}
+            onDir={(dir) => onAction({ type: 'dir', dir })}
+          />
+        )}
       </div>
 
       {/* Right rail log */}
@@ -778,8 +923,14 @@ export function PacManBoard({
   );
 }
 
-/** Full-width 3-column mobile Joypad: big LEFT, stacked UP/DOWN, big RIGHT. */
-function Joypad({ onDir }: { onDir: (dir: 'up' | 'down' | 'left' | 'right') => void }) {
+/** Cross-shaped mobile Joypad: UP top, LEFT/RIGHT sides, DOWN bottom, center hub. */
+function Joypad({
+  onDir,
+  align,
+}: {
+  onDir: (dir: 'up' | 'down' | 'left' | 'right') => void;
+  align: 'left' | 'center' | 'right';
+}) {
   const press = (dir: 'up' | 'down' | 'left' | 'right') => (e: React.PointerEvent) => {
     e.preventDefault();
     onDir(dir);
@@ -787,57 +938,63 @@ function Joypad({ onDir }: { onDir: (dir: 'up' | 'down' | 'left' | 'right') => v
 
   const btnBase =
     'bg-pa-surface border-2 border-pa-border text-pa-ink font-display cursor-pointer touch-none select-none ' +
-    'active:bg-pa-surface-2 active:border-pa-cyan active:translate-y-[1px] shadow-[2px_2px_0_var(--color-pa-shadow)] ' +
-    'flex items-center justify-center';
+    'active:bg-pa-surface-2 active:border-pa-cyan active:text-pa-cyan active:translate-y-[1px] ' +
+    'shadow-[2px_2px_0_var(--color-pa-shadow)] flex items-center justify-center';
+
+  const alignClass =
+    align === 'left' ? 'justify-start pl-2' : align === 'right' ? 'justify-end pr-2' : 'justify-center';
 
   return (
-    <div
-      className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full h-[116px] sm:h-[132px] touch-none select-none"
-      role="group"
-      aria-label="Mobile Joypad"
-    >
-      {/* Left Column: Big Left */}
-      <button
-        type="button"
-        className={`${btnBase} h-full flex-col gap-1 text-xs md:text-sm`}
-        onPointerDown={press('left')}
-        aria-label="Move left"
-      >
-        <span className="text-lg leading-none">◀</span>
-        <span className="text-[10px] tracking-wider">LEFT</span>
-      </button>
-
-      {/* Middle Column: Stacked UP / DOWN */}
-      <div className="flex flex-col gap-1.5 sm:gap-2 h-full">
+    <div className={`w-full flex ${alignClass} py-0.5`} role="group" aria-label="Mobile Joypad">
+      <div className="grid grid-cols-3 grid-rows-3 w-[120px] h-[120px] touch-none select-none">
+        {/* Row 1: UP */}
+        <div className="invisible pointer-events-none" />
         <button
           type="button"
-          className={`${btnBase} flex-1 gap-1 text-xs md:text-sm`}
+          className={`${btnBase} w-full h-full text-sm`}
           onPointerDown={press('up')}
           aria-label="Move up"
         >
-          <span className="text-sm leading-none">▲</span>
-          <span className="text-[9px] tracking-wider">UP</span>
+          <span>▲</span>
         </button>
+        <div className="invisible pointer-events-none" />
+
+        {/* Row 2: LEFT - CENTER HUB - RIGHT */}
         <button
           type="button"
-          className={`${btnBase} flex-1 gap-1 text-xs md:text-sm`}
+          className={`${btnBase} w-full h-full text-sm`}
+          onPointerDown={press('left')}
+          aria-label="Move left"
+        >
+          <span>◀</span>
+        </button>
+        <div
+          className="bg-pa-surface border-2 border-pa-border flex items-center justify-center pointer-events-none select-none shadow-[2px_2px_0_var(--color-pa-shadow)]"
+          aria-hidden="true"
+        >
+          <div className="w-2 h-2 rounded-full bg-pa-border/70" />
+        </div>
+        <button
+          type="button"
+          className={`${btnBase} w-full h-full text-sm`}
+          onPointerDown={press('right')}
+          aria-label="Move right"
+        >
+          <span>▶</span>
+        </button>
+
+        {/* Row 3: DOWN */}
+        <div className="invisible pointer-events-none" />
+        <button
+          type="button"
+          className={`${btnBase} w-full h-full text-sm`}
           onPointerDown={press('down')}
           aria-label="Move down"
         >
-          <span className="text-sm leading-none">▼</span>
-          <span className="text-[9px] tracking-wider">DOWN</span>
+          <span>▼</span>
         </button>
+        <div className="invisible pointer-events-none" />
       </div>
-      {/* Right Column: Big Right */}
-      <button
-        type="button"
-        className={`${btnBase} h-full flex-col gap-1 text-xs md:text-sm`}
-        onPointerDown={press('right')}
-        aria-label="Move right"
-      >
-        <span className="text-lg leading-none">▶</span>
-        <span className="text-[10px] tracking-wider">RIGHT</span>
-      </button>
     </div>
   );
 }
