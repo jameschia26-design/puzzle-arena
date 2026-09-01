@@ -22,6 +22,7 @@ const GHOST_ALPHA: Record<TetrominoKind, string> = {
   T: 'rgba(139,92,246,0.22)',
   Z: 'rgba(255,63,142,0.22)',
 };
+const FLIP_STORAGE_KEY = 'pa:tetris-flip';
 
 function MiniGrid({ cells, color }: { cells: boolean[][]; color: string }) {
   return (
@@ -153,6 +154,28 @@ export function TetrisBoard({
     bgm.play('tetris' as never);
     return () => bgm.stop();
   }, []);
+  const [flipped, setFlipped] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(FLIP_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleFlip = React.useCallback(() => {
+    setFlipped((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(FLIP_STORAGE_KEY, String(next));
+      } catch {
+        /* private browsing */
+      }
+      sfx.blip();
+      return next;
+    });
+  }, []);
+
 
   const [levelUpFlash, setLevelUpFlash] = React.useState(false);
   const prevLevel = React.useRef(you?.level ?? 1);
@@ -529,27 +552,60 @@ export function TetrisBoard({
           className="lg:hidden w-full max-w-[440px] grid grid-cols-2 gap-1.5 sm:gap-2 select-none px-1"
           style={{ touchAction: 'none' }}
         >
-          <PressButton
-            label="Down"
-            className="h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
-            onFire={guard(() => { onAction({ type: 'softDrop' }); sfx.chip(); })}
-          >
-            DOWN
-          </PressButton>
-          <PressButton
-            label="Hard Drop"
-            className="h-10 sm:h-12 bg-pa-cyan text-pa-bg border-2 border-pa-cyan font-display text-xs touch-none"
-            onFire={guard(() => { onAction({ type: 'hardDrop' }); sfx.tembak(); })}
-          >
-            HARD DROP
-          </PressButton>
-          <PressButton
-            label="Rotate"
-            className="col-span-2 h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
-            onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
-          >
-            ROTATE
-          </PressButton>
+          {flipped ? (
+            <>
+              <PressButton
+                label="Down"
+                className="h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
+                onFire={guard(() => { onAction({ type: 'softDrop' }); sfx.chip(); })}
+              >
+                DOWN
+              </PressButton>
+              <PressButton
+                label="Hard Drop"
+                className="h-10 sm:h-12 bg-pa-cyan text-pa-bg border-2 border-pa-cyan font-display text-xs touch-none"
+                onFire={guard(() => { onAction({ type: 'hardDrop' }); sfx.tembak(); })}
+              >
+                HARD DROP
+              </PressButton>
+            </>
+          ) : (
+            <>
+              <PressButton
+                label="Hard Drop"
+                className="h-10 sm:h-12 bg-pa-cyan text-pa-bg border-2 border-pa-cyan font-display text-xs touch-none"
+                onFire={guard(() => { onAction({ type: 'hardDrop' }); sfx.tembak(); })}
+              >
+                HARD DROP
+              </PressButton>
+              <PressButton
+                label="Down"
+                className="h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
+                onFire={guard(() => { onAction({ type: 'softDrop' }); sfx.chip(); })}
+              >
+                DOWN
+              </PressButton>
+            </>
+          )}
+          <div className="col-span-2 flex gap-1.5 sm:gap-2">
+            <PressButton
+              label="Rotate"
+              className="flex-1 h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
+              onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
+            >
+              ROTATE
+            </PressButton>
+            <button
+              type="button"
+              aria-label="Flip drop buttons layout"
+              title="Flip drop buttons layout"
+              className="h-10 sm:h-12 px-3 bg-pa-surface border-2 border-pa-border text-pa-ink-dim hover:text-pa-ink font-display text-[10px] sm:text-xs shrink-0 flex items-center justify-center gap-1 active:bg-pa-surface-2 touch-none"
+              onClick={toggleFlip}
+            >
+              <span className="text-xs">⇄</span>
+              <span>FLIP</span>
+            </button>
+          </div>
         </div>
       </div>
 
