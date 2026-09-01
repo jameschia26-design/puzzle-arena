@@ -1,5 +1,6 @@
 import * as React from 'react';
 import type { TetrisView, TetrominoKind } from '@puzzle-arena/games';
+import { tetrisRules } from '@puzzle-arena/games';
 import { useRoom } from '../net/socket.js';
 import { sfx, bgm } from '../ui/sound.js';
 
@@ -112,9 +113,9 @@ function useCellSize(): number {
     const vh = window.visualViewport?.height ?? window.innerHeight;
     if (vw >= 1024) return Math.max(14, Math.min(30, Math.floor((vh - 150) / 20)));
     // Mobile portrait: fit info strip, board, side controls, and action buttons without scrolling
-    const maxH = Math.max(200, vh - 220);
+    const maxH = Math.max(160, vh - 340);
     const maxW = Math.max(160, vw - 64);
-    return Math.max(14, Math.floor(Math.min(maxW / 10, maxH / 20, 30)));
+    return Math.max(14, Math.floor(Math.min(maxW / 10, maxH / 20, 28)));
   }, []);
   const [cell, setCell] = React.useState<number>(() => {
     if (typeof window === 'undefined') return 22;
@@ -264,26 +265,26 @@ export function TetrisBoard({
     startedAt: number;
     moved: boolean;
   } | null>(null);
-  const tapTimerRef = React.useRef<number | null>(null);
-  const lastTapAtRef = React.useRef<number | null>(null);
-  React.useEffect(() => () => {
-    window.clearTimeout(tapTimerRef.current);
-  }, []);
 
-  // Gravity tick loop (client-driven). Level determines interval; we tick the server while alive.
-  const gravityRef = React.useRef<number>(0);
-  const tickRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const grounded = React.useMemo(() => {
+    if (!you?.active) return false;
+    return tetrisRules.isGrounded(you.board, you.active);
+  }, [you?.board, you?.active]);
+
+  // Gravity tick loop (client-driven). In-air drops at gravityMs(level); once grounded on floor/block,
+  // runs lock delay countdown of 450ms so piece locks within <= 500ms wall-clock duration.
+  const tickRef = React.useRef<number | null>(null);
   React.useEffect(() => {
-    if (!you || you.gameOver || view.phase === 'game_over' || paused) return;
-    const gravityMs = Math.max(80, 1000 - (you.level - 1) * 80);
+    if (!you || you.gameOver || view.phase === 'game_over' || paused || !you.active) return;
+    const interval = grounded ? 20 : tetrisRules.gravityMs(you.level);
     const loop = () => {
       onAction({ type: 'tick' });
-      tickRef.current = setTimeout(loop, gravityMs);
     };
-    tickRef.current = setTimeout(loop, gravityMs);
-    return () => { if (tickRef.current) clearTimeout(tickRef.current); };
-
-  }, [you?.level, you?.gameOver, view.phase, paused, onAction]);
+    tickRef.current = window.setTimeout(loop, interval);
+    return () => {
+      window.clearTimeout(tickRef.current!);
+    };
+  }, [you?.level, you?.gameOver, you?.active, grounded, view.phase, paused, onAction]);
   if (!you) {
     return <div className="text-pa-ink-dim text-sm">Loading Tetris…</div>;
   }
@@ -314,11 +315,6 @@ export function TetrisBoard({
       const totalDistance = Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY);
       if (totalDistance >= 14) {
         tap.moved = true;
-        if (tapTimerRef.current !== null) {
-          window.clearTimeout(tapTimerRef.current);
-          tapTimerRef.current = null;
-          lastTapAtRef.current = null;
-        }
       }
 
       // Keep the original y reference, but advance x by exactly one cell for
@@ -343,36 +339,11 @@ export function TetrisBoard({
       if (!tap || tap.id !== e.pointerId || dead || window.innerWidth >= 1024) return;
       e.preventDefault();
       const isTap = !tap.moved && Math.hypot(e.clientX - tap.startX, e.clientY - tap.startY) < 14;
-      if (!isTap) {
-        if (tapTimerRef.current !== null) {
-          window.clearTimeout(tapTimerRef.current);
-          tapTimerRef.current = null;
-          lastTapAtRef.current = null;
-        }
-        return;
-      }
+      if (!isTap) return;
 
-      const now = Date.now();
-      const previousTapAt = lastTapAtRef.current;
-      if (tapTimerRef.current !== null && previousTapAt !== null && now - previousTapAt <= 280) {
-        window.clearTimeout(tapTimerRef.current);
-        tapTimerRef.current = null;
-        lastTapAtRef.current = null;
-        onAction({ type: 'softDrop' });
-        sfx.chip();
-        return;
-      }
-
-      window.clearTimeout(tapTimerRef.current);
-      lastTapAtRef.current = now;
-      tapTimerRef.current = window.setTimeout(() => {
-        tapTimerRef.current = null;
-        lastTapAtRef.current = null;
-        if (!dead) {
-          onAction({ type: 'rotate', dir: 'cw' });
-          sfx.turn();
-        }
-      }, 280);
+      // Instant tap-to-rotate without artificial delay
+      onAction({ type: 'rotate', dir: 'cw' });
+      sfx.turn();
     },
     onPointerCancel: () => { boardTap.current = null; },
   };
@@ -587,22 +558,23 @@ export function TetrisBoard({
               </PressButton>
             </>
           )}
-          <div className="col-span-2 flex gap-1.5 sm:gap-2">
+          <div className="col-span-2 flex gap-1.5 sm:gap-2 items-stretch">
             <PressButton
               label="Rotate"
-              className="flex-1 h-10 sm:h-12 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-xs touch-none"
+              className="flex-1 h-12 sm:h-14 bg-pa-surface border-2 border-pa-border text-pa-ink font-display text-sm sm:text-base font-bold flex items-center justify-center gap-1.5 touch-none shadow-[2px_2px_0_var(--color-pa-shadow)] active:bg-pa-surface-2"
               onFire={guard(() => { onAction({ type: 'rotate', dir: 'cw' }); sfx.turn(); })}
             >
-              ROTATE
+              <span>⟳</span>
+              <span>ROTATE</span>
             </PressButton>
             <button
               type="button"
-              aria-label="Flip drop buttons layout"
-              title="Flip drop buttons layout"
-              className="h-10 sm:h-12 px-3 bg-pa-surface border-2 border-pa-border text-pa-ink-dim hover:text-pa-ink font-display text-[10px] sm:text-xs shrink-0 flex items-center justify-center gap-1 active:bg-pa-surface-2 touch-none"
+              aria-label="Flip drop buttons layout (left/right hand)"
+              title="Flip drop buttons layout (left/right hand)"
+              className="h-12 sm:h-14 px-3.5 sm:px-4 bg-pa-surface border-2 border-pa-border text-pa-amber hover:text-pa-ink font-display text-xs sm:text-sm font-semibold shrink-0 flex items-center justify-center gap-1.5 active:bg-pa-surface-2 touch-none shadow-[2px_2px_0_var(--color-pa-shadow)] cursor-pointer"
               onClick={toggleFlip}
             >
-              <span className="text-xs">⇄</span>
+              <span className="text-sm">⇄</span>
               <span>FLIP</span>
             </button>
           </div>

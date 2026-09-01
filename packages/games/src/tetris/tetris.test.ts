@@ -72,6 +72,48 @@ describe('tetris: grounded lock (move-reset cap)', () => {
     expect(afterTick.lowestY).toBe(BOARD_H - 2);
     expect(afterTick.lockResets).toBe(resetsAfterRot);
   });
+
+  it('grounded piece locks after exactly 5 grounded ticks without input', () => {
+    const s = tetris.setup(['p1', 'p2'], 42, {});
+    const p = s.players[0]!;
+    for (let x = 0; x < BOARD_W; x++) p.board[idx(x, BOARD_H - 1)] = 'I' as never;
+    p.active = { kind: 'T', x: 4, y: BOARD_H - 3, rot: 0 };
+    p.lowestY = p.active.y;
+    let cur = s;
+    for (let i = 1; i <= 4; i++) {
+      const r = tetris.reduce(cur, 'p1', { type: 'tick' });
+      expect(r.ok).toBe(true);
+      cur = r.state!;
+      expect(cur.players[0]!.lockTicks).toBe(i);
+      expect(cur.players[0]!.board.some((c) => c === 'T')).toBe(false);
+    }
+    // 5th tick locks the piece and spawns next immediately
+    const r5 = tetris.reduce(cur, 'p1', { type: 'tick' });
+    expect(r5.ok).toBe(true);
+    const p5 = r5.state!.players[0]!;
+    expect(p5.board.some((c) => c === 'T')).toBe(true);
+    expect(p5.active).not.toBeNull();
+    expect(p5.lockTicks).toBe(0);
+  });
+
+  it('grounded move resets lockTicks before MAX_LOCK_RESETS', () => {
+    const s = tetris.setup(['p1', 'p2'], 42, {});
+    const p = s.players[0]!;
+    for (let x = 0; x < BOARD_W; x++) p.board[idx(x, BOARD_H - 1)] = 'I' as never;
+    p.active = { kind: 'T', x: 4, y: BOARD_H - 3, rot: 0 };
+    p.lowestY = p.active.y;
+    let cur = s;
+    for (let i = 0; i < 4; i++) cur = tetris.reduce(cur, 'p1', { type: 'tick' }).state!;
+    expect(cur.players[0]!.lockTicks).toBe(4);
+    // move resets lockTicks
+    cur = tetris.reduce(cur, 'p1', { type: 'move', dir: 'left' }).state!;
+    expect(cur.players[0]!.lockTicks).toBe(0);
+    expect(cur.players[0]!.lockResets).toBe(1);
+    // 4 more ticks
+    for (let i = 0; i < 4; i++) cur = tetris.reduce(cur, 'p1', { type: 'tick' }).state!;
+    expect(cur.players[0]!.lockTicks).toBe(4);
+    expect(cur.players[0]!.board.some((c) => c === 'T')).toBe(false);
+  });
 });
 
 describe('tetris: line clear', () => {

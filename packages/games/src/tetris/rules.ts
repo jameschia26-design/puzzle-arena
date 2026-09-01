@@ -97,6 +97,13 @@ export function collides(
   }
   return false;
 }
+export function isGrounded(
+  board: (TetrominoKind | null)[],
+  t: Tetromino,
+): boolean {
+  return collides(board, t.kind, t.x, t.y + 1, t.rot);
+}
+
 
 export function ghostY(
   board: (TetrominoKind | null)[],
