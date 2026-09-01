@@ -330,8 +330,8 @@ export function PacManBoard({
       const vh = window.visualViewport?.height ?? window.innerHeight;
       const availW = Math.max(0, (vw < 1024 ? vw : el.clientWidth) - shellChrome - 16);
       if (vw < 1024) {
-        // Mobile portrait: top HUD (~42px), ghost legend (~24px), Joypad (~135px), safe areas + gaps (~30px)
-        const nonMazeHeight = 235;
+        // Mobile portrait: top HUD (~42px), ghost legend (~24px), Joypad/Joystick (~165px), safe areas + gaps (~45px)
+        const nonMazeHeight = 275;
         const availH = Math.max(180, vh - nonMazeHeight);
         const s = Math.min(availW / (W * CELL), availH / (H * CELL));
         setScale(Math.max(0.35, Math.min(s, 2.5)));
@@ -811,7 +811,7 @@ function Joypad({
 
   return (
     <div className={`w-full flex ${alignClass} py-0.5`} role="group" aria-label="Mobile Joypad">
-      <div className="grid grid-cols-3 grid-rows-3 w-[120px] h-[120px] touch-none select-none">
+      <div className="grid grid-cols-3 grid-rows-3 w-[156px] h-[156px] touch-none select-none">
         {/* Row 1: UP */}
         <div className="invisible pointer-events-none" />
         <button
@@ -884,7 +884,7 @@ function Joystick({
 
   const THRESHOLD = 14;
   const MARGIN_RATIO = 0.65;
-  const MAX_NUB_DISTANCE = 42;
+  const MAX_NUB_DISTANCE = 55;
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -962,7 +962,7 @@ function Joystick({
   return (
     <div className={`w-full flex ${alignClass} py-0.5`} role="group" aria-label="Mobile Joystick">
       <div
-        className="relative w-[124px] h-[124px] touch-none select-none cursor-pointer flex items-center justify-center"
+        className="relative w-[160px] h-[160px] touch-none select-none cursor-pointer flex items-center justify-center"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -972,18 +972,18 @@ function Joystick({
         {/* Cyan base ring */}
         <svg
           className="absolute inset-0 h-full w-full drop-shadow-[0_0_12px_rgba(0,216,255,0.7)] pointer-events-none"
-          viewBox="0 0 124 124"
+          viewBox="0 0 160 160"
           aria-hidden="true"
         >
-          <circle cx="62" cy="62" r="59" fill="#00d8ff" fillOpacity="0.14" stroke="#00d8ff" strokeOpacity="0.9" strokeWidth="2" />
-          <circle cx="62" cy="62" r="46" fill="none" stroke="#ffd426" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="4 6" />
-          <path d="M62 10v16M62 98v16M10 62h16M98 62h16" stroke="#00d8ff" strokeOpacity="0.55" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="80" cy="80" r="76" fill="#00d8ff" fillOpacity="0.14" stroke="#00d8ff" strokeOpacity="0.9" strokeWidth="2" />
+          <circle cx="80" cy="80" r="59" fill="none" stroke="#ffd426" strokeOpacity="0.3" strokeWidth="1" strokeDasharray="4 6" />
+          <path d="M80 13v21M80 126v21M13 80h21M126 80h21" stroke="#00d8ff" strokeOpacity="0.55" strokeWidth="2" strokeLinecap="round" />
         </svg>
 
         {/* Amber draggable nub */}
         <svg
-          className="absolute left-[39px] top-[39px] h-[46px] w-[46px] drop-shadow-[0_0_10px_rgba(255,212,38,0.9)] will-change-transform pointer-events-none"
-          viewBox="0 0 46 46"
+          className="absolute left-[50px] top-[50px] h-[60px] w-[60px] drop-shadow-[0_0_10px_rgba(255,212,38,0.9)] will-change-transform pointer-events-none"
+          viewBox="0 0 60 60"
           style={{
             transform: `translate(${nub.x}px, ${nub.y}px)`,
             transition: isDragging ? 'none' : 'transform 120ms ease-out',
@@ -991,8 +991,8 @@ function Joystick({
           data-testid="pacman-joystick-nub"
           aria-hidden="true"
         >
-          <circle cx="23" cy="23" r="21" fill="#ffd426" fillOpacity="0.74" stroke="#fff3ad" strokeWidth="2" />
-          <circle cx="17" cy="17" r="5" fill="#fff7c2" fillOpacity="0.85" />
+          <circle cx="30" cy="30" r="27" fill="#ffd426" fillOpacity="0.74" stroke="#fff3ad" strokeWidth="2" />
+          <circle cx="22" cy="22" r="6.5" fill="#fff7c2" fillOpacity="0.85" />
         </svg>
       </div>
     </div>
