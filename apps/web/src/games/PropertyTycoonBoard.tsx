@@ -306,13 +306,14 @@ export function PropertyTycoonBoard({
           style={{ maxHeight: fitPx || undefined }}
         >
         <div
-          className="grid border-2 border-pa-ink bg-pa-bg"
+          className="grid border-2 border-pa-ink bg-pa-bg no-select"
           style={{
             width: boardPx,
             height: boardPx,
             gridTemplateColumns: 'repeat(11, 1fr)',
             gridTemplateRows: 'repeat(11, 1fr)',
           }}
+          onContextMenu={(e) => e.preventDefault()}
         >
           {BOARD.map((sq) => {
             const { col, row } = cellFor(sq.index);
@@ -331,11 +332,12 @@ export function PropertyTycoonBoard({
                 key={sq.index}
                 type="button"
                 onClick={() => setDeed(sq.index)}
+                onContextMenu={(e) => e.preventDefault()}
                 style={{ gridColumn: col, gridRow: row }}
                 title={label}
                 aria-label={label}
                 className={cn(
-                  'relative border border-pa-border/60 text-left overflow-hidden cursor-pointer',
+                  'relative border border-pa-border/60 text-left overflow-hidden cursor-pointer no-select',
                   'flex flex-col justify-between hover:bg-pa-surface-2 focus-visible:z-10',
                   isFocus && 'z-10 outline-2 outline-pa-cyan bg-pa-surface',
                 )}

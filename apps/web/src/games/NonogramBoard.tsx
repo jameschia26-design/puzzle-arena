@@ -134,7 +134,7 @@ export function NonogramBoard({
         } else return;
         e.preventDefault();
       }}
-      className="inline-grid select-none touch-none outline-none"
+      className="inline-grid select-none no-select touch-none outline-none"
       style={{
         gridTemplateColumns: `auto repeat(${size}, ${cellPx})`,
         gridTemplateRows: `auto repeat(${size}, ${cellPx})`,
@@ -189,7 +189,7 @@ export function NonogramBoard({
                 aria-label={`Row ${r + 1} column ${c + 1}`}
                 onClick={() => setCursor(index)}
                 className={cn(
-                  'relative border cursor-pointer',
+                  'relative border cursor-pointer no-select',
                   c % 5 === 0 && c !== 0 && 'border-l-2 border-l-pa-ink',
                   r % 5 === 0 && r !== 0 && 'border-t-2 border-t-pa-ink',
                   isCursor && 'ring-2 ring-pa-amber ring-inset z-10',

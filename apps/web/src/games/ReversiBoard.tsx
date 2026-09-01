@@ -181,8 +181,8 @@ export function ReversiBoard({
       </div>
 
       {/* Reversi 8x8 Board Container */}
-      <div className="flex justify-center p-2 sm:p-4 bg-[#0a1410] border-2 border-[#1a382b] rounded-xl shadow-[0_0_25px_rgba(34,224,255,0.06)]">
-        <div className="grid grid-cols-8 gap-1 sm:gap-1.5 p-2 sm:p-3 bg-[#0d2319] border-4 border-[#14422e] rounded-lg shadow-2xl">
+      <div className="flex justify-center p-2 sm:p-4 bg-[#0a1410] border-2 border-[#1a382b] rounded-xl shadow-[0_0_25px_rgba(34,224,255,0.06)] no-select touch-none" onContextMenu={(e) => e.preventDefault()}>
+        <div className="grid grid-cols-8 gap-1 sm:gap-1.5 p-2 sm:p-3 bg-[#0d2319] border-4 border-[#14422e] rounded-lg shadow-2xl no-select">
           {Array.from({ length: 64 }).map((_, idx) => {
             const r = Math.floor(idx / 8);
             const c = idx % 8;
@@ -198,8 +198,9 @@ export function ReversiBoard({
                 type="button"
                 disabled={!isLegal || !isMyTurn}
                 onClick={() => handleSquareClick(r, c)}
+                onContextMenu={(e) => e.preventDefault()}
                 className={cn(
-                  'w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-[#103322] border border-[#194f35] flex items-center justify-center relative transition-all',
+                  'w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-[#103322] border border-[#194f35] flex items-center justify-center relative transition-all no-select',
                   isLegal && isMyTurn
                     ? 'hover:bg-[#1a4d33] hover:border-pa-cyan cursor-pointer shadow-[0_0_8px_rgba(34,224,255,0.3)]'
                     : 'cursor-default',

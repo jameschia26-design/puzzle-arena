@@ -120,12 +120,13 @@ export function ManorMysteryBoard({
         <LastSuggestion record={lastSuggestion} nameOf={nameOf} youId={youId} />
       )}
       <div
-        className="relative w-full max-w-[min(94vw,680px)] aspect-square border-2 border-pa-ink bg-pa-bg"
+        className="relative w-full max-w-[min(94vw,680px)] aspect-square border-2 border-pa-ink bg-pa-bg no-select touch-none"
         style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${GRID}, 1fr)`,
           gridTemplateRows: `repeat(${GRID}, 1fr)`,
         }}
+        onContextMenu={(e) => e.preventDefault()}
       >
         {/* corridor lattice + reachable cells */}
         {Array.from({ length: GRID * GRID }, (_, i) => {
@@ -141,10 +142,10 @@ export function ManorMysteryBoard({
               style={{ gridColumn: x + 1, gridRow: y + 1 }}
               disabled={!reachable}
               onClick={() => onAction({ type: 'move', x, y })}
+              onContextMenu={(e) => e.preventDefault()}
               aria-label={`Corridor ${x}, ${y}`}
               className={cn(
-                'relative border border-pa-border/25',
-                // A corridor square is ~14px on a phone, which is not a tap
+                'relative border border-pa-border/25 no-select',
                 // target. Reachable ones grow an invisible pad around
                 // themselves so a near-miss still lands on a legal move; the
                 // pad is deliberately small, since every reachable neighbour
@@ -174,13 +175,13 @@ export function ManorMysteryBoard({
               type="button"
               disabled={!enterable}
               onClick={() => door && onAction({ type: 'move', x: door.x, y: door.y })}
+              onContextMenu={(e) => e.preventDefault()}
               style={{
                 gridColumn: `${rect.x0 + 1} / ${rect.x1 + 2}`,
                 gridRow: `${rect.y0 + 1} / ${rect.y1 + 2}`,
               }}
               className={cn(
-                'border-2 flex flex-col items-center justify-center gap-1 p-1 overflow-hidden',
-                // A 20% tint was too quiet to notice after a roll; an
+                'border-2 flex flex-col items-center justify-center gap-1 p-1 overflow-hidden no-select',
                 // enterable room now announces itself.
                 enterable
                   ? 'border-pa-cyan bg-pa-cyan/35 cursor-pointer animate-pulse hover:animate-none hover:bg-pa-cyan/60'

@@ -96,12 +96,13 @@ export function WordSearchBoard({
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       <div
-        className="inline-grid select-none border-2 border-pa-ink bg-pa-bg touch-none"
+        className="inline-grid select-none no-select border-2 border-pa-ink bg-pa-bg touch-none"
         style={{
           // Use the width the grid actually has; a flat vw fraction left a
           // 15x15 board at 20px a cell on a phone with room for 24.
           gridTemplateColumns: `repeat(${size}, clamp(16px, calc(min(92vw, 620px) / ${size}), 34px))`,
         }}
+        onContextMenu={(e) => e.preventDefault()}
       >
         {grid.map((letter, index) => {
           const x = index % size;
@@ -114,11 +115,12 @@ export function WordSearchBoard({
               type="button"
               aria-label={`${letter} at row ${y + 1} column ${x + 1}`}
               className={cn(
-                'aspect-square flex items-center justify-center border border-pa-border/50 cursor-pointer',
+                'aspect-square flex items-center justify-center border border-pa-border/50 cursor-pointer no-select',
                 'text-[clamp(10px,2.4vw,16px)] font-semibold tabular',
                 selected && 'bg-pa-cyan text-pa-bg',
               )}
               style={!selected && tint ? { backgroundColor: tint, color: '#0b0d17' } : undefined}
+              onContextMenu={(e) => e.preventDefault()}
               onPointerDown={(e) => {
                 if (disabled) return;
                 // Without releasing the implicit touch capture, pointerenter

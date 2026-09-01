@@ -317,8 +317,9 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
 
         <div className="relative mx-auto w-full max-w-[min(94vw,560px)] aspect-square">
           <div
-            className="absolute inset-0 grid border-4 border-pa-border"
+            className="absolute inset-0 grid border-4 border-pa-border no-select touch-none"
             style={{ gridTemplateColumns: 'repeat(8, 1fr)', gridTemplateRows: 'repeat(8, 1fr)' }}
+            onContextMenu={(e) => e.preventDefault()}
           >
             {Array.from({ length: 8 }).flatMap((_, row) =>
               Array.from({ length: 8 }).map((__, col) => {
@@ -338,9 +339,10 @@ export default function ChessBoard({ view, players, youId, legalActions, onActio
                     key={square}
                     type="button"
                     onClick={() => handleTap(square)}
+                    onContextMenu={(e) => e.preventDefault()}
                     aria-label={`Square ${squareName(square)}`}
                     className={cn(
-                      'relative flex items-center justify-center cursor-pointer',
+                      'relative flex items-center justify-center cursor-pointer no-select',
                       dark ? 'bg-[#181c30]' : 'bg-[#464f7c]',
                       isSelected && 'ring-4 ring-pa-cyan ring-inset',
                       (isLastFrom || isLastTo) && 'ring-2 ring-pa-lime ring-inset',

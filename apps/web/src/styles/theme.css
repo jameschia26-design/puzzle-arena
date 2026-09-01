@@ -149,6 +149,13 @@
     box-shadow: none;
     cursor: not-allowed;
   }
+
+  /* Suppress text selection, iOS callout / dictionary look-up on game surfaces */
+  .no-select {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }
 
 /**

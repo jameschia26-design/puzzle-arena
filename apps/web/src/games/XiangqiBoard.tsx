@@ -234,7 +234,7 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
           </PlayerRow>
         </div>
 
-        <div className="relative mx-auto w-full max-w-[min(94vw,520px)] aspect-[9/10] bg-[#e8d8b8]">
+        <div className="relative mx-auto w-full max-w-[min(94vw,520px)] aspect-[9/10] bg-[#e8d8b8] no-select touch-none" onContextMenu={(e) => e.preventDefault()}>
           <svg viewBox="0 0 9 10" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
             {hGrid.map((row) => (
               <line key={`h${row}`} x1={lx(0)} y1={ly(row)} x2={lx(8)} y2={ly(row)} stroke="#5a4a30" strokeWidth={0.03} />
@@ -279,8 +279,9 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
                 key={square}
                 type="button"
                 onClick={() => handleTap(square)}
+                onContextMenu={(e) => e.preventDefault()}
                 aria-label={`Point ${row},${col}`}
-                className="absolute flex items-center justify-center cursor-pointer"
+                className="absolute flex items-center justify-center cursor-pointer no-select"
                 style={{
                   left: `${((vc + 0.5) / 9) * 100}%`,
                   top: `${((vr + 0.5) / 10) * 100}%`,
@@ -294,7 +295,7 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
                 {piece && (
                   <span
                     className={cn(
-                      'w-[82%] h-[82%] rounded-full border-2 flex items-center justify-center shadow-md font-cjk select-none',
+                      'w-[82%] h-[82%] rounded-full border-2 flex items-center justify-center shadow-md font-cjk select-none no-select',
                       isSelected && 'ring-4 ring-pa-cyan',
                       (isLastFrom || isLastTo) && 'ring-2 ring-pa-lime',
                       isGeneralInCheck && 'ring-2 ring-pa-danger',

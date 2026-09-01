@@ -370,7 +370,7 @@ export function MinesweeperBoard({
             } else return;
             e.preventDefault();
           }}
-          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none m-auto shrink-0 outline-none"
+          className="grid gap-[2px] p-2 bg-[#05070f] border-2 border-[#1f293d] rounded select-none no-select m-auto shrink-0 outline-none"
           style={{
             gridTemplateColumns: `repeat(${cols}, 32px)`,
             width: 'max-content',
@@ -415,7 +415,7 @@ export function MinesweeperBoard({
                 }}
                 className={cn(
                   'w-8 h-8 min-w-[32px] min-h-[32px] sm:w-9 sm:h-9 sm:min-w-[36px] sm:min-h-[36px] aspect-square shrink-0 relative',
-                  'text-[14px] sm:text-[16px] font-bold font-mono flex items-center justify-center transition-all cursor-pointer select-none touch-manipulation',
+                  'text-[14px] sm:text-[16px] font-bold font-mono flex items-center justify-center transition-all cursor-pointer select-none no-select touch-manipulation',
                   isCursor && 'ring-2 ring-pa-amber ring-inset z-10',
                   isRev
                     ? isMine

@@ -224,8 +224,9 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
 
       <div className="relative mx-auto w-full max-w-[520px] aspect-square">
         <div
-          className="absolute inset-0 grid border-4 border-pa-border"
+          className="absolute inset-0 grid border-4 border-pa-border no-select touch-none"
           style={{ gridTemplateColumns: 'repeat(10, 1fr)', gridTemplateRows: 'repeat(10, 1fr)' }}
+          onContextMenu={(e) => e.preventDefault()}
         >
           {rowOrder.flatMap((row) =>
             colOrder.map((col) => {
@@ -247,9 +248,10 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
                   type="button"
                   disabled={!dark}
                   onClick={() => handleTap(row, col)}
+                  onContextMenu={(e) => e.preventDefault()}
                   aria-label={dark ? `Square ${row},${col}` : undefined}
                   className={cn(
-                    'relative flex items-center justify-center',
+                    'relative flex items-center justify-center no-select',
                     dark ? 'bg-pa-surface-2 cursor-pointer' : 'bg-pa-bg cursor-default',
                     isSelected && 'ring-4 ring-pa-cyan ring-inset',
                     isNextOption && 'ring-2 ring-pa-amber ring-inset',

@@ -642,9 +642,10 @@ export function CongkakBoard({
                         type="button"
                         disabled={!legal}
                         onClick={() => handleSow(pitIdx)}
+                        onContextMenu={(e) => e.preventDefault()}
                         aria-label={`Sow house #${i + 1} with ${count} seeds`}
                         className={cn(
-                          'w-13 h-13 sm:w-14 sm:h-14 rounded-full border-2 flex flex-col items-center justify-center transition-all relative',
+                          'w-13 h-13 sm:w-14 sm:h-14 rounded-full border-2 flex flex-col items-center justify-center transition-all relative no-select touch-none',
                           isTarget
                             ? 'border-pa-cyan ring-4 ring-pa-cyan/80 scale-110 shadow-[0_0_18px_rgba(34,224,255,0.9)] bg-pa-cyan/25'
                             : legal
@@ -833,9 +834,10 @@ export function CongkakBoard({
                         type="button"
                         disabled={!legal}
                         onClick={() => handleSow(pitIdx)}
+                        onContextMenu={(e) => e.preventDefault()}
                         aria-label={`Sow house #${i + 1} with ${count} seeds`}
                         className={cn(
-                          'w-12 h-12 md:w-16 md:h-16 rounded-full border-2 flex flex-col items-center justify-center transition-all relative',
+                          'w-12 h-12 md:w-16 md:h-16 rounded-full border-2 flex flex-col items-center justify-center transition-all relative no-select touch-none',
                           isTarget
                             ? 'border-pa-cyan ring-4 ring-pa-cyan/80 scale-110 shadow-[0_0_18px_rgba(34,224,255,0.9)] bg-pa-cyan/25'
                             : legal

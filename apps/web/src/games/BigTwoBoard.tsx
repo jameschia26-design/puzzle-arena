@@ -43,9 +43,10 @@ function Card({
       type="button"
       onClick={onClick}
       disabled={!onClick}
+      onContextMenu={(e) => e.preventDefault()}
       aria-label={`${RANK_LABELS[card.rank]} of ${SUIT_LABELS[card.suit]}`}
       className={cn(
-        'flex flex-col items-center justify-center border-2 bg-pa-surface font-display tabular select-none transition-transform',
+        'flex flex-col items-center justify-center border-2 bg-pa-surface font-display tabular select-none no-select touch-none transition-transform',
         size === 'md' ? 'w-11 h-16 text-[13px] gap-0.5' : 'w-9 h-13 text-[11px] gap-0.5',
         onClick && 'cursor-pointer hover:-translate-y-1',
         selected ? 'border-pa-cyan -translate-y-2 shadow-[0_0_10px_rgba(34,224,255,0.6)]' : 'border-pa-border',

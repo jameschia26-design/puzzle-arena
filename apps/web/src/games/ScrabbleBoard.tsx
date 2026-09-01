@@ -147,8 +147,9 @@ export function ScrabbleBoard({
         />
 
         <div
-          className="grid w-full max-w-[min(94vw,640px)] border-2 border-pa-ink bg-pa-bg aspect-square"
+          className="grid w-full max-w-[min(94vw,640px)] border-2 border-pa-ink bg-pa-bg aspect-square no-select touch-none"
           style={{ gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))` }}
+          onContextMenu={(e) => e.preventDefault()}
         >
           {Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, i) => {
             const row = Math.floor(i / BOARD_SIZE);
@@ -166,6 +167,7 @@ export function ScrabbleBoard({
                 type="button"
                 disabled={!clickable && !pending}
                 onClick={() => onCellClick(row, col)}
+                onContextMenu={(e) => e.preventDefault()}
                 onDragOver={(e) => {
                   if (clickable || pending) e.preventDefault();
                 }}
@@ -189,7 +191,7 @@ export function ScrabbleBoard({
                   }
                 }}
                 className={cn(
-                  'relative flex items-center justify-center border border-pa-border/50',
+                  'relative flex items-center justify-center border border-pa-border/50 no-select',
                   clickable || pending ? 'cursor-pointer' : 'cursor-default',
                 )}
                 style={{ backgroundColor: placed ? undefined : (style?.bg ?? undefined) }}
@@ -361,8 +363,9 @@ export function ScrabbleBoard({
                     on ? prev.filter((x) => x !== i) : [...prev, i],
                   )
                 }
+                onContextMenu={(e) => e.preventDefault()}
                 className={cn(
-                  'border-2 pa-press',
+                  'border-2 pa-press no-select',
                   on ? 'border-pa-cyan' : 'border-pa-border',
                 )}
               >
@@ -389,7 +392,7 @@ function Tile({ letter = '', isBlank = false, pending = false }: { letter?: stri
         // amber tile maximises contrast on a busy board on mobile-sized
         // viewports. bg-pa-surface stays as a fallback for the rare case the
         // --color-pa-amber custom property is missing.
-        'relative flex h-full w-full items-center justify-center bg-pa-surface text-pa-shadow',
+        'relative flex h-full w-full items-center justify-center bg-pa-surface text-pa-shadow no-select',
         // Pending tiles keep full contrast; the dashed cyan outline is the
         // sole cue that the placement is provisional.
         pending && 'outline outline-2 outline-dashed outline-pa-cyan -outline-offset-2',
@@ -397,7 +400,7 @@ function Tile({ letter = '', isBlank = false, pending = false }: { letter?: stri
       style={{ backgroundColor: 'var(--color-pa-amber)' }}
     >
       <span
-        className="font-display"
+        className="font-display no-select"
         // Bumped the mobile floor from 10 → 12px and tightened the cap to
         // 18px so rack tiles stay readable without overflowing board cells.
         style={{ fontSize: 'clamp(12px, 2.8vw, 18px)' }}
@@ -406,7 +409,7 @@ function Tile({ letter = '', isBlank = false, pending = false }: { letter?: stri
       </span>
       {value > 0 && (
         <span
-          className="absolute bottom-[1px] right-[2px] tabular text-pa-shadow"
+          className="absolute bottom-[1px] right-[2px] tabular text-pa-shadow no-select"
           // Score digit floor raised 6 → 8px so the corner value is legible
           // on a phone screen where the tile is ~25-32px square.
           style={{ fontSize: 'clamp(8px, 1.4vw, 10px)' }}
@@ -432,7 +435,10 @@ function Rack({
   disabled: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-2 border-2 border-pa-border bg-pa-surface p-2">
+    <div
+      className="flex flex-wrap gap-2 border-2 border-pa-border bg-pa-surface p-2 no-select"
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {rack.map((letter, i) => {
         const used = usedIndexes.has(i);
         return (
@@ -445,9 +451,10 @@ function Rack({
               e.dataTransfer.setData('text/plain', String(i));
               onSelect(i);
             }}
+            onContextMenu={(e) => e.preventDefault()}
             onClick={() => onSelect(selected === i ? null : i)}
             className={cn(
-              'h-11 w-11 border-2 pa-press disabled:cursor-not-allowed cursor-grab active:cursor-grabbing select-none',
+              'h-11 w-11 border-2 pa-press disabled:cursor-not-allowed cursor-grab active:cursor-grabbing no-select touch-none',
               used ? 'opacity-25 border-pa-border' : selected === i ? 'border-pa-cyan shadow-[0_0_8px_rgba(34,224,255,0.6)]' : 'border-pa-border',
             )}
           >
@@ -469,12 +476,18 @@ function BlankLetterPicker({
   onCancel: () => void;
 }) {
   return (
-    <PixelDialog open onOpenChange={(v) => !v && onCancel()} title="Choose a letter for the blank">
-      <div className="grid grid-cols-6 gap-2 sm:grid-cols-7">
+    <PixelDialog open onOpenChange={(open) => !open && onCancel()} title="Choose blank tile letter">
+      <div className="grid grid-cols-6 gap-2 sm:grid-cols-8" onContextMenu={(e) => e.preventDefault()}>
         {ALPHABET.map((letter) => (
-          <PixelButton key={letter} variant="ghost" size="sm" onClick={() => onPick(letter)}>
-            {letter}
-          </PixelButton>
+          <button
+            key={letter}
+            type="button"
+            onClick={() => onPick(letter)}
+            onContextMenu={(e) => e.preventDefault()}
+            className="border-2 border-pa-border pa-press no-select"
+          >
+            <Tile letter={letter} isBlank={false} pending={false} />
+          </button>
         ))}
       </div>
     </PixelDialog>

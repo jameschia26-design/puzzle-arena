@@ -167,7 +167,7 @@ export function Connect4Board({
       </div>
 
       {/* Connect 4 Cabinet & Grid Container */}
-      <div className="flex flex-col items-center justify-center p-3 sm:p-6 bg-[#080d1a] border-4 border-[#1e3a8a] rounded-2xl shadow-[0_0_35px_rgba(30,58,138,0.4)]">
+      <div className="flex flex-col items-center justify-center p-3 sm:p-6 bg-[#080d1a] border-4 border-[#1e3a8a] rounded-2xl shadow-[0_0_35px_rgba(30,58,138,0.4)] no-select touch-none" onContextMenu={(e) => e.preventDefault()}>
         {/* Column Drop Arrow Indicators */}
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2.5 mb-2 w-full max-w-[480px] sm:max-w-[560px]">
           {Array.from({ length: 7 }).map((_, c) => {
@@ -181,11 +181,12 @@ export function Connect4Board({
                 onClick={() => handleDrop(c)}
                 onMouseEnter={() => setHoverCol(c)}
                 onMouseLeave={() => setHoverCol(null)}
+                onContextMenu={(e) => e.preventDefault()}
                 className={cn(
-                  'h-8 sm:h-9 flex items-center justify-center rounded transition-all',
+                  'h-8 sm:h-10 flex items-center justify-center rounded-lg transition-all no-select',
                   isLegal && isMyTurn
-                    ? 'hover:bg-[#1e3a8a]/40 text-pa-cyan cursor-pointer active:scale-95'
-                    : 'opacity-0 cursor-default',
+                    ? 'hover:bg-pa-cyan/20 cursor-pointer'
+                    : 'opacity-0 cursor-default pointer-events-none',
                 )}
               >
                 {isLegal && isMyTurn && (
@@ -221,8 +222,9 @@ export function Connect4Board({
                   onClick={() => handleDrop(c)}
                   onMouseEnter={() => setHoverCol(c)}
                   onMouseLeave={() => setHoverCol(null)}
+                  onContextMenu={(e) => e.preventDefault()}
                   className={cn(
-                    'aspect-square rounded-full flex items-center justify-center bg-[#070b14] border-2 sm:border-3 border-[#172554] shadow-inner relative transition-all overflow-hidden',
+                    'aspect-square rounded-full flex items-center justify-center bg-[#070b14] border-2 sm:border-3 border-[#172554] shadow-inner relative transition-all overflow-hidden no-select',
                     isLegal && isMyTurn && 'hover:border-pa-cyan/80 cursor-pointer',
                   )}
                 >

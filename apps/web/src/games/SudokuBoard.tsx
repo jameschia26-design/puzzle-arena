@@ -223,7 +223,8 @@ export function SudokuBoard({
         tabIndex={0}
         onKeyDown={onKeyDown}
         aria-label="Sudoku grid"
-        className="grid grid-cols-9 border-2 border-pa-ink bg-pa-bg w-full max-w-[min(92vw,560px)] aspect-square outline-none"
+        className="grid grid-cols-9 border-2 border-pa-ink bg-pa-bg w-full max-w-[min(92vw,560px)] aspect-square outline-none no-select touch-none"
+        onContextMenu={(e) => e.preventDefault()}
       >
         {Array.from({ length: 81 }, (_, i) => {
           const row = Math.floor(i / 9);
@@ -244,10 +245,10 @@ export function SudokuBoard({
               role="gridcell"
               aria-label={`Row ${row + 1} column ${col + 1}${value ? `, ${value}` : ', empty'}`}
               onClick={() => setCursor(i)}
+              onContextMenu={(e) => e.preventDefault()}
               className={cn(
-                'relative flex items-center justify-center border border-pa-border/60 cursor-pointer',
+                'relative flex items-center justify-center border border-pa-border/60 cursor-pointer no-select',
                 // Heavier lines on the 3x3 box seams.
-                col % 3 === 0 && col !== 0 && 'border-l-2 border-l-pa-ink',
                 row % 3 === 0 && row !== 0 && 'border-t-2 border-t-pa-ink',
                 isCursor && 'bg-pa-surface-2',
                 sameValue && 'bg-pa-surface',
@@ -319,14 +320,18 @@ export function SudokuBoard({
         key 32px of box for a 44px target, and clipped the "Clr" label outright;
         five across puts the keys at ~68px on the same screen.
       */}
-      <div className="grid w-full max-w-[min(92vw,560px)] grid-cols-5 gap-1 sm:grid-cols-10">
+      <div
+        className="grid w-full max-w-[min(92vw,560px)] grid-cols-5 gap-1 sm:grid-cols-10 no-select touch-none"
+        onContextMenu={(e) => e.preventDefault()}
+      >
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
           <button
             key={n}
             type="button"
             disabled={disabled}
             onClick={() => write(cursor, n)}
-            className="font-display text-[14px] sm:text-[12px] border-2 border-pa-border min-h-[48px] sm:min-h-[44px] pa-shadow-sm pa-press bg-pa-surface cursor-pointer"
+            onContextMenu={(e) => e.preventDefault()}
+            className="font-display text-[14px] sm:text-[12px] border-2 border-pa-border min-h-[48px] sm:min-h-[44px] pa-shadow-sm pa-press bg-pa-surface cursor-pointer no-select"
           >
             {n}
           </button>
@@ -335,8 +340,9 @@ export function SudokuBoard({
           type="button"
           disabled={disabled}
           onClick={() => write(cursor, 0)}
+          onContextMenu={(e) => e.preventDefault()}
           aria-label="Clear cell"
-          className="font-display text-[10px] border-2 border-pa-border min-h-[48px] sm:min-h-[44px] pa-shadow-sm pa-press bg-pa-surface cursor-pointer"
+          className="font-display text-[10px] border-2 border-pa-border min-h-[48px] sm:min-h-[44px] pa-shadow-sm pa-press bg-pa-surface cursor-pointer no-select"
         >
           Clr
         </button>

@@ -206,7 +206,7 @@ export function AnimalChessBoard({
           className="relative bg-[#161a29] p-3 rounded-lg border-4 border-pa-border shadow-2xl"
           style={{ width: 'min(92vw, 460px)', aspectRatio: '7 / 9' }}
         >
-          <div className="grid grid-cols-7 grid-rows-9 w-full h-full gap-[3px] bg-[#0d111d] p-1 rounded">
+          <div className="grid grid-cols-7 grid-rows-9 w-full h-full gap-[3px] bg-[#0d111d] p-1 rounded no-select touch-none" onContextMenu={(e) => e.preventDefault()}>
             {Array.from({ length: ROWS }, (_, rawR) => {
               const r = flipped ? ROWS - 1 - rawR : rawR;
               return Array.from({ length: COLS }, (_, rawC) => {
@@ -230,9 +230,9 @@ export function AnimalChessBoard({
                     key={pt}
                     type="button"
                     onClick={() => handleSquareClick(pt)}
+                    onContextMenu={(e) => e.preventDefault()}
                     className={cn(
-                      'relative flex flex-col items-center justify-center rounded transition-all outline-none font-pixel',
-                      // Terrain backgrounds
+                      'relative flex flex-col items-center justify-center rounded transition-all outline-none font-pixel no-select',
                       isWaterSq
                         ? 'bg-gradient-to-b from-[#0e3b5e] to-[#0a2540] border border-[#1e5a8a] text-blue-300 shadow-inner'
                         : isDen0 || isDen1
