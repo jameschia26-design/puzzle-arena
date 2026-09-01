@@ -401,15 +401,17 @@ export function TetrisBoard({
 
         {/* Stats + assist + (desktop) mouse controls */}
         <div className="flex flex-row flex-wrap items-center gap-x-3 gap-y-1 text-xs font-body min-w-0 lg:flex-col lg:items-stretch lg:gap-2 lg:min-w-[92px] lg:order-2">
-          <div className="flex flex-wrap items-baseline gap-x-3 lg:block lg:space-y-1">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 lg:block lg:space-y-1">
             <div className="flex items-baseline gap-1 lg:justify-between">
               <span className="text-pa-ink-dim">Score</span><span className="font-display text-pa-cyan tabular">{you.score}</span>
             </div>
             <div className="flex items-baseline gap-1 lg:justify-between">
-              <span className="text-pa-ink-dim">Lines</span><span className="text-pa-ink tabular">{you.lines}</span>
+              <span className="text-pa-ink-dim">Lines</span><span className="font-display text-pa-ink tabular">{you.lines}</span>
             </div>
-            <div className={`flex items-baseline gap-1 lg:justify-between ${levelUpFlash ? 'animate-pulse text-pa-amber' : ''}`}>
-              <span className="text-pa-ink-dim">Level</span><span className="text-pa-amber font-bold tabular">{you.level}</span>
+            <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 border border-pa-amber/60 bg-pa-surface lg:border-0 lg:bg-transparent lg:p-0 lg:flex lg:justify-between ${levelUpFlash ? 'animate-pulse border-pa-amber bg-pa-amber/20' : ''}`}>
+              <span className="font-display text-[9px] text-pa-ink-dim tracking-wider lg:hidden">LVL</span>
+              <span className="text-pa-ink-dim text-xs hidden lg:inline">Level</span>
+              <span className="font-display text-pa-amber text-xs font-bold tabular">{you.level}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

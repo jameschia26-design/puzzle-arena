@@ -157,9 +157,9 @@ function doLock(
     if (player.combo > 0) add += 50 * player.combo * player.level;
     player.backToBack = isDifficult ? true : player.backToBack;
     if (!isDifficult) player.backToBack = false;
-    // level progression: 10 lines per level
+    // level progression: 15 lines per level
     player.lines += cleared;
-    const newLevel = Math.floor(player.lines / 10) + Math.max(1, s.config.startLevel);
+    const newLevel = Math.floor(player.lines / 15) + Math.max(1, s.config.startLevel);
     if (newLevel !== player.level) {
       player.level = newLevel;
     }

@@ -120,18 +120,44 @@ describe('tetris: scoring', () => {
 });
 
 describe('tetris: level progression', () => {
-  it('level increases every 10 lines', () => {
+  it('level increases every 15 lines', () => {
     expect(gravityMs(1)).toBe(1000);
     expect(gravityMs(10)).toBe(150);
     expect(gravityMs(20)).toBe(20);
     // simulate level progression via lines
     const s = tetris.setup(['p1', 'p2'], 123, { startLevel: 1 });
-    // manually set lines to 9, then clear 1 to trigger level 2
-    s.players[0]!.lines = 9;
-    // Fill bottom row except where piece will land, hard drop to clear
-    // Simpler: test level formula: level = floor(lines/10)+startLevel
-    const expected = Math.floor(10 / 10) + 1;
+    // manually set lines to 14, then clear 1 to trigger level 2
+    s.players[0]!.lines = 14;
+    // Simpler: test level formula: level = floor(lines/15)+startLevel
+    const expected = Math.floor(15 / 15) + 1;
     expect(expected).toBe(2);
+  });
+
+  it('reducer updates player.level from 1 to 2 exactly at 15 lines', () => {
+    const s = tetris.setup(['p1'], 42, { startLevel: 1 });
+    const p = s.players[0]!;
+    // Test 10 lines -> level still 1
+    p.lines = 9;
+    p.level = 1;
+    // Place an I piece flat at the top and fill bottom row except 4 cells
+    for (let x = 0; x < BOARD_W; x++) p.board[idx(x, BOARD_H - 1)] = 'O' as never;
+    // Leave space for an I piece (4 wide) at x=3..6
+    for (let x = 3; x < 7; x++) p.board[idx(x, BOARD_H - 1)] = null;
+    p.active = { kind: 'I', x: 4, y: 0, rot: 0 };
+    const r1 = tetris.reduce(s, 'p1', { type: 'hardDrop' });
+    if (!r1.ok) throw new Error('r1 should succeed');
+    const s1 = r1.state;
+    expect(s1.players[0]!.level).toBe(1); // 10 lines is still level 1
+
+    // Now advance lines to 14 -> still level 1
+    s1.players[0]!.lines = 14;
+    for (let x = 0; x < BOARD_W; x++) s1.players[0]!.board[idx(x, BOARD_H - 1)] = 'O' as never;
+    for (let x = 3; x < 7; x++) s1.players[0]!.board[idx(x, BOARD_H - 1)] = null;
+    s1.players[0]!.active = { kind: 'I', x: 4, y: 0, rot: 0 };
+    const r2 = tetris.reduce(s1, 'p1', { type: 'hardDrop' });
+    if (!r2.ok) throw new Error('r2 should succeed');
+    const s2 = r2.state;
+    expect(s2.players[0]!.level).toBe(2); // exactly at 15 lines, level becomes 2
   });
 });
 
