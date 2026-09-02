@@ -169,12 +169,11 @@ function doLock(
       // T-spin no lines still counts? keep B2B? No, only difficult clears maintain B2B; mini t-spin not implemented
     }
   }
+  player.score += add;
 
-  // hard drop already added; soft drop cells bonus
-  if (player.softDropCells > 0) {
-    add += player.softDropCells;
-    player.softDropCells = 0;
-  }
+  // soft drop points are already credited immediately per cell (see softDrop handler);
+  // just reset the counter here.
+  player.softDropCells = 0;
 
   player.lockTicks = 0;
   player.lockResets = 0;

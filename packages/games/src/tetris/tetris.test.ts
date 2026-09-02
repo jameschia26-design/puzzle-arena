@@ -347,3 +347,24 @@ describe('tetris: game over', () => {
     }
   });
 });
+
+describe('tetris: scoring', () => {
+  it('awards Guideline points to player.score on a line clear', () => {
+    const s = tetris.setup(['p1', 'p2'], 7, {});
+    const p = s.players[0]!;
+    // Fill bottom row except a 2-wide gap at columns 0-1, leave the row above open.
+    for (let x = 0; x < BOARD_W; x++) if (x !== 0 && x !== 1) p.board[idx(x, BOARD_H - 1)] = 'Z' as never;
+    p.active = { kind: 'O', x: 0, y: BOARD_H - 2, rot: 0 };
+    p.score = 0;
+    const before = p.score;
+    const beforeLines = p.lines;
+    const r = tetris.reduce(s, 'p1', { type: 'hardDrop' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('unreachable');
+    const after = r.state.players[0]!;
+    expect(after.lines).toBeGreaterThan(beforeLines);
+    // Single-line clear at level 1 = 100 * level, must be reflected in score.
+    expect(after.score).toBeGreaterThan(before);
+    expect(after.score).toBeGreaterThanOrEqual(100);
+  });
+});
