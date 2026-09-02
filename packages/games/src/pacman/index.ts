@@ -5,7 +5,7 @@ import {
   MAZE_W, MAZE_H, DIRS, type Dir, type GhostState, type PacManPlayerState, type PacManState, type PacManAction, type PacManConfig, type PacManView, type PacManPublicPlayer,
 } from './state.js';
 import {
-  buildMaze, countPellets, canMovePac, canMoveGhost, nextPos, SCATTER_TARGETS, GHOST_HOUSE, FRUIT_POS, PAC_SPAWN, chooseGhostDir, ghostTarget, manhattan, fruitForLevel, frightTicksForLevel, ghostReviveTicks, MODE_CYCLE, pelletScore, ghostScore, TILE_DOT, TILE_PELLET, TUNNEL_Y,
+  buildMaze, countPellets, canMovePac, canMoveGhost, nextPos, SCATTER_TARGETS, GHOST_HOUSE, FRUIT_POS, PAC_SPAWN, chooseGhostDir, ghostTarget, manhattan, fruitForLevel, frightTicksForLevel, ghostReviveTicks, MODE_CYCLE, pelletScore, ghostScore, TILE_DOT, TILE_PELLET, TUNNEL_Y, isDoor, isWall,
 } from './rules.js';
 
 const DEFAULT_CONFIG: PacManConfig = { turnTimeLimitSec: 90, startLevel: 1 };
@@ -312,19 +312,18 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
         if (g.houseTicks % 2 === 0) {
           const dirs: Dir[] = ['up', 'down'];
           const curIdx = dirs.indexOf(g.dir);
-          g.dir = dirs[(curIdx + 1) % 2] as Dir;
+          g.dir = curIdx === -1 ? 'up' : (dirs[(curIdx + 1) % 2] as Dir);
           const np = nextPos(g.pos.x, g.pos.y, g.dir);
-          if (!canMoveGhost(player.maze, g.pos.x, g.pos.y, g.dir, { canUseDoor: false })) {
-            // stay
-          } else {
-            // check still inside house bounds (x 11-16, y 13-15)
-            if (np.y >= 13 && np.y <= 15 && np.x >= 11 && np.x <= 16) g.pos = np;
+          if (np.y >= 13 && np.y <= 15 && np.x >= 11 && np.x <= 16 && !isWall(player.maze, np.x, np.y)) {
+            g.pos = np;
           }
         }
         continue; // stay inside until timer
       } else {
         // exit house: move to door
         g.inHouse = false;
+        g.eaten = false;
+        g.houseTicks = 0;
         g.pos = { x: GHOST_HOUSE.x, y: 11 }; // just above door
         g.dir = 'left';
         g.mode = player.frightTicks > 0 ? 'frightened' : player.globalMode;
@@ -351,13 +350,14 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
       // head to house
       const target = { ...GHOST_HOUSE };
       const canUseDoor = true;
-      // if at door and entering, become inHouse?
-      if (g.pos.x === 14 && g.pos.y === 12) { // at door
-        // go down into house
+      const isAtDoor = isDoor(player.maze, g.pos.x, g.pos.y);
+      const isInsideHouse = g.pos.x >= 11 && g.pos.x <= 16 && g.pos.y >= 13 && g.pos.y <= 15;
+      // if at door or inside house, enter house and revive
+      if (isAtDoor || isInsideHouse || (g.pos.x === GHOST_HOUSE.x && g.pos.y === GHOST_HOUSE.y)) {
         g.pos = { x: 14, y: 14 };
         g.eaten = false;
         g.mode = player.frightTicks > 0 ? 'frightened' : player.globalMode;
-        g.frightTicks = player.frightTicks;
+        g.frightTicks = player.frightTicks > 0 ? player.frightTicks : 0;
         g.inHouse = true;
         g.houseTicks = ghostReviveTicks(player.level);
         continue;
@@ -366,6 +366,14 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
       g.dir = nd;
       const np = nextPos(g.pos.x, g.pos.y, nd);
       g.pos = np;
+      if (isDoor(player.maze, g.pos.x, g.pos.y) || (g.pos.x >= 11 && g.pos.x <= 16 && g.pos.y >= 13 && g.pos.y <= 15)) {
+        g.pos = { x: 14, y: 14 };
+        g.eaten = false;
+        g.mode = player.frightTicks > 0 ? 'frightened' : player.globalMode;
+        g.frightTicks = player.frightTicks > 0 ? player.frightTicks : 0;
+        g.inHouse = true;
+        g.houseTicks = ghostReviveTicks(player.level);
+      }
     } else if (g.mode === 'frightened') {
       // random valid (not reverse preferred but allow)
       const avail = DIRS.filter(d => canMoveGhost(player.maze, g.pos.x, g.pos.y, d, { canUseDoor: false }));

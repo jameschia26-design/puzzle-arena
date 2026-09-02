@@ -673,4 +673,81 @@ describe('pacman ghost revival', () => {
     expect(p.score).toBe(scoreBefore2 + ghostScore(1));
     expect(p.score).toBe(initialScore + ghostScore(0) + ghostScore(1)); // 200 + 400 = 600
   });
+
+  it('(d) eaten ghost at left door tile (13, 12) enters house and revives with houseTicks', () => {
+    const s = pacman.setup(['p1'], 42, { startLevel: 1 });
+    const p = s.players[0]!;
+    p.pacPos = { x: 1, y: 1 };
+    const g = p.ghosts[0]!;
+    g.pos = { x: 13, y: 12 }; // at left door tile
+    g.eaten = true;
+    g.mode = 'eaten';
+    g.inHouse = false;
+    g.houseTicks = 0;
+
+    const r = pacman.reduce(s, 'p1', { type: 'tick' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const gAfter = r.state.players[0]!.ghosts[0]!;
+      expect(gAfter.pos).toEqual({ x: 14, y: 14 });
+      expect(gAfter.eaten).toBe(false);
+      expect(gAfter.inHouse).toBe(true);
+      expect(gAfter.houseTicks).toBe(12);
+      expect(gAfter.mode).toBe('scatter');
+    }
+  });
+
+  it('(e) eaten ghost navigates from multiple distant maze coordinates back to house and successfully exits into play', () => {
+    const testStarts = [
+      { x: 1, y: 1 },    // top-left
+      { x: 26, y: 1 },   // top-right
+      { x: 1, y: 29 },   // bottom-left
+      { x: 26, y: 29 },  // bottom-right
+      { x: 14, y: 17 },  // below house
+      { x: 14, y: 23 },  // pac spawn area
+    ];
+
+    for (const start of testStarts) {
+      let s = pacman.setup(['p1'], 123, { startLevel: 1 });
+      const p = s.players[0]!;
+      // Keep pac safe at corner
+      p.pacPos = { x: 9, y: 11 };
+      p.lives = 99;
+      // Disable other ghosts from interfering
+      for (let gi = 1; gi < p.ghosts.length; gi++) {
+        p.ghosts[gi]!.inHouse = true;
+        p.ghosts[gi]!.houseTicks = 9999;
+      }
+
+      const g = p.ghosts[0]!;
+      g.pos = { ...start };
+      g.eaten = true;
+      g.mode = 'eaten';
+      g.inHouse = false;
+      g.houseTicks = 0;
+
+      // Tick until ghost enters house or up to 200 ticks
+      let reachedHouse = false;
+      let exitedHouse = false;
+      for (let t = 0; t < 200; t++) {
+        const curP = s.players[0]!;
+        curP.pacPos = { x: 9, y: 11 };
+        curP.lives = 99;
+        const r = pacman.reduce(s, 'p1', { type: 'tick' });
+        expect(r.ok).toBe(true);
+        if (!r.ok) break;
+        s = r.state;
+        const curGhost = s.players[0]!.ghosts[0]!;
+        if (curGhost.inHouse) reachedHouse = true;
+        if (reachedHouse && !curGhost.inHouse && !curGhost.eaten) {
+          exitedHouse = true;
+          expect(curGhost.pos).toEqual({ x: 14, y: 11 });
+          expect(curGhost.mode).toBe(s.players[0]!.globalMode);
+          break;
+        }
+      }
+      expect(reachedHouse, `Ghost starting at (${start.x}, ${start.y}) must reach house`).toBe(true);
+      expect(exitedHouse, `Ghost starting at (${start.x}, ${start.y}) must exit house after revival`).toBe(true);
+    }
+  });
 });

@@ -66,7 +66,7 @@ export default function AdminSignup(): React.ReactElement {
           type="button"
           onClick={signInWithGoogle}
           disabled={busy}
-          className="w-full py-2.5 px-4 mb-4 flex items-center justify-center gap-3 border-2 border-pa-border bg-pa-surface hover:border-pa-cyan hover:bg-pa-surface-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-2.5 px-4 mb-1.5 flex items-center justify-center gap-3 border-2 border-pa-border bg-pa-surface hover:border-pa-cyan hover:bg-pa-surface-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
             <path
@@ -88,6 +88,9 @@ export default function AdminSignup(): React.ReactElement {
           </svg>
           <span className="font-display text-[11px]">Continue with Google</span>
         </button>
+        <p className="text-[11px] text-pa-ink-dim text-center italic mb-3">
+          Google SSO is not yet available
+        </p>
 
         <div className="flex items-center gap-3 my-4">
           <div className="flex-1 h-px bg-pa-border" />
