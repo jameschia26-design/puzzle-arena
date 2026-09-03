@@ -553,6 +553,48 @@ describe('trading', () => {
     expect(s.players[1]?.cash).toBe(1500);
   });
 
+  it('fails cleanly when the proposer no longer owns an offered property', () => {
+    let s = fresh();
+    grant(s, 'p1', [1]);
+    grant(s, 'p2', [3]);
+    s = act(s, 'p1', {
+      type: 'proposeTrade',
+      toPlayerId: 'p2',
+      give: { cash: 0, properties: [1] },
+      receive: { cash: 0, properties: [3] },
+    });
+    const tradeId = s.trades[0]?.id as string;
+    // Property 1 was sold/traded away to p3 after the offer was proposed.
+    grant(s, 'p3', [1]);
+    expect(
+      reject(s, 'p2', { type: 'respondTrade', tradeId, accept: true }),
+    ).toMatch(/proposer no longer owns/i);
+    // Nothing changed hands.
+    expect(s.properties[1]?.owner).toBe('p3');
+    expect(s.properties[3]?.owner).toBe('p2');
+  });
+
+  it('fails cleanly when the accepting player no longer owns a requested property', () => {
+    let s = fresh();
+    grant(s, 'p1', [1]);
+    grant(s, 'p2', [3]);
+    s = act(s, 'p1', {
+      type: 'proposeTrade',
+      toPlayerId: 'p2',
+      give: { cash: 0, properties: [1] },
+      receive: { cash: 0, properties: [3] },
+    });
+    const tradeId = s.trades[0]?.id as string;
+    // Property 3 was sold/traded away to p3 after the offer was proposed.
+    grant(s, 'p3', [3]);
+    expect(
+      reject(s, 'p2', { type: 'respondTrade', tradeId, accept: true }),
+    ).toMatch(/no longer own/i);
+    // Nothing changed hands.
+    expect(s.properties[1]?.owner).toBe('p1');
+    expect(s.properties[3]?.owner).toBe('p3');
+  });
+
   it('refuses to trade property the proposer does not own', () => {
     const s = fresh();
     expect(

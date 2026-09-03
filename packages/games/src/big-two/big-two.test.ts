@@ -52,7 +52,8 @@ describe('big two combo classification', () => {
   it('ranks the highest legal straight as 10-J-Q-K-A', () => {
     const straight = classifyCombo([c(7, 0), c(8, 1), c(9, 2), c(10, 3), c(11, 0)]);
     expect(straight?.category).toBe('straight');
-    expect(straight?.value).toBe(11);
+    // value now folds in the top card's suit: rank 11 (Ace) * 4 + suit 0 (diamond).
+    expect(straight?.value).toBe(11 * 4 + 0);
   });
 });
 
@@ -73,6 +74,13 @@ describe('big two combo comparison', () => {
     const flush = classifyCombo([c(0, 0), c(2, 0), c(4, 0), c(6, 0), c(9, 0)])!;
     expect(beats(fullHouse, flush)).toBe(true);
     expect(beats(flush, fullHouse)).toBe(false);
+  });
+
+  it('breaks a same-rank straight tie by the suit of the highest card', () => {
+    const lowSuitTop = classifyCombo([c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)])!; // top card 7 of diamonds
+    const highSuitTop = classifyCombo([c(0, 1), c(1, 2), c(2, 3), c(3, 0), c(4, 3)])!; // top card 7 of spades
+    expect(beats(highSuitTop, lowSuitTop)).toBe(true);
+    expect(beats(lowSuitTop, highSuitTop)).toBe(false);
   });
 
   it('lets a bomb beat any weaker combo of any size', () => {

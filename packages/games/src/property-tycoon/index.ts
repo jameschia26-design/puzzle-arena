@@ -765,7 +765,12 @@ function reduce(
       if (trade.receive.cash > 0 && player.cash < trade.receive.cash) {
         return fail('You cannot cover that cash');
       }
-
+      for (const index of trade.give.properties) {
+        if (s.properties[index]?.owner !== trade.from) return fail('The proposer no longer owns all offered properties');
+      }
+      for (const index of trade.receive.properties) {
+        if (s.properties[index]?.owner !== playerId) return fail('You no longer own all requested properties');
+      }
       proposer.cash -= trade.give.cash;
       player.cash += trade.give.cash;
       player.cash -= trade.receive.cash;

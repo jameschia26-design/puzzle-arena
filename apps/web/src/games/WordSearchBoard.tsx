@@ -64,6 +64,13 @@ export function WordSearchBoard({
       setHover(null);
       return;
     }
+    if (anchor.x === hover.x && anchor.y === hover.y) {
+      // A press-and-release with no drag in between: leave the anchor armed
+      // instead of submitting a length-1 non-word. This is what makes the
+      // "tap start, then tap end" accessible mode work — the next tap picks
+      // the end cell (see onPointerDown below) instead of starting over.
+      return;
+    }
     const submittedAnchor = anchor;
     const submittedHover = hover;
     const cells = computeLine(submittedAnchor, submittedHover, size);
@@ -103,6 +110,19 @@ export function WordSearchBoard({
           gridTemplateColumns: `repeat(${size}, clamp(16px, calc(min(92vw, 620px) / ${size}), 34px))`,
         }}
         onContextMenu={(e) => e.preventDefault()}
+        onPointerMove={(e) => {
+          // Fallback for touch browsers that keep routing pointermove to the
+          // element under the finger's initial contact point instead of
+          // firing pointerenter on the cells crossed while dragging.
+          if (!anchor) return;
+          const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+          const cellEl = el?.closest('[data-cell-x]') as HTMLElement | null;
+          if (!cellEl) return;
+          const cx = Number(cellEl.dataset.cellX);
+          const cy = Number(cellEl.dataset.cellY);
+          if (Number.isNaN(cx) || Number.isNaN(cy)) return;
+          setHover((prev) => (prev && prev.x === cx && prev.y === cy ? prev : { x: cx, y: cy }));
+        }}
       >
         {grid.map((letter, index) => {
           const x = index % size;
@@ -114,6 +134,8 @@ export function WordSearchBoard({
               key={index}
               type="button"
               aria-label={`${letter} at row ${y + 1} column ${x + 1}`}
+              data-cell-x={x}
+              data-cell-y={y}
               className={cn(
                 'aspect-square flex items-center justify-center border border-pa-border/50 cursor-pointer no-select',
                 'text-[clamp(10px,2.4vw,16px)] font-semibold tabular',
@@ -130,8 +152,24 @@ export function WordSearchBoard({
                   e.currentTarget.releasePointerCapture(e.pointerId);
                 }
                 sfx.blip();
+                if (anchor && anchor.x === x && anchor.y === y) {
+                  // Tapping an already-armed anchor again cancels it.
+                  setAnchor(null);
+                  setHover(null);
+                  return;
+                }
+                if (anchor) {
+                  // An anchor is already armed from a prior tap (click-to-select
+                  // mode): this tap — or the start of a drag — chooses the end
+                  // cell. `finish()` submits it on release since anchor !== hover.
+                  setHover({ x, y });
+                  return;
+                }
                 setAnchor({ x, y });
                 setHover({ x, y });
+              }}
+              onPointerEnter={() => {
+                if (anchor) setHover({ x, y });
               }}
             >
               {letter}

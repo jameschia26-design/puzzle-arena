@@ -353,6 +353,31 @@ describe('end-of-game scoring', () => {
     // p1 earned 10 (starting) + 10 (CAT through centre DW) + 5 (bonus) = 25.
     expect(p1Score).toBe(10 + 10 + 5);
   });
+
+  it('awards the win to the higher scorer even when a different player empties their rack', () => {
+    let s = fresh();
+    // Drain the bag so the next completed play, with an empty rack, ends the game.
+    s.bag = [];
+    s = setRack(s, 'p1', ['C', 'A', 'T', '', '', '', ''].filter(Boolean));
+    s = setRack(s, 'p2', ['D', 'O', 'G']);
+    s.players[0]!.score = 10;
+    s.players[1]!.score = 100;
+    s = place(s, 'p1', [
+      { row: CENTER_ROW, col: 6, letter: 'C' },
+      { row: CENTER_ROW, col: 7, letter: 'A' },
+      { row: CENTER_ROW, col: 8, letter: 'T' },
+    ]);
+    // p1 emptied their rack and gets the end-of-game bonus, but p2's huge
+    // lead survives the small D+O+G deduction, so p2 is the true winner.
+    expect(s.turnPhase).toBe('game_over');
+    expect(s.winReason).toBe('emptied-rack');
+    const p1Score = s.players.find((p) => p.id === 'p1')?.score;
+    const p2Score = s.players.find((p) => p.id === 'p2')?.score;
+    expect(p1Score).toBe(10 + 10 + 5);
+    expect(p2Score).toBe(100 - 5);
+    expect(p2Score).toBeGreaterThan(p1Score!);
+    expect(s.winner).toBe('p2');
+  });
 });
 
 describe('bot policy', () => {

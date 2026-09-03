@@ -394,14 +394,7 @@ function tickPlayer(player: PacManPlayerState, rng: ReturnType<typeof mulberry32
       } else {
         // chase per ghost
         const blinkyPos = player.ghosts[0]!.pos;
-        if (g.id === 3) {
-          // Clyde conditional
-          const d = Math.hypot(g.pos.x - player.pacPos.x, g.pos.y - player.pacPos.y);
-          if (d > 8) target = { ...player.pacPos };
-          else target = g.scatterTarget;
-        } else {
-          target = ghostTarget(g.id, player.pacPos, player.pacDir, blinkyPos, 'chase', g.scatterTarget);
-        }
+        target = ghostTarget(g.id, g.pos, player.pacPos, player.pacDir, blinkyPos, 'chase', g.scatterTarget);
       }
       const nd = chooseGhostDir(player.maze, g.pos, g.dir, target, false);
       g.dir = nd;

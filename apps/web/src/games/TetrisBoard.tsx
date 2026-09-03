@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { TetrisView, TetrominoKind } from '@puzzle-arena/games';
+import type { TetrisView, TetrisPublicPlayer, TetrominoKind } from '@puzzle-arena/games';
 import { tetrisRules } from '@puzzle-arena/games';
 import { useRoom } from '../net/socket.js';
 import { sfx, bgm } from '../ui/sound.js';
@@ -23,6 +23,18 @@ const GHOST_ALPHA: Record<TetrominoKind, string> = {
   T: 'rgba(139,92,246,0.22)',
   Z: 'rgba(255,63,142,0.22)',
 };
+
+const TETROMINO_BASE: Record<string, [number, number][]> = {
+  I: [[-1,0],[0,0],[1,0],[2,0]], J: [[-1,0],[-1,1],[0,0],[1,0]], L: [[-1,0],[0,0],[1,0],[1,1]],
+  O: [[0,0],[1,0],[0,1],[1,1]], S: [[-1,1],[0,1],[0,0],[1,0]], T: [[-1,0],[0,0],[1,0],[0,1]], Z: [[-1,0],[0,0],[0,1],[1,1]],
+};
+/** Absolute occupied cells for a piece at its current origin/rotation. Shared
+ *  by the live board (active + ghost) and the spectator mini-boards. */
+function tetrominoCells(t: { kind: string; x: number; y: number; rot: number }): [number, number][] {
+  let cs = (TETROMINO_BASE[t.kind] ?? []).map((c) => [...c] as [number, number]);
+  for (let i = 0; i < (((t.rot % 4) + 4) % 4); i++) cs = cs.map(([x, y]) => [y, -x] as [number, number]);
+  return cs.map(([dx, dy]) => [t.x + dx, t.y + dy] as [number, number]);
+}
 const FLIP_STORAGE_KEY = 'pa:tetris-flip';
 
 function MiniGrid({ cells, color }: { cells: boolean[][]; color: string }) {
@@ -265,6 +277,16 @@ export function TetrisBoard({
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('[role="dialog"]'))
+      ) {
+        return;
+      }
       const curYou = youRef.current;
       if (!curYou || curYou.gameOver || phaseRef.current === 'game_over') return;
 
@@ -372,7 +394,24 @@ export function TetrisBoard({
     };
   }, [you?.level, you?.gameOver, you?.active, grounded, view.phase, paused, onAction]);
   if (!you) {
-    return <div className="text-pa-ink-dim text-sm">Loading Tetris…</div>;
+    const activePlayers = view.players.filter((p) => !p.gameOver);
+    const spectated = activePlayers.length > 0 ? activePlayers : view.players;
+    return (
+      <div className="w-full h-full overflow-auto p-3 sm:p-4">
+        <div className="text-center font-display text-[10px] tracking-widest text-pa-ink-dim mb-3">
+          SPECTATING
+        </div>
+        {spectated.length === 0 ? (
+          <div className="text-pa-ink-dim text-sm text-center">Waiting for players…</div>
+        ) : (
+          <div className="flex flex-wrap gap-4 justify-center items-start">
+            {spectated.map((p) => (
+              <TetrisSpectatorBoard key={p.id} player={p} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   const dead = you.gameOver || view.phase === 'game_over';
@@ -439,23 +478,8 @@ export function TetrisBoard({
   const activeCells = new Set<string>();
   const ghostCells = new Set<string>();
   if (active && ghostY !== null) {
-    const { tetrominoCells } = (() => {
-      // inline: compute cells (duplicate logic from rules but keep view simple)
-      const BASE: Record<string, [number, number][]> = {
-        I: [[-1,0],[0,0],[1,0],[2,0]], J: [[-1,0],[-1,1],[0,0],[1,0]], L: [[-1,0],[0,0],[1,0],[1,1]],
-        O: [[0,0],[1,0],[0,1],[1,1]], S: [[-1,1],[0,1],[0,0],[1,0]], T: [[-1,0],[0,0],[1,0],[0,1]], Z: [[-1,0],[0,0],[0,1],[1,1]],
-      };
-      const rot = (off: [number, number][], r: number) => {
-        let cs = off.map(c=>[...c] as [number, number]);
-        for(let i=0;i<(((r%4)+4)%4);i++) cs = cs.map(([x,y])=>[y,-x] as [number,number]);
-        return cs;
-      };
-      return { tetrominoCells: (t: {kind:string;x:number;y:number;rot:number}) => rot((BASE[t.kind]??[]), t.rot).map(([dx,dy])=>[t.x+dx,t.y+dy] as [number,number]) };
-    })();
-    if (active) {
-      for (const [cx, cy] of tetrominoCells(active as never)) if (cy>=0) activeCells.add(`${cx},${cy}`);
-      for (const [cx, cy] of tetrominoCells({ ...active, y: ghostY } as never)) if (cy>=0 && !activeCells.has(`${cx},${cy}`)) ghostCells.add(`${cx},${cy}`);
-    }
+    for (const [cx, cy] of tetrominoCells(active as never)) if (cy >= 0) activeCells.add(`${cx},${cy}`);
+    for (const [cx, cy] of tetrominoCells({ ...active, y: ghostY } as never)) if (cy >= 0 && !activeCells.has(`${cx},${cy}`)) ghostCells.add(`${cx},${cy}`);
   }
 
   const guard = (fn: () => void) => () => {
@@ -682,6 +706,57 @@ export function TetrisBoard({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Read-only board for a spectator (no `you`): a small rendering of one
+ * player's live board — same active/ghost-piece cell math as the main
+ * board, scaled down, with no controls attached.
+ */
+function TetrisSpectatorBoard({ player }: { player: TetrisPublicPlayer }): React.ReactElement {
+  const cell = 10;
+  const activeCells = new Set<string>();
+  const ghostCells = new Set<string>();
+  if (player.active && player.ghostY !== null) {
+    for (const [cx, cy] of tetrominoCells(player.active)) if (cy >= 0) activeCells.add(`${cx},${cy}`);
+    for (const [cx, cy] of tetrominoCells({ ...player.active, y: player.ghostY }))
+      if (cy >= 0 && !activeCells.has(`${cx},${cy}`)) ghostCells.add(`${cx},${cy}`);
+  }
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="text-xs font-display text-pa-ink-dim tabular">
+        P{player.seat + 1} · {player.score}
+      </div>
+      <div className="relative bg-pa-bg border-2 border-pa-border p-0.5 shadow-[2px_2px_0_var(--color-pa-shadow)]">
+        <div className="grid gap-px" style={{ gridTemplateColumns: `repeat(10, ${cell}px)` }}>
+          {Array.from({ length: 200 }).map((_, i) => {
+            const x = i % 10;
+            const y = Math.floor(i / 10);
+            const key = `${x},${y}`;
+            const filled = player.board[y * 10 + x];
+            const isActive = activeCells.has(key);
+            const isGhost = ghostCells.has(key);
+            const color = isActive ? COLORS[player.active!.kind] : filled ? COLORS[filled as TetrominoKind] : undefined;
+            return (
+              <div
+                key={i}
+                style={{
+                  width: cell,
+                  height: cell,
+                  background: isActive ? color : isGhost ? GHOST_ALPHA[player.active!.kind] : filled ? color : '#161a2e',
+                }}
+              />
+            );
+          })}
+        </div>
+        {player.gameOver && (
+          <div className="absolute inset-0 bg-pa-bg/80 flex items-center justify-center">
+            <span className="font-display text-pa-danger text-[10px]">OUT</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

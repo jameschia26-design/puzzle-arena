@@ -39,6 +39,7 @@ function visualPercent(pos: CheckersPos, flipped: boolean): { left: number; top:
 export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: CheckersBoardProps) {
   const reduced = useReducedMotion();
   const isMyTurn = view.current === youId;
+  const isSpectating = youId === null;
   const mySide = view.you?.side ?? 0;
   const legalMoves = view.you?.legalMoves ?? [];
   const isGameOver = view.phase === 'game_over';
@@ -204,6 +205,10 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
                 {winnerPlayer ? `${winnerPlayer.displayName} WINS!` : 'GAME OVER'}
               </span>
             </div>
+          ) : isSpectating ? (
+            <span className="font-display text-[12px] text-pa-ink-dim">
+              SPECTATING — {currentActor?.displayName ?? 'PLAYER'} TO MOVE
+            </span>
           ) : isMyTurn ? (
             <span className="font-display text-[12px] text-pa-cyan">
               YOUR TURN {path.length > 0 ? '— CONTINUE THE CAPTURE' : '— SELECT A PIECE'}
@@ -219,7 +224,7 @@ export function CheckersBoard({ view, players, youId, turnEndsAt, onAction }: Ch
 
       <div className="flex items-center justify-between px-1">
         <PlayerBadge player={oppPlayer} label={`${SIDE_LABEL[1 - mySide]} · ${view.players[1 - mySide]?.piecesRemaining ?? 0} left`} />
-        <PlayerBadge player={mePlayer} label={`${SIDE_LABEL[mySide]} (you) · ${view.players[mySide]?.piecesRemaining ?? 0} left`} align="right" />
+        <PlayerBadge player={mePlayer} label={`${SIDE_LABEL[mySide]}${isSpectating ? '' : ' (you)'} · ${view.players[mySide]?.piecesRemaining ?? 0} left`} align="right" />
       </div>
 
       <div className="relative mx-auto w-full max-w-[520px] aspect-square">

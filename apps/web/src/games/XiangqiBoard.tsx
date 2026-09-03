@@ -91,6 +91,7 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
   const clockRunningSince = useRoom((s) => s.clockRunningSince);
 
   const isMyTurn = view.current === youId;
+  const isSpectating = youId === null;
   const mySide = view.you?.side ?? 0;
   const legalMoves = view.you?.legalMoves ?? [];
   const isGameOver = view.phase === 'game_over';
@@ -182,15 +183,20 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
   const winnerPlayer = view.winner ? resolvePlayer(players, view.winner, 'Winner') : null;
   const isDraw = isGameOver && view.winner === null;
 
+  const meSideLabel = mySide === 0 ? 'Red' : 'Black';
+  const oppSideLabel = mySide === 0 ? 'Black' : 'Red';
+
   const bannerText = isGameOver
     ? isDraw
       ? (view.drawReason && DRAW_REASON_TEXT[view.drawReason]) || 'Draw'
       : `${winnerPlayer?.displayName ?? 'Winner'} wins${view.winReason ? ` — ${WIN_REASON_TEXT[view.winReason] ?? view.winReason}` : ''}`
-    : isMyTurn
-      ? view.you?.inCheck
-        ? 'YOU ARE IN CHECK — YOUR TURN'
-        : 'YOUR TURN'
-      : `WAITING FOR ${currentActor.displayName}…`;
+    : isSpectating
+      ? `SPECTATING — ${currentActor.displayName} TO MOVE`
+      : isMyTurn
+        ? view.you?.inCheck
+          ? 'YOU ARE IN CHECK — YOUR TURN'
+          : 'YOUR TURN'
+        : `WAITING FOR ${currentActor.displayName}…`;
 
   const points = React.useMemo(() => {
     const list: { square: number; row: number; col: number }[] = [];
@@ -216,7 +222,7 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
         </PixelCard>
 
         <div className="flex items-center justify-between px-1">
-          <PlayerRow player={oppPlayer} label="Opponent">
+          <PlayerRow player={oppPlayer} label={isSpectating ? oppSideLabel : 'Opponent'}>
             <ClockChip
               remainingMs={oppClock?.remainingMs}
               isRunning={clockActor === oppId}
@@ -224,7 +230,7 @@ export default function XiangqiBoard({ view, players, youId, legalActions, onAct
               label={mySide === 0 ? 'Black' : 'Red'}
             />
           </PlayerRow>
-          <PlayerRow player={mePlayer} label="You" align="right">
+          <PlayerRow player={mePlayer} label={isSpectating ? meSideLabel : 'You'} align="right">
             <ClockChip
               remainingMs={meClock?.remainingMs}
               isRunning={clockActor === meId}

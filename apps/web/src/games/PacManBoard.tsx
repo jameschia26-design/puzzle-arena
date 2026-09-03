@@ -1,5 +1,5 @@
 import * as React from 'react';
-import type { PacManView, GhostState } from '@puzzle-arena/games';
+import type { PacManView, PacManPublicPlayer, GhostState } from '@puzzle-arena/games';
 import { useRoom } from '../net/socket.js';
 import { sfx, bgm } from '../ui/sound.js';
 
@@ -205,6 +205,118 @@ function GhostIcon({ ghost }: { ghost: GhostState }) {
   );
 }
 
+/**
+ * Thin-outline maze wall path: a segment on every wall-tile edge that faces
+ * a corridor (or the outside). Door tiles count as wall so the dashed door
+ * line is the only line there. Shared by the live board and the read-only
+ * spectator maze.
+ */
+function buildWallPath(maze: number[], w: number, h: number): string {
+  const isWallAt = (x: number, y: number) =>
+    x >= 0 && x < w && y >= 0 && y < h && (maze[y * w + x] ?? 9) === 9;
+  const doorAt = (x: number, y: number) =>
+    x >= 0 && x < w && y >= 0 && y < h && maze[y * w + x] === 3;
+  let wallPath = '';
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!isWallAt(x, y)) continue;
+      if (!isWallAt(x, y - 1) && !doorAt(x, y - 1)) wallPath += `M${x * CELL} ${y * CELL + WALL_EDGE_INSET}h${CELL}`;
+      if (!isWallAt(x, y + 1) && !doorAt(x, y + 1)) wallPath += `M${x * CELL} ${(y + 1) * CELL - WALL_EDGE_INSET}h${CELL}`;
+      if (!isWallAt(x - 1, y) && !doorAt(x - 1, y)) wallPath += `M${x * CELL + WALL_EDGE_INSET} ${y * CELL}v${CELL}`;
+      if (!isWallAt(x + 1, y) && !doorAt(x + 1, y)) wallPath += `M${(x + 1) * CELL - WALL_EDGE_INSET} ${y * CELL}v${CELL}`;
+    }
+  }
+  return wallPath;
+}
+
+/**
+ * Read-only maze for a spectator (`youId` has no seat): renders one active
+ * player's board — walls, dots, fruit, and Pac-Man/ghosts at their current
+ * tile — with no controls, keyboard, or tick loop attached. Positions are
+ * static (no rAF glide) since the interpolation refs in `PacManBoard`
+ * belong to the live player, not to whichever player is being watched.
+ */
+function PacManSpectatorView({
+  target,
+  mazeW,
+  mazeH,
+  playerCount,
+  phase,
+}: {
+  target: PacManPublicPlayer;
+  mazeW: number;
+  mazeH: number;
+  playerCount: number;
+  phase: PacManView['phase'];
+}): React.ReactElement {
+  const wallPath = buildWallPath(target.maze, mazeW, mazeH);
+  return (
+    <div className="w-full h-full max-h-full overflow-auto flex flex-col items-center gap-2 p-2">
+      <div className="text-center font-display text-[10px] tracking-widest text-pa-ink-dim">
+        SPECTATING · P{target.seat + 1} · {target.score.toLocaleString()} PTS
+        {playerCount > 1 ? ` · Lv ${target.level}` : ''}
+      </div>
+      <div className="relative" style={{ width: mazeW * CELL, height: mazeH * CELL }}>
+        <div
+          className="grid gap-0"
+          style={{
+            gridTemplateColumns: `repeat(${mazeW}, ${CELL}px)`,
+            gridTemplateRows: `repeat(${mazeH}, ${CELL}px)`,
+            width: mazeW * CELL,
+            height: mazeH * CELL,
+          }}
+        >
+          {Array.from({ length: mazeW * mazeH }).map((_, i) => {
+            const x = i % mazeW;
+            const y = Math.floor(i / mazeW);
+            const fruit = target.fruit && target.fruit.pos.x === x && target.fruit.pos.y === y ? target.fruit : null;
+            return (
+              <div key={i} style={{ width: CELL, height: CELL }}>
+                <MazeCell tile={target.maze[i] ?? 9} fruit={fruit} />
+              </div>
+            );
+          })}
+        </div>
+        <div className="absolute inset-0 pointer-events-none">
+          {target.ghosts.map((g) => (
+            <div
+              key={g.id}
+              className="absolute top-0 left-0 flex items-center justify-center"
+              style={{ width: CELL, height: CELL, transform: `translate(${g.pos.x * CELL}px, ${g.pos.y * CELL}px)` }}
+            >
+              <GhostIcon ghost={g} />
+            </div>
+          ))}
+          {target.dyingTicks === 0 && (
+            <div
+              className="absolute top-0 left-0 flex items-center justify-center"
+              style={{ width: CELL, height: CELL, transform: `translate(${target.pacPos.x * CELL}px, ${target.pacPos.y * CELL}px)` }}
+            >
+              <PacIcon dir={target.pacDir} moving={false} />
+            </div>
+          )}
+        </div>
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width={mazeW * CELL}
+          height={mazeH * CELL}
+          viewBox={`0 0 ${mazeW * CELL} ${mazeH * CELL}`}
+          aria-hidden="true"
+        >
+          <path d={wallPath} fill="none" stroke="#3d5bff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+          <path d={wallPath} fill="none" stroke="#9db4ff" strokeWidth={0.7} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
+        </svg>
+        {(target.gameOver || phase === 'game_over') && (
+          <div className="absolute inset-0 bg-pa-bg/85 flex flex-col items-center justify-center gap-2">
+            <div className="font-display text-pa-danger text-sm">GAME OVER</div>
+            <div className="font-display text-pa-amber">{target.score} PTS</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PacManBoard({
   view,
   youId,
@@ -287,6 +399,16 @@ export function PacManBoard({
   // Keyboard
   React.useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('[role="dialog"]'))
+      ) {
+        return;
+      }
       if (!you || you.gameOver || view.phase === 'game_over') return;
       let dir: string | null = null;
       switch (e.key) {
@@ -481,29 +603,23 @@ export function PacManBoard({
   }, []);
 
   if (!you) {
-    return <div className="text-pa-ink-dim text-sm">Loading Pac-Man…</div>;
+    const activePlayers = view.players.filter((p) => !p.gameOver);
+    const target = activePlayers[0] ?? view.players[0] ?? null;
+    if (!target) {
+      return <div className="text-pa-ink-dim text-sm">Waiting for players…</div>;
+    }
+    return (
+      <PacManSpectatorView
+        target={target}
+        mazeW={W}
+        mazeH={H}
+        playerCount={view.players.length}
+        phase={view.phase}
+      />
+    );
   }
 
-  // Line-wall path: for each wall tile draw a thin segment on every edge that
-  // faces a corridor (or the outside) — authentic thin-outline maze. Door
-  // tiles count as wall so the dashed door line is the only line there.
-  const isWallAt = (x: number, y: number) =>
-    x >= 0 && x < W && y >= 0 && y < H && (you.maze[y * W + x] ?? 9) === 9;
-  const doorAt = (x: number, y: number) =>
-    x >= 0 && x < W && y >= 0 && y < H && you.maze[y * W + x] === 3;
-  // Keep the grid's collision edges unchanged, but put each visual wall line
-  // inside its wall tile. A centered 22px sprite otherwise overlaps the
-  // boundary stroke of an 18px-wide corridor.
-  let wallPath = '';
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      if (!isWallAt(x, y)) continue;
-      if (!isWallAt(x, y - 1) && !doorAt(x, y - 1)) wallPath += `M${x * CELL} ${y * CELL + WALL_EDGE_INSET}h${CELL}`;
-      if (!isWallAt(x, y + 1) && !doorAt(x, y + 1)) wallPath += `M${x * CELL} ${(y + 1) * CELL - WALL_EDGE_INSET}h${CELL}`;
-      if (!isWallAt(x - 1, y) && !doorAt(x - 1, y)) wallPath += `M${x * CELL + WALL_EDGE_INSET} ${y * CELL}v${CELL}`;
-      if (!isWallAt(x + 1, y) && !doorAt(x + 1, y)) wallPath += `M${(x + 1) * CELL - WALL_EDGE_INSET} ${y * CELL}v${CELL}`;
-    }
-  }
+  const wallPath = buildWallPath(you.maze, W, H);
   return (
 
     <div

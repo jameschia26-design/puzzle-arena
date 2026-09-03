@@ -85,7 +85,9 @@ function maybeEndGame(s: ScrabbleState, log: LogEntry[]): boolean {
       bonus += value;
     }
     emptied.score += bonus;
-    s.winner = emptied.id;
+    const topScore = s.players.reduce((best, p) => (p.score > best.score ? p : best), s.players[0]!).score;
+    const leaders = s.players.filter((p) => p.score === topScore);
+    s.winner = leaders.length === 1 ? leaders[0]!.id : null;
     s.winReason = 'emptied-rack';
     s.turnPhase = 'game_over';
     log.push(makeLog(`${emptied.id} played their last tile — game over`, emptied.id));

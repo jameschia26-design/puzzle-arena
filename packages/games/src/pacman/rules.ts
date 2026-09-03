@@ -245,6 +245,7 @@ export function ghostScore(streak: number): number {
 // --- Ghost target calculation ---
 export function ghostTarget(
   ghostId: number,
+  ghostPos: { x: number; y: number },
   pacPos: { x: number; y: number },
   pacDir: Dir,
   blinkyPos: { x: number; y: number },
@@ -267,17 +268,9 @@ export function ghostTarget(
       const vy = ahead.y - blinkyPos.y;
       return { x: ahead.x + vx, y: ahead.y + vy };
     }
-    case 3: { // Clyde: >8 distance chase else scatter
-      const dx = pacPos.x - 0, dy = pacPos.y - 0; // not used
-      const dist = Math.hypot(pacPos.x - 0, pacPos.y - 0); // placeholder, correct below
-      void dx; void dy;
-      const d = Math.hypot(pacPos.x - (0), pacPos.y - (0)); // bug: need ghost pos
-      void d;
-      // actual distance from Clyde to Pac
-      // This is called with Clyde's own pos? For decision we need ghost pos separately.
-      // We'll compute in caller; for now return scatter if distance <=8 logic handled outside.
-      // To keep pure, we return pac pos and let caller override for Clyde.
-      return { x: pacPos.x, y: pacPos.y };
+    case 3: { // Clyde: chase when farther than 8 tiles, else retreat to scatter corner
+      const dist = Math.hypot(ghostPos.x - pacPos.x, ghostPos.y - pacPos.y);
+      return dist > 8 ? { x: pacPos.x, y: pacPos.y } : scatterTarget;
     }
     default: return { x: pacPos.x, y: pacPos.y };
   }

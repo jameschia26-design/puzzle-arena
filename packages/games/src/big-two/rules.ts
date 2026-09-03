@@ -103,7 +103,7 @@ function classifyFive(cards: BigTwoCard[]): BigTwoCombo | null {
     return { category: 'flush', value: (ranks[4] as number) * 4 + (suits[4] as number), cards: sorted };
   }
   if (isStraight) {
-    return { category: 'straight', value: ranks[4] as number, cards: sorted };
+    return { category: 'straight', value: (ranks[4] as number) * 4 + (suits[4] as number), cards: sorted };
   }
   if (countValues[0] === 3 && countValues[1] === 2) {
     const tripleRank = [...counts.entries()].find(([, c]) => c === 3)![0] as number;

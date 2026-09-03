@@ -120,6 +120,8 @@ export class LiveRoom {
   paused = false;
   private remainingEndMs: number | null = null;
   private remainingTurnMs: number | null = null;
+  /** Remaining ms on the pre-game "get ready" countdown, captured by `pause()`. */
+  private remainingStartMs: number | null = null;
 
   gameState: unknown | null = null;
   results: ResultRow[] | null = null;
@@ -255,10 +257,19 @@ export class LiveRoom {
     // player sits in front of a board with every button disabled.
     if (this.kind === 'board') this.broadcastGameState();
     // Bots only begin once play actually starts.
+    this.scheduleStartCountdown(START_COUNTDOWN_MS);
+  }
+
+  /**
+   * Arms (or re-arms, after a pause mid-countdown) the pre-game "get ready"
+   * timer. Only once it clears do turn timers/bots begin — a paused room
+   * must not let this elapse underneath the pause.
+   */
+  private scheduleStartCountdown(delay: number): void {
     if (this.startTimer) clearTimeout(this.startTimer);
     this.startTimer = setTimeout(() => {
       this.startTimer = null;
-      if (this.status !== 'running') return;
+      if (this.status !== 'running' || this.paused) return;
       if (this.kind === 'board') {
         this.armTurnTimer();
         this.armArcadeTickWatchdog();
@@ -268,7 +279,7 @@ export class LiveRoom {
       } else {
         schedulePuzzleBots(this);
       }
-    }, START_COUNTDOWN_MS);
+    }, delay);
   }
 
   engine() {
@@ -315,6 +326,13 @@ export class LiveRoom {
     if (this.endTimer) clearTimeout(this.endTimer);
     this.remainingTurnMs = this.turnEndsAt ? Math.max(0, this.turnEndsAt - Date.now()) : null;
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    // The pre-game "get ready" countdown must pause too, or a host pausing
+    // mid-countdown gets an unpaused game the instant it elapses underneath them.
+    this.remainingStartMs = this.startTimer && this.startedAt ? Math.max(0, this.startedAt - Date.now()) : null;
+    if (this.startTimer) {
+      clearTimeout(this.startTimer);
+      this.startTimer = null;
+    }
     if (this.idleTimer) {
       clearInterval(this.idleTimer);
       this.idleTimer = null;
@@ -340,7 +358,15 @@ export class LiveRoom {
       this.turnEndsAt = Date.now() + this.remainingTurnMs;
       this.armTurnTimer();
     }
-    if (this.kind === 'board') {
+    if (this.remainingStartMs !== null) {
+      // Still inside the pre-game countdown when paused: resume the
+      // countdown itself rather than immediately arming turn timers/bots,
+      // which belongs to the countdown's own callback once it elapses.
+      const remaining = this.remainingStartMs;
+      this.remainingStartMs = null;
+      this.startedAt = Date.now() + remaining;
+      this.scheduleStartCountdown(remaining);
+    } else if (this.kind === 'board') {
       this.armArcadeTickWatchdog();
       scheduleBots(this);
     } else if (this.kind === 'puzzle') {
@@ -379,6 +405,7 @@ export class LiveRoom {
     this.paused = false;
     this.remainingEndMs = null;
     this.remainingTurnMs = null;
+    this.remainingStartMs = null;
     this.results = null;
     this.gameState = null;
     this.puzzle = null;
@@ -451,8 +478,10 @@ export class LiveRoom {
     if (actor.isBot) return; // bots have their own scheduler
 
     const limit = Number(this.config['turnTimeLimitSec'] ?? 90) * 1000;
-    // A disconnected player does not get to stall the table.
-    const delay = actor.connected ? limit : 0;
+    // A disconnected player still gets a grace window to reconnect before the
+    // table auto-plays their turn, instead of an instant timeout — the
+    // reconnect grace period would otherwise be meaningless.
+    const delay = actor.connected ? limit : Math.min(limit, 15_000);
     this.turnEndsAt = Date.now() + delay;
 
     this.turnTimer = setTimeout(() => {
@@ -508,6 +537,13 @@ export class LiveRoom {
       this.clockActor = null;
       this.clockSince = null;
       return;
+    }
+    // Re-arming while this actor's bank is already draining (e.g. a re-arm
+    // triggered mid-move) must not hand them free thinking time on top of
+    // what they have already used — deduct the elapsed time first.
+    if (this.clockActor === actorId && this.clockSince !== null) {
+      const elapsed = Date.now() - this.clockSince;
+      this.clocks.set(actorId, Math.max(0, (this.clocks.get(actorId) ?? 0) - elapsed));
     }
     const bank = Math.max(0, this.clocks.get(actorId) ?? 0);
     const cap = Math.min(bank, CHESS_MOVE_CAP_MS);
@@ -1200,8 +1236,13 @@ export class LiveRoom {
     if (!player) return;
     player.connected = false;
     this.broadcastPlayers();
-    // In a board game the table should not stall on an absent player.
-    if (this.kind === 'board' && this.actorToAct() === playerId) this.armTurnTimer();
+    // A disconnected player must not stall the table, but an already-armed
+    // deadline (set while they were still connected) must keep counting down
+    // to its original `turnEndsAt` — resetting it here would insta-skip
+    // their turn and defeat the reconnect grace period entirely.
+    if (this.kind === 'board' && this.actorToAct() === playerId && this.turnEndsAt === null) {
+      this.armTurnTimer();
+    }
 
     setTimeout(() => {
       const still = this.player(playerId);

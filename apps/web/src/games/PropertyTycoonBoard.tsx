@@ -1706,6 +1706,16 @@ function CardOverlay({
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable ||
+          target.closest('[role="dialog"]'))
+      ) {
+        return;
+      }
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') onDismiss();
     };
     window.addEventListener('keydown', onKey);
