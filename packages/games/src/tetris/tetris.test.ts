@@ -367,4 +367,31 @@ describe('tetris: scoring', () => {
     expect(after.score).toBeGreaterThan(before);
     expect(after.score).toBeGreaterThanOrEqual(100);
   });
+
+  it('clears 4 lines (Tetris) at level 1 and awards 800 + hard drop points', () => {
+    const s = tetris.setup(['p1', 'p2'], 42, { startLevel: 1 });
+    const p = s.players[0]!;
+    // 1. Fill the bottom 4 rows of the board except for column 0 (e.g. x from 1 to 9).
+    for (let y = BOARD_H - 4; y < BOARD_H; y++) {
+      for (let x = 1; x < BOARD_W; x++) {
+        p.board[idx(x, y)] = 'J' as never;
+      }
+    }
+    // 2. Set player.active = vertical I piece occupying column 0
+    p.active = { kind: 'I', x: 0, y: BOARD_H - 4, rot: 1 };
+    // 3. Record beforeScore = player.score
+    const beforeScore = p.score;
+    const beforeLines = p.lines;
+    // 4. Run hardDrop
+    const r = tetris.reduce(s, 'p1', { type: 'hardDrop' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('unreachable');
+    const after = r.state.players[0]!;
+    // 5. Check if after.lines increased by 4, and after.score - beforeScore is >= 800 (specifically 800 + hard drop distance * 2)
+    expect(after.lines - beforeLines).toBe(4);
+    const dropDist = (BOARD_H - 2) - (BOARD_H - 4); // drops from y=16 to y=18 (dist 2)
+    const expectedScoreDiff = 800 + dropDist * 2;
+    expect(after.score - beforeScore).toBe(expectedScoreDiff);
+    expect(after.score - beforeScore).toBeGreaterThanOrEqual(800);
+  });
 });
