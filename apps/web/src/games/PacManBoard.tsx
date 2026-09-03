@@ -405,8 +405,17 @@ function PacMazeView({
     // Client-side dot visibility tracking:
     if (snap) {
       pendingDotsRef.current = [];
-      visibleMazeRef.current = [...player.maze];
-      setVisibleMaze([...player.maze]);
+      // This branch re-enters on every render while snapped (e.g. idle,
+      // dying, game over) because the effect has no dependency array. Only
+      // touch state when the maze actually differs, or the setState here
+      // re-triggers this same effect forever (React error #185).
+      const current = visibleMazeRef.current;
+      const same =
+        current.length === player.maze.length && current.every((v, i) => v === player.maze[i]);
+      if (!same) {
+        visibleMazeRef.current = [...player.maze];
+        setVisibleMaze([...player.maze]);
+      }
     } else {
       const curIdx = cur.y * mazeW + cur.x;
       const curTileInVisible = visibleMazeRef.current[curIdx];

@@ -925,17 +925,22 @@ export function SpaceInvadersBoard({
       heartbeatStepRef.current += 1;
       customSfx.invaderMarch?.(heartbeatStepRef.current);
     }
-  }, [you?.formationX, you?.formationY, you?.gameOver, view.phase, you]);
+    // `you` is deliberately excluded below: it's a fresh object every tick
+    // broadcast, and including it would rerun this effect on every tick
+    // instead of only when formation position actually changes.
+  }, [you?.formationX, you?.formationY, you?.gameOver, view.phase]);
 
   // UFO sound effect
   React.useEffect(() => {
     if (!you || you.gameOver || view.phase === 'game_over') return;
     const hasUfo = Boolean(you.ufo && you.ufo.alive);
-    if (hasUfo) {
+    if (hasUfo && !prevUfoRef.current) {
       customSfx.invaderUfo?.();
     }
     prevUfoRef.current = hasUfo;
-  }, [you?.ufo?.x, you?.ufo?.alive, you?.gameOver, view.phase, you]);
+    // Same reasoning as above: `you` stays out of the deps so this only
+    // reruns on an actual UFO appearance/movement, not every tick.
+  }, [you?.ufo?.x, you?.ufo?.alive, you?.gameOver, view.phase]);
 
   // Kills, waves, score gain, lives loss diff reactions
   React.useEffect(() => {
@@ -1007,7 +1012,12 @@ export function SpaceInvadersBoard({
       });
     }
     prevScoreRef.current = you.score;
-  }, [you?.aliveCount, you?.wave, you?.score, you?.lives, you]);
+    // Deliberately NOT depending on `you` itself: it's a fresh object on
+    // every tick broadcast, so including it reran this effect ~every 60ms —
+    // which fired this effect's cleanup (clearTimeout) on the very next tick
+    // after a wave clear, cancelling the timer before it could hide the
+    // "WAVE CLEARED!" overlay, leaving it flashing on screen indefinitely.
+  }, [you?.aliveCount, you?.wave, you?.score, you?.lives]);
 
   // -------------------------------------------------------------------------
   // Input Responsiveness: Fire-and-forget direct socket emit + coalescing

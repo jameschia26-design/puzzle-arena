@@ -169,15 +169,20 @@ export function scheduleBots(room: LiveRoom): void {
 }
 
 function scheduleConcurrentBots(room: LiveRoom): void {
-  const existing = timers.get(room.id);
-  if (existing) clearTimeout(existing);
-  const bots = room.players.filter((p) => p.isBot && !p.left);
-  if (bots.length === 0 || room.status !== 'running') return;
+  if (room.status !== 'running') return;
+  if (!room.players.some((p) => p.isBot && !p.left)) return;
+  // scheduleBots() runs after every accepted action, including the client's
+  // own frequent `tick` pings (e.g. every 60ms for Bomberman) — those fire far
+  // more often than a bot's 500-1700ms think delay. Clearing and re-arming the
+  // timer on each call (the old behavior) meant it was reset before it could
+  // ever elapse, so bots never acted. Once a timer is armed, let it run.
+  if (timers.has(room.id)) return;
   const rng = rngFor(room);
   const delay = thinkDelay(rng);
   const timer = setTimeout(() => {
     timers.delete(room.id);
     if (room.status !== 'running') return;
+    const bots = room.players.filter((p) => p.isBot && !p.left);
     for (const bot of bots) {
       const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView | SpaceInvadersBotView | BombermanBotView;
       const difficulty: BotDifficulty = bot.botDifficulty ?? 'normal';
