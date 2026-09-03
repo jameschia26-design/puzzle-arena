@@ -21,6 +21,13 @@ export const auth = betterAuth({
   // name; without these, sign-in from anything but baseURL is rejected.
   trustedOrigins: env.trustedOrigins,
   emailAndPassword: { enabled: true },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['google'],
+      requireLocalEmailVerified: false,
+    },
+  },
   socialProviders: {
     ...(env.googleClientId && env.googleClientSecret
       ? {

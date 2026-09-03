@@ -46,6 +46,14 @@ export async function buildServer() {
     if (req.method === 'POST' && req.url.startsWith('/api/auth/sign-up')) {
       return reply.code(404).send({ error: 'Not found' });
     }
+    if (req.method === 'POST' && req.url.startsWith('/api/auth/sign-in/social')) {
+      const body = req.body as { requestSignUp?: boolean } | undefined;
+      if (body?.requestSignUp) {
+        return reply.code(403).send({
+          error: 'Social registration must use /api/admin/sign-up/google with a valid signup code',
+        });
+      }
+    }
   });
 
   // Better Auth owns everything under /api/auth/*.

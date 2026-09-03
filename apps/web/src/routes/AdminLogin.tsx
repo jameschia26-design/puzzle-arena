@@ -1,20 +1,44 @@
 import * as React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PixelButton, PixelCard, PixelInput } from '../ui/primitives.js';
 import { api } from '../net/socket.js';
 
 export default function AdminLogin(): React.ReactElement {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [googleEnabled, setGoogleEnabled] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    const err = searchParams.get('error');
+    if (err === 'signup_disabled') {
+      setError('No host account found for this Google email. Please register first using your admin signup code.');
+    } else if (err === 'access_denied') {
+      setError('Google sign-in was canceled.');
+    } else if (err) {
+      setError(`Sign-in failed: ${err.replace(/_/g, ' ')}`);
+    }
+  }, [searchParams]);
+
+  React.useEffect(() => {
+    api<{ googleEnabled: boolean }>('/api/admin/auth-config')
+      .then((res) => {
+        if (res.status === 200 && res.body) {
+          setGoogleEnabled(res.body.googleEnabled);
+        } else {
+          setGoogleEnabled(false);
+        }
+      })
+      .catch(() => setGoogleEnabled(false));
+  }, []);
 
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    // Sign-in stays on the Better Auth handler, untouched.
     const res = await api('/api/auth/sign-in/email', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -36,12 +60,13 @@ export default function AdminLogin(): React.ReactElement {
         body: JSON.stringify({
           provider: 'google',
           callbackURL: `${window.location.origin}/admin`,
+          errorCallbackURL: `${window.location.origin}/admin/login`,
         }),
       });
       if (res.body?.url) {
         window.location.href = res.body.url;
       } else {
-        setError(res.body?.error ?? 'Google SSO is not configured on the server (GOOGLE_CLIENT_ID missing)');
+        setError(res.body?.error ?? 'Google sign-in is not configured on the server.');
         setBusy(false);
       }
     } catch (err) {
@@ -58,7 +83,7 @@ export default function AdminLogin(): React.ReactElement {
         <button
           type="button"
           onClick={signInWithGoogle}
-          disabled={busy}
+          disabled={busy || googleEnabled === false}
           className="w-full py-2.5 px-4 mb-1.5 flex items-center justify-center gap-3 border-2 border-pa-border bg-pa-surface hover:border-pa-cyan hover:bg-pa-surface-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -81,9 +106,6 @@ export default function AdminLogin(): React.ReactElement {
           </svg>
           <span className="font-display text-[11px]">Continue with Google</span>
         </button>
-        <p className="text-[11px] text-pa-ink-dim text-center italic mb-3">
-          Google SSO is not yet available
-        </p>
 
         <div className="flex items-center gap-3 my-4">
           <div className="flex-1 h-px bg-pa-border" />

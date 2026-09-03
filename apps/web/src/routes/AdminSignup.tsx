@@ -1,10 +1,11 @@
 import * as React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { PixelButton, PixelCard, PixelInput } from '../ui/primitives.js';
 import { api } from '../net/socket.js';
 
 export default function AdminSignup(): React.ReactElement {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [form, setForm] = React.useState({
     name: '',
     email: '',
@@ -13,6 +14,28 @@ export default function AdminSignup(): React.ReactElement {
   });
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [googleEnabled, setGoogleEnabled] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    const err = searchParams.get('error');
+    if (err === 'access_denied') {
+      setError('Google sign-in was canceled.');
+    } else if (err) {
+      setError(`Sign-up failed: ${err.replace(/_/g, ' ')}`);
+    }
+  }, [searchParams]);
+
+  React.useEffect(() => {
+    api<{ googleEnabled: boolean }>('/api/admin/auth-config')
+      .then((res) => {
+        if (res.status === 200 && res.body) {
+          setGoogleEnabled(res.body.googleEnabled);
+        } else {
+          setGoogleEnabled(false);
+        }
+      })
+      .catch(() => setGoogleEnabled(false));
+  }, []);
 
   const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((prev) => ({ ...prev, [key]: e.target.value }));
@@ -34,21 +57,29 @@ export default function AdminSignup(): React.ReactElement {
     navigate('/admin');
   };
 
-  const signInWithGoogle = async (): Promise<void> => {
+  const signUpWithGoogle = async (): Promise<void> => {
+    if (!form.signupCode.trim()) {
+      setError('Please enter the signup code above first to register with Google.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ url?: string; error?: string }>('/api/auth/sign-in/social', {
+      const res = await api<{ url?: string; error?: string }>('/api/admin/sign-up/google', {
         method: 'POST',
         body: JSON.stringify({
-          provider: 'google',
+          signupCode: form.signupCode.trim(),
           callbackURL: `${window.location.origin}/admin`,
+          errorCallbackURL: `${window.location.origin}/admin/signup`,
         }),
       });
       if (res.body?.url) {
         window.location.href = res.body.url;
       } else {
-        setError(res.body?.error ?? 'Google SSO is not configured on the server (GOOGLE_CLIENT_ID missing)');
+        setError(
+          res.body?.error ??
+            'Google sign-up is not configured on the server (GOOGLE_CLIENT_ID missing).',
+        );
         setBusy(false);
       }
     } catch (err) {
@@ -60,12 +91,25 @@ export default function AdminSignup(): React.ReactElement {
   return (
     <main className="min-h-screen grid place-items-center p-6 pb-20 sm:pb-6">
       <PixelCard className="w-full max-w-md">
-        <h1 className="font-display text-[18px] mb-6">Register as host</h1>
+        <h1 className="font-display text-[18px] mb-2">Register as host</h1>
+        <p className="text-[12px] text-pa-ink-dim mb-5">
+          An admin signup code is required to create a host account.
+        </p>
+
+        <div className="mb-5">
+          <PixelInput
+            label="Signup code"
+            required
+            placeholder="Enter the host signup code"
+            value={form.signupCode}
+            onChange={set('signupCode')}
+          />
+        </div>
 
         <button
           type="button"
-          onClick={signInWithGoogle}
-          disabled={busy}
+          onClick={signUpWithGoogle}
+          disabled={busy || googleEnabled === false}
           className="w-full py-2.5 px-4 mb-1.5 flex items-center justify-center gap-3 border-2 border-pa-border bg-pa-surface hover:border-pa-cyan hover:bg-pa-surface-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -88,13 +132,10 @@ export default function AdminSignup(): React.ReactElement {
           </svg>
           <span className="font-display text-[11px]">Continue with Google</span>
         </button>
-        <p className="text-[11px] text-pa-ink-dim text-center italic mb-3">
-          Google SSO is not yet available
-        </p>
 
         <div className="flex items-center gap-3 my-4">
           <div className="flex-1 h-px bg-pa-border" />
-          <span className="text-[11px] text-pa-ink-dim uppercase font-display">OR</span>
+          <span className="text-[11px] text-pa-ink-dim uppercase font-display">OR WITH PASSWORD</span>
           <div className="flex-1 h-px bg-pa-border" />
         </div>
 
@@ -117,19 +158,13 @@ export default function AdminSignup(): React.ReactElement {
             value={form.password}
             onChange={set('password')}
           />
-          <PixelInput
-            label="Signup code"
-            required
-            value={form.signupCode}
-            onChange={set('signupCode')}
-          />
           {error && (
             <p role="alert" className="text-pa-danger text-[13px]">
               {error}
             </p>
           )}
           <PixelButton type="submit" size="lg" disabled={busy}>
-            {busy ? 'Registering…' : 'Register with Code'}
+            {busy ? 'Registering…' : 'Register with Password'}
           </PixelButton>
         </form>
         <p className="mt-6 text-[13px] text-pa-ink-dim">

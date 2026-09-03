@@ -82,6 +82,52 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     }
   });
 
+  app.get('/api/admin/auth-config', async () => ({
+    googleEnabled: Boolean(env.googleClientId && env.googleClientSecret),
+  }));
+
+  app.post('/api/admin/sign-up/google', async (req, reply) => {
+    const parsed = z
+      .object({
+        signupCode: z.string(),
+        callbackURL: z.string().optional(),
+        errorCallbackURL: z.string().optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Invalid request', detail: parsed.error.issues });
+    }
+    if (!safeEqual(parsed.data.signupCode, env.adminSignupCode)) {
+      return reply.code(403).send({ error: 'Invalid signup code' });
+    }
+    if (!env.googleClientId || !env.googleClientSecret) {
+      return reply.code(400).send({
+        error: 'Google SSO is not configured on the server (GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing)',
+      });
+    }
+
+    try {
+      const response = await auth.api.signInSocial({
+        body: {
+          provider: 'google',
+          callbackURL: parsed.data.callbackURL || `${env.betterAuthUrl}/admin`,
+          errorCallbackURL: parsed.data.errorCallbackURL || `${env.betterAuthUrl}/admin/signup`,
+          requestSignUp: true,
+        },
+        headers: toHeaders(req.headers),
+        asResponse: true,
+      });
+      for (const [key, value] of response.headers.entries()) {
+        if (key.toLowerCase() === 'set-cookie') reply.header('set-cookie', value);
+      }
+      const body = await response.json().catch(() => ({}));
+      return reply.code(response.status).send(body);
+    } catch (err) {
+      logger.error({ err }, 'admin Google registration failed');
+      return reply.code(400).send({ error: 'Google registration failed', detail: String(err) });
+    }
+  });
+
   app.get('/api/admin/me', async (req, reply) => {
     const session = await auth.api.getSession({ headers: toHeaders(req.headers) });
     if (!session?.user) return reply.code(401).send({ error: 'Not signed in' });
