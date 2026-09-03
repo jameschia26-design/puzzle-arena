@@ -101,7 +101,7 @@ function getDangerCells(view: BombermanBotView, extraBomb?: { x: number; y: numb
   // Live bombs + optional extra hypothetical bomb
   const allBombs = [...view.bombs];
   if (extraBomb) {
-    allBombs.push({ id: -1, ownerId: '', x: extraBomb.x, y: extraBomb.y, fuse: 24, radius: extraBomb.radius });
+    allBombs.push({ id: -1, ownerId: '', x: extraBomb.x, y: extraBomb.y, fuse: 30, radius: extraBomb.radius });
   }
 
   for (const b of allBombs) {

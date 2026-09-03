@@ -22,6 +22,7 @@ export interface SpaceInvadersBotView {
     ufo: { x: number; y: number; dir: 1 | -1; points: number; alive: boolean } | null;
     board: number[];
     gameOver: boolean;
+    maxBullets?: number;
   } | null;
   players: unknown[];
   log: unknown[];
@@ -92,6 +93,7 @@ export const spaceInvadersBot: BotPolicy<SpaceInvadersBotView, SpaceInvadersBotA
 
     const playerCenter = you.playerX + 1;
     const livingCols = getLivingAlienCols(you.aliens, you.formationX);
+    const canFire = you.bullets ? you.bullets.length < (you.maxBullets ?? 1) : you.bullet === null;
 
     // --- Threat detection: Bombs falling towards player ---
     const threateningBombs = you.alienBombs.filter(
@@ -121,7 +123,7 @@ export const spaceInvadersBot: BotPolicy<SpaceInvadersBotView, SpaceInvadersBotA
       // 2. Prioritize UFO if safe
       if (you.ufo && you.ufo.alive) {
         const ufoCenter = you.ufo.x + 2;
-        if (Math.abs(ufoCenter - playerCenter) <= 1 && you.bullet === null) {
+        if (Math.abs(ufoCenter - playerCenter) <= 1 && canFire) {
           return { type: 'fire' };
         }
         if (ufoCenter < playerCenter && you.playerX > 0) {
@@ -140,7 +142,7 @@ export const spaceInvadersBot: BotPolicy<SpaceInvadersBotView, SpaceInvadersBotA
         );
 
         if (Math.abs(targetCol.centerX - playerCenter) <= 1) {
-          if (you.bullet === null) return { type: 'fire' };
+          if (canFire) return { type: 'fire' };
         } else if (targetCol.centerX < playerCenter && you.playerX > 0) {
           if (rng.next() < 0.65) return { type: 'move', dir: 'left' };
         } else if (targetCol.centerX > playerCenter && you.playerX + PLAYER_WIDTH < PLAYFIELD_W) {
@@ -175,7 +177,7 @@ export const spaceInvadersBot: BotPolicy<SpaceInvadersBotView, SpaceInvadersBotA
 
       // Shoot if aligned with any column
       const aligned = livingCols.some((c) => Math.abs(c.centerX - playerCenter) <= 1);
-      if (aligned && you.bullet === null && rng.next() < 0.7) {
+      if (aligned && canFire && rng.next() < 0.7) {
         return { type: 'fire' };
       }
 
@@ -198,7 +200,7 @@ export const spaceInvadersBot: BotPolicy<SpaceInvadersBotView, SpaceInvadersBotA
     // --- Easy difficulty: random lateral drift, fires when roughly aligned ---
     if (difficulty === 'easy') {
       const roughlyAligned = livingCols.some((c) => Math.abs(c.centerX - playerCenter) <= 2);
-      if (roughlyAligned && you.bullet === null && rng.next() < 0.5) {
+      if (roughlyAligned && canFire && rng.next() < 0.5) {
         return { type: 'fire' };
       }
 

@@ -691,6 +691,89 @@ export const sfx = {
   gameOver() {
     const ctx=getAudioContext(); if(!ctx||!sfxEnabled||!sfxGain) return; if(ctx.state==='suspended') void ctx.resume(); const t0=ctx.currentTime+0.01; [220,180,140,110].forEach((f,i)=>{ const osc=ctx.createOscillator(); const gain=ctx.createGain(); const tt=t0+i*0.18; osc.type='sawtooth'; osc.frequency.setValueAtTime(f,tt); gain.gain.setValueAtTime(0.35,tt); gain.gain.linearRampToValueAtTime(0.001,tt+0.25); osc.connect(gain); gain.connect(sfxGain!); osc.start(tt); osc.stop(tt+0.26);});
   },
+  invaderMarch(step: number) {
+    const ctx = getAudioContext(); if (!ctx || !sfxEnabled || !sfxGain) return; if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.005;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const notes = [58.27, 55.0, 51.91, 49.0];
+    const freq = notes[Math.abs(step) % 4] ?? 55;
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.55, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.1);
+  },
+  invaderLaser() {
+    const ctx = getAudioContext(); if (!ctx || !sfxEnabled || !sfxGain) return; if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.005;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(990, t);
+    osc.frequency.exponentialRampToValueAtTime(180, t + 0.12);
+    gain.gain.setValueAtTime(0.38, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.13);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.14);
+  },
+  invaderExplosion() {
+    const ctx = getAudioContext(); if (!ctx || !sfxEnabled || !sfxGain) return; if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.005;
+    try {
+      const bufferSize = Math.floor(ctx.sampleRate * 0.22);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, t);
+      filter.frequency.linearRampToValueAtTime(80, t + 0.2);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.5, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.21);
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(sfxGain);
+      noise.start(t);
+      noise.stop(t + 0.22);
+    } catch {
+      // Fallback tone if noise buffer unsupported
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(160, t);
+      osc.frequency.linearRampToValueAtTime(40, t + 0.18);
+      gain.gain.setValueAtTime(0.4, t);
+      gain.gain.linearRampToValueAtTime(0.001, t + 0.2);
+      osc.connect(gain);
+      gain.connect(sfxGain);
+      osc.start(t);
+      osc.stop(t + 0.21);
+    }
+  },
+  invaderUfo() {
+    const ctx = getAudioContext(); if (!ctx || !sfxEnabled || !sfxGain) return; if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.005;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(360, t);
+    osc.frequency.linearRampToValueAtTime(540, t + 0.1);
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.13);
+  },
 };
 
 /* ------------------------------------------------------------------ */

@@ -23,6 +23,7 @@ import {
   type SpaceInvadersPublicPlayer,
   type AlienBomb,
   type Alien,
+  type Bullet,
 } from './state.js';
 import {
   createPlayerState,
@@ -103,60 +104,75 @@ function tickPlayer(
   if (player.respawnGraceTicks > 0) {
     player.respawnGraceTicks -= 1;
   }
+  // Decrement fire cooldown
+  if (player.fireCooldownTicks > 0) {
+    player.fireCooldownTicks -= 1;
+  }
 
   // 1. Player Bullet movement & collisions
-  if (player.bullet !== null) {
-    player.bullet.y -= 1;
+  if ((!player.bullets || player.bullets.length === 0) && player.bullet !== null) {
+    player.bullets = [player.bullet];
+  }
+
+  const nextBullets: Bullet[] = [];
+  for (const bullet of player.bullets ?? []) {
+    bullet.y -= 1;
 
     // Check top wall
-    if (player.bullet.y < 0) {
-      player.bullet = null;
-    } else if (
+    if (bullet.y < 0) {
+      continue;
+    }
+
+    // Check UFO hit
+    if (
       player.ufo &&
       player.ufo.alive &&
-      player.bullet.y === player.ufo.y &&
-      player.bullet.x >= player.ufo.x &&
-      player.bullet.x < player.ufo.x + UFO_WIDTH
+      (bullet.y === player.ufo.y || (bullet.y <= player.ufo.y && bullet.y >= player.ufo.y - 1)) &&
+      bullet.x >= player.ufo.x &&
+      bullet.x < player.ufo.x + UFO_WIDTH
     ) {
-      // UFO hit
       const pts = rng.pick(UFO_SCORES);
       player.score += pts;
       player.ufo.alive = false;
       player.ufo.points = pts;
       player.ufo = null;
-      player.bullet = null;
       logs.push(`UFO destroyed — ${pts} pts`);
-    } else {
-      // Alien hit check
-      for (const a of player.aliens) {
-        if (!a.alive) continue;
-        const ax = player.formationX + a.col * ALIEN_COL_SPACING;
-        const ay = player.formationY + a.row * ALIEN_ROW_SPACING;
-        if (
-          player.bullet.y === ay &&
-          player.bullet.x >= ax &&
-          player.bullet.x < ax + ALIEN_WIDTH
-        ) {
-          a.alive = false;
-          player.aliveCount -= 1;
-          player.aliensKilled += 1;
-          player.score += a.points;
-          player.bullet = null;
-          logs.push(`Alien hit — ${a.points} pts`);
-          break;
-        }
-      }
+      continue;
+    }
 
-      // Bunker hit check from below
-      if (player.bullet !== null) {
-        const hit = hitBunkerAt(player.bunkers, player.bullet.x, player.bullet.y);
-        if (hit) {
-          erodeBunker(hit.bunker, hit.lx, hit.ly, 'from_below');
-          player.bullet = null;
-        }
+    // Alien hit check
+    let hitAlien = false;
+    for (const a of player.aliens) {
+      if (!a.alive) continue;
+      const ax = player.formationX + a.col * ALIEN_COL_SPACING;
+      const ay = player.formationY + a.row * ALIEN_ROW_SPACING;
+      if (
+        bullet.y === ay &&
+        bullet.x >= ax &&
+        bullet.x < ax + ALIEN_WIDTH
+      ) {
+        a.alive = false;
+        player.aliveCount -= 1;
+        player.aliensKilled += 1;
+        player.score += a.points;
+        logs.push(`Alien hit — ${a.points} pts`);
+        hitAlien = true;
+        break;
       }
     }
+    if (hitAlien) continue;
+
+    // Bunker hit check from below
+    const hit = hitBunkerAt(player.bunkers, bullet.x, bullet.y);
+    if (hit) {
+      erodeBunker(hit.bunker, hit.lx, hit.ly, 'from_below');
+      continue;
+    }
+
+    nextBullets.push(bullet);
   }
+  player.bullets = nextBullets;
+  player.bullet = player.bullets[0] ?? null;
 
   // 2. Check wave clear
   if (player.aliveCount === 0) {
@@ -200,6 +216,7 @@ function tickPlayer(
           player.respawnGraceTicks = RESPAWN_GRACE_TICKS;
           player.playerX = PLAYER_START_X;
           player.bullet = null;
+          player.bullets = [];
         }
         continue;
       }
@@ -343,15 +360,21 @@ function reduce(
     }
     case 'fire': {
       if (player.respawnGraceTicks > 0) {
-        return { ok: false, error: 'Respawning' };
+        break;
       }
-      if (player.bullet !== null) {
-        return { ok: false, error: 'Bullet already in flight' };
+      const maxB = player.maxBullets ?? 1;
+      const curBullets = player.bullets ?? (player.bullet ? [player.bullet] : []);
+      if (player.fireCooldownTicks > 0 || curBullets.length >= maxB) {
+        // Silently no-op: accepted, action consumed, no state change
+        break;
       }
-      player.bullet = {
+      const newBullet: Bullet = {
         x: player.playerX + 1,
         y: player.playerY - 1,
       };
+      player.bullets = [...curBullets, newBullet];
+      player.bullet = player.bullets[0] ?? null;
+      player.fireCooldownTicks = 2;
       break;
     }
     case 'toggleAssist': {
@@ -405,8 +428,9 @@ function toPublic(p: SpaceInvadersPlayerState): SpaceInvadersPublicPlayer {
     wave: p.wave,
     playerX: p.playerX,
     playerY: p.playerY,
-    bullet: p.bullet ? { ...p.bullet } : null,
-    bullets: p.bullet ? [{ ...p.bullet }] : [],
+    bullet: p.bullets && p.bullets.length > 0 ? { ...p.bullets[0]! } : (p.bullet ? { ...p.bullet } : null),
+    bullets: p.bullets ? p.bullets.map((b) => ({ ...b })) : (p.bullet ? [{ ...p.bullet }] : []),
+    maxBullets: p.maxBullets ?? 1,
     alienBombs: p.alienBombs.map((b) => ({ ...b })),
     bunkers: p.bunkers.map((b) => ({ ...b, mask: [...b.mask] })),
     aliens: p.aliens.map((a) => ({ ...a })),
@@ -417,6 +441,7 @@ function toPublic(p: SpaceInvadersPlayerState): SpaceInvadersPublicPlayer {
     ufo: p.ufo ? { ...p.ufo } : null,
     board: renderBoard(p),
     gameOver: p.gameOver,
+    respawnGraceTicks: p.respawnGraceTicks,
   };
 }
 

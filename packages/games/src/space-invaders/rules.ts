@@ -173,6 +173,9 @@ export function createPlayerState(id: string, seat: number, startWave: number, r
     playerX: PLAYER_START_X,
     playerY: PLAYER_Y,
     bullet: null,
+    bullets: [],
+    maxBullets: 1,
+    fireCooldownTicks: 0,
     alienBombs: [],
     nextBombId: 1,
     bunkers: createBunkers(),
@@ -205,6 +208,9 @@ export function setupNextWave(player: SpaceInvadersPlayerState, rng: Rng): void 
   player.formationMoveCounter = 0;
   player.fireTimer = alienFireInterval(player.wave);
   player.bullet = null;
+  player.bullets = [];
+  player.fireCooldownTicks = 0;
+  player.maxBullets = 1 + (player.wavesCleared % 5 === 0 && player.wavesCleared > 0 ? 1 : 0);
   player.alienBombs = [];
   player.ufo = null;
   player.ufoSpawnTimer = nextUfoSpawnTimer(rng);
@@ -273,14 +279,14 @@ export function renderBoard(p: SpaceInvadersPlayerState): number[] {
     }
   }
 
-  // Bullet
-  if (p.bullet) {
-    const bx = p.bullet.x;
-    const by = p.bullet.y;
+  // Bullets
+  const bullets = p.bullets && p.bullets.length > 0 ? p.bullets : (p.bullet ? [p.bullet] : []);
+  for (const b of bullets) {
+    const bx = b.x;
+    const by = b.y;
     if (bx >= 0 && bx < PLAYFIELD_W && by >= 0 && by < PLAYFIELD_H) {
       board[by * PLAYFIELD_W + bx] = 3;
     }
   }
-
   return board;
 }

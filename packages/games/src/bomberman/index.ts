@@ -149,7 +149,7 @@ function reduce(
         ownerId: player.id,
         x: player.x,
         y: player.y,
-        fuse: 24,
+        fuse: 30,
         radius: player.blastRadius,
       };
       s.bombs.push(newBomb);

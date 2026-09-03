@@ -135,20 +135,47 @@ describe('space-invaders: movement, fire, and collision mechanics', () => {
     expect(cur.players[0]!.playerX).toBe(PLAYFIELD_W - PLAYER_WIDTH);
   });
 
-  it('enforces one-shot rule: at most one player bullet in flight', () => {
+  it('enforces one-shot rule: at most one player bullet in flight on wave 1, silently no-ops subsequent fires', () => {
     const s0 = spaceInvaders.setup(['p1'], 42, {});
-    // First fire succeeds
+    // First fire succeeds and creates a bullet
     const r1 = spaceInvaders.reduce(s0, 'p1', { type: 'fire' });
     expect(r1.ok).toBe(true);
     if (!r1.ok) return;
     expect(r1.state.players[0]!.bullet).not.toBeNull();
+    expect(r1.state.players[0]!.bullets).toHaveLength(1);
 
-    // Second fire while bullet in flight is rejected
+    // Second fire while bullet in flight is accepted as silent no-op (no error, no extra bullet)
     const r2 = spaceInvaders.reduce(r1.state, 'p1', { type: 'fire' });
-    expect(r2.ok).toBe(false);
-    if (!r2.ok) {
-      expect(r2.error).toMatch(/in flight/i);
-    }
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.state.players[0]!.bullets).toHaveLength(1);
+    expect(r2.state.players[0]!.bullets[0]).toEqual(r1.state.players[0]!.bullets[0]);
+  });
+
+  it('grants rapid buff (+1 max bullet) every 5th wave clear allowing 2 concurrent bullets', () => {
+    const s0 = spaceInvaders.setup(['p1'], 42, {});
+    const p = s0.players[0]!;
+    p.wavesCleared = 5;
+    p.wave = 6;
+    p.maxBullets = 2;
+
+    // First shot
+    const r1 = spaceInvaders.reduce(s0, 'p1', { type: 'fire' });
+    expect(r1.ok).toBe(true);
+    if (!r1.ok) return;
+    expect(r1.state.players[0]!.bullets).toHaveLength(1);
+
+    // Advance ticks to clear fire cooldown
+    let s = r1.state;
+    s = spaceInvaders.reduce(s, 'p1', { type: 'tick' }).state!;
+    s = spaceInvaders.reduce(s, 'p1', { type: 'tick' }).state!;
+    s = spaceInvaders.reduce(s, 'p1', { type: 'tick' }).state!;
+
+    // Second shot succeeds because maxBullets is 2
+    const r2 = spaceInvaders.reduce(s, 'p1', { type: 'fire' });
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.state.players[0]!.bullets).toHaveLength(2);
   });
 
   it('player bullet ascends and destroys first alien hit, awarding points', () => {

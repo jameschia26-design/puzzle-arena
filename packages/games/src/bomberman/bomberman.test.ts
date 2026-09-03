@@ -79,7 +79,7 @@ describe('1. setup', () => {
 });
 
 describe('2. bomb fuse + blast plus-shape radius; hard block stops blast; soft block destroyed', () => {
-  it('bomb counts down fuse 24, explodes in plus shape, hard blocks stop blast, soft block is destroyed', () => {
+  it('bomb counts down fuse 30, explodes in plus shape, hard blocks stop blast, soft block is destroyed', () => {
     let s = bomberman.setup(['p1'], 42, {});
     // Place a soft block 2 cells right of player 1 at (3, 1)
     // p1 starts at (1, 1). (2, 1) is corridor. (3, 1) can be soft block.
@@ -94,7 +94,7 @@ describe('2. bomb fuse + blast plus-shape radius; hard block stops blast; soft b
 
     expect(s.bombs.length).toBe(1);
     const bomb = s.bombs[0]!;
-    expect(bomb.fuse).toBe(24);
+    expect(bomb.fuse).toBe(30);
     expect(bomb.radius).toBe(2);
 
     // Move player away so bomb is not held by standing owner
@@ -104,8 +104,8 @@ describe('2. bomb fuse + blast plus-shape radius; hard block stops blast; soft b
     s = rMove.state;
     expect(s.players[0]!.y).toBe(2);
 
-    // Tick 23 times
-    for (let i = 0; i < 23; i++) {
+    // Tick 29 times
+    for (let i = 0; i < 29; i++) {
       const rTick = bomberman.reduce(s, 'p1', { type: 'tick' });
       expect(rTick.ok).toBe(true);
       if (!rTick.ok) return;
@@ -113,7 +113,7 @@ describe('2. bomb fuse + blast plus-shape radius; hard block stops blast; soft b
     }
     expect(s.bombs[0]!.fuse).toBe(1);
 
-    // 24th tick triggers explosion
+    // 30th tick triggers explosion
     const rExplode = bomberman.reduce(s, 'p1', { type: 'tick' });
     expect(rExplode.ok).toBe(true);
     if (!rExplode.ok) return;

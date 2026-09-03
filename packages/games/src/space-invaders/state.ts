@@ -2,7 +2,7 @@ import type { BaseState } from '../engine.js';
 import type { LogEntry } from '@puzzle-arena/shared';
 
 export const PLAYFIELD_W = 64;
-export const PLAYFIELD_H = 32;
+export const PLAYFIELD_H = 44;
 
 export const ALIEN_ROWS = 5;
 export const ALIEN_COLS = 11;
@@ -17,12 +17,12 @@ export const BUNKER_COUNT = 4;
 export const BUNKER_W = 8;
 export const BUNKER_H = 7;
 export const BUNKER_X = [4, 20, 36, 52];
-export const BUNKER_Y = 22;
+export const BUNKER_Y = 32;
 
-export const PLAYER_Y = 30;
+export const PLAYER_Y = 41;
 export const PLAYER_START_X = 30;
 export const PLAYER_WIDTH = 3;
-export const PLAYER_SPEED = 2; // cells per move action
+export const PLAYER_SPEED = 3; // cells per move action
 export const PLAYER_LIVES = 3;
 export const RESPAWN_GRACE_TICKS = 20;
 
@@ -88,6 +88,9 @@ export interface SpaceInvadersPlayerState {
   playerX: number;
   playerY: number;
   bullet: Bullet | null;
+  bullets: Bullet[];
+  maxBullets: number;
+  fireCooldownTicks: number;
   alienBombs: AlienBomb[];
   nextBombId: number;
   bunkers: Bunker[];
@@ -143,6 +146,8 @@ export interface SpaceInvadersPublicPlayer {
   ufo: UFO | null;
   board: number[]; // PLAYFIELD_W * PLAYFIELD_H grid mask for rendering/assist
   gameOver: boolean;
+  maxBullets?: number;
+  respawnGraceTicks?: number;
 }
 
 export interface SpaceInvadersView {
