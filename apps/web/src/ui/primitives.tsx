@@ -386,7 +386,7 @@ export function SegmentedProgress({
 export function Toaster() {
   return (
     <SonnerToaster
-      position="bottom-right"
+      position="top-center"
       toastOptions={{
         style: {
           background: 'var(--color-pa-surface)',

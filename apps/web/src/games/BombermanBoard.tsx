@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useRoom } from '../net/socket.js';
 import { sfx, bgm } from '../ui/sound.js';
 import { SEAT_COLORS, resolvePlayer, monogram, type PlayerLike } from '../ui/seat.js';
+import { cn } from '../ui/cn.js';
 
 import type {
   BombermanView,
@@ -1222,8 +1223,29 @@ export function BombermanBoard({
 
   // Layout sizing state: integer cellSize ensures razor-sharp pixel art
   const [cellSize, setCellSize] = React.useState(28); // default fallback
-  const [padAlign, setPadAlign] = React.useState<'left' | 'center' | 'right'>('center');
   const [isLandscape, setIsLandscape] = React.useState(false);
+
+  const [flipped, setFlipped] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem('bomberman_controls_flipped') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleFlip = React.useCallback(() => {
+    setFlipped((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('bomberman_controls_flipped', String(next));
+      } catch {
+        /* private browsing */
+      }
+      sfx.blip();
+      return next;
+    });
+  }, []);
 
   // Direction facing tracking per player (id -> dir)
   const facingMapRef = React.useRef<Record<string, Dir>>({});
@@ -1454,10 +1476,9 @@ export function BombermanBoard({
       const landscape = w > h * 1.15;
       setIsLandscape(landscape);
 
-      // Reserve space for top HUD (approx 52px) and bottom touch controls (approx 200px in portrait)
+      // Reserve space for top HUD (~40px) and bottom touch controls (~175px in portrait)
       const availW = landscape ? Math.max(180, w - 240) : Math.max(180, w - 16);
-      const availH = landscape ? Math.max(160, h - 60) : Math.max(160, h - 260);
-
+      const availH = landscape ? Math.max(160, h - 50) : Math.max(160, h - 220);
       const maxCellW = Math.floor(availW / ARENA_W);
       const maxCellH = Math.floor(availH / ARENA_H);
       const chosen = Math.max(16, Math.min(maxCellW, maxCellH, 52));
@@ -1657,14 +1678,10 @@ export function BombermanBoard({
   const totalW = ARENA_W * cellSize;
   const totalH = ARENA_H * cellSize;
 
-  // Alignment classes for portrait D-Pad
-  const padAlignClass =
-    padAlign === 'left' ? 'justify-start' : padAlign === 'right' ? 'justify-end' : 'justify-center';
-
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full flex flex-col items-center justify-between p-1 sm:p-3 overflow-hidden select-none touch-none bg-pa-bg font-display"
+      className="relative w-full h-full flex flex-col items-center justify-start gap-1 p-1 sm:p-2 overflow-hidden select-none touch-none bg-pa-bg font-display"
     >
       {/* TOP HUD BAR: 16-Bit Sega Genesis Arcade Dashboard */}
       <div className="w-full max-w-2xl flex items-center justify-between px-3 py-1.5 bg-[#0e1424] border-2 border-[#243454] shadow-[0_2px_8px_rgba(0,0,0,0.6),2px_2px_0_#060810] z-20 text-xs shrink-0">
@@ -1685,9 +1702,19 @@ export function BombermanBoard({
           )}
         </div>
 
-        {/* Powers HUD (Blast Radius, Max Bombs, Speed, Pass) */}
+        {/* Powers HUD & Flip Control Button */}
         {you ? (
           <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Flip D-Pad and Bomb controls layout (left/right hand)"
+              title="Flip D-Pad and Bomb controls layout (left/right hand)"
+              onClick={toggleFlip}
+              className="h-6 px-1.5 bg-[#141e36] border border-[#2a406c] text-pa-amber hover:text-pa-ink font-display text-[8px] sm:text-[9px] font-semibold flex items-center gap-1 active:bg-[#1a2848] cursor-pointer shadow-[1px_1px_0_#000] select-none touch-manipulation shrink-0"
+            >
+              <span className="text-[10px] leading-none">⇄</span>
+              <span>{flipped ? 'PAD R' : 'PAD L'}</span>
+            </button>
             <div title="Blast Radius" className="flex items-center gap-1 bg-[#241006] px-2 py-0.5 border border-[#68240a] shadow-[1px_1px_0_#000]">
               <span className="text-[10px]">🔥</span>
               <span className="text-[9px] text-[#ff9438] font-bold">R</span>
@@ -1719,7 +1746,7 @@ export function BombermanBoard({
       </div>
 
       {/* CENTER ARENA AREA */}
-      <div className="relative flex-1 w-full flex items-center justify-center my-auto min-h-0">
+      <div className="relative w-full flex items-center justify-center my-0.5 sm:my-1 min-h-0 shrink-0">
         <div
           className="relative border-4 border-[#1e2a44] shadow-[0_0_16px_rgba(0,0,0,0.8),3px_3px_0_#080c14] bg-[#080c18] overflow-hidden"
           style={{
@@ -1777,9 +1804,11 @@ export function BombermanBoard({
       {/* MOBILE CONTROLS & SPECTATOR ROSTER */}
       {you && you.alive && !isGameOver ? (
         isLandscape ? (
-          /* Landscape Split Controls: D-pad left, Bomb right */
-          <div className="w-full flex items-center justify-between px-4 py-1 z-20 shrink-0">
-            {/* Left D-pad */}
+          <div className={cn(
+            'w-full flex items-center justify-between px-4 py-1 z-20 shrink-0',
+            flipped && 'flex-row-reverse',
+          )}>
+            {/* D-pad */}
             <div className="grid grid-cols-3 grid-rows-3 w-32 h-32 gap-1 touch-none select-none">
               <div />
               <TouchButton
@@ -1834,7 +1863,7 @@ export function BombermanBoard({
               <div />
             </div>
 
-            {/* Right Dedicated Bomb Button */}
+            {/* Dedicated Bomb Button */}
             <TouchButton
               label="Place Bomb"
               onFire={() => {
@@ -1848,43 +1877,29 @@ export function BombermanBoard({
             </TouchButton>
           </div>
         ) : (
-          /* Portrait Controls: Big 64px D-Pad (192px) + BOMB button bottom-right */
-          <div className="w-full max-w-md flex flex-col items-center gap-1 z-20 shrink-0">
-            {/* Pad Alignment Selector */}
-            <div className="flex items-center gap-1 text-[9px] font-display text-pa-ink-dim self-end pr-2">
-              <span>PAD:</span>
+          /* Portrait Controls: D-Pad + BOMB button with left/right hand flipping (matching Tetris) */
+          <div className="w-full max-w-md flex flex-col items-center gap-1 z-20 shrink-0 mt-0.5">
+            {/* Handedness Alignment Selector */}
+            <div className="w-full flex items-center justify-between px-3 pb-0.5 text-[9px] font-display text-pa-ink-dim">
+              <span>CONTROLS:</span>
               <button
                 type="button"
-                onClick={() => setPadAlign('left')}
-                className={`px-1.5 py-0.5 border cursor-pointer ${
-                  padAlign === 'left' ? 'bg-pa-cyan text-pa-bg font-bold' : 'border-pa-border bg-pa-surface'
-                }`}
+                onClick={toggleFlip}
+                aria-label="Flip D-Pad and Bomb button layout (left/right hand)"
+                title="Flip D-Pad and Bomb button layout (left/right hand)"
+                className="px-2 py-0.5 border border-pa-border bg-pa-surface text-pa-amber hover:text-pa-ink flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-[1px_1px_0_var(--color-pa-shadow)] select-none touch-manipulation font-semibold"
               >
-                L
-              </button>
-              <button
-                type="button"
-                onClick={() => setPadAlign('center')}
-                className={`px-1.5 py-0.5 border cursor-pointer ${
-                  padAlign === 'center' ? 'bg-pa-cyan text-pa-bg font-bold' : 'border-pa-border bg-pa-surface'
-                }`}
-              >
-                C
-              </button>
-              <button
-                type="button"
-                onClick={() => setPadAlign('right')}
-                className={`px-1.5 py-0.5 border cursor-pointer ${
-                  padAlign === 'right' ? 'bg-pa-cyan text-pa-bg font-bold' : 'border-pa-border bg-pa-surface'
-                }`}
-              >
-                R
+                <span>⇄</span>
+                <span>{flipped ? 'D-PAD: RIGHT (FLIPPED)' : 'D-PAD: LEFT (DEFAULT)'}</span>
               </button>
             </div>
 
-            <div className={`w-full flex ${padAlignClass} items-center gap-4 px-2`}>
-              {/* 192px D-Pad (64px buttons) */}
-              <div className="grid grid-cols-3 grid-rows-3 w-[192px] h-[192px] gap-1 touch-none select-none">
+            <div className={cn(
+              'w-full flex items-center justify-between gap-3 px-3 sm:px-6',
+              flipped && 'flex-row-reverse',
+            )}>
+              {/* 165px D-Pad */}
+              <div className="grid grid-cols-3 grid-rows-3 w-[165px] h-[165px] sm:w-[180px] sm:h-[180px] gap-1 touch-none select-none shrink-0">
                 <div />
                 <TouchButton
                   label="Move Up"
@@ -1893,7 +1908,7 @@ export function BombermanBoard({
                     sfx.blip();
                   }}
                   repeatMs={110}
-                  className="w-full h-full flex items-center justify-center text-2xl font-bold"
+                  className="w-full h-full flex items-center justify-center text-xl sm:text-2xl font-bold"
                 >
                   ▲
                 </TouchButton>
@@ -1906,7 +1921,7 @@ export function BombermanBoard({
                     sfx.blip();
                   }}
                   repeatMs={110}
-                  className="w-full h-full flex items-center justify-center text-2xl font-bold"
+                  className="w-full h-full flex items-center justify-center text-xl sm:text-2xl font-bold"
                 >
                   ◀
                 </TouchButton>
@@ -1918,7 +1933,7 @@ export function BombermanBoard({
                     sfx.blip();
                   }}
                   repeatMs={110}
-                  className="w-full h-full flex items-center justify-center text-2xl font-bold"
+                  className="w-full h-full flex items-center justify-center text-xl sm:text-2xl font-bold"
                 >
                   ▶
                 </TouchButton>
@@ -1931,7 +1946,7 @@ export function BombermanBoard({
                     sfx.blip();
                   }}
                   repeatMs={110}
-                  className="w-full h-full flex items-center justify-center text-2xl font-bold"
+                  className="w-full h-full flex items-center justify-center text-xl sm:text-2xl font-bold"
                 >
                   ▼
                 </TouchButton>

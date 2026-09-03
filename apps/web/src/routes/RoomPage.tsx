@@ -258,17 +258,45 @@ export default function RoomPage(): React.ReactElement {
 
   return (
     <main className={cn('min-h-screen flex flex-col', isGameFullscreen && 'h-dvh max-h-dvh overflow-hidden')}>
-      {/* In-game fullscreen menu button (mobile only) */}
+      {/* In-game fullscreen controls (mobile only) */}
       {isGameFullscreen && (
-        <button
-          type="button"
-          aria-label="Open menu and options"
-          onClick={() => setInGameMode(false)}
-          className="fixed top-[max(8px,env(safe-area-inset-top))] right-[max(8px,env(safe-area-inset-right))] z-50 lg:hidden flex items-center justify-center w-8 h-8 bg-pa-surface/85 hover:bg-pa-surface border-2 border-pa-border text-pa-ink-dim hover:text-pa-ink active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)]"
-          title="Menu & Options"
-        >
-          <Menu size={16} strokeWidth={2.5} className="lucide" />
-        </button>
+        <div className="fixed top-[max(8px,env(safe-area-inset-top))] right-[max(8px,env(safe-area-inset-right))] z-50 lg:hidden flex items-center gap-1.5">
+          {isHost && running && (
+            <button
+              type="button"
+              aria-label={store.paused ? 'Resume game' : 'Pause game'}
+              onClick={() => void emit(store.paused ? EV.roomResume : EV.roomPause)}
+              className={cn(
+                'flex items-center justify-center h-8 px-2.5 gap-1.5 border-2 active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)] font-display text-[10px]',
+                store.paused
+                  ? 'bg-pa-amber text-pa-bg border-pa-amber font-bold'
+                  : 'bg-pa-surface/90 hover:bg-pa-surface border-pa-border text-pa-ink',
+              )}
+              title={store.paused ? 'Resume Game' : 'Pause Game'}
+            >
+              {store.paused ? (
+                <>
+                  <Play size={13} strokeWidth={3} className="fill-current" />
+                  <span>RESUME</span>
+                </>
+              ) : (
+                <>
+                  <Pause size={13} strokeWidth={3} />
+                  <span>PAUSE</span>
+                </>
+              )}
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="Open menu and options"
+            onClick={() => setInGameMode(false)}
+            className="flex items-center justify-center w-8 h-8 bg-pa-surface/90 hover:bg-pa-surface border-2 border-pa-border text-pa-ink-dim hover:text-pa-ink active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)]"
+            title="Menu & Options"
+          >
+            <Menu size={16} strokeWidth={2.5} className="lucide" />
+          </button>
+        </div>
       )}
       <StartOverlay startsAt={store.startsAt} />
 
@@ -782,7 +810,16 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
     const res = await emit<{ accepted: boolean; error?: string }>(EV.gameAction, action);
     if (isTick) return;
     if (!res.accepted && res.error) {
-      const silentErrors = ['Blocked', 'Illegal move', 'Room is paused', 'Not in a room', 'Room is not running'];
+      const silentErrors = [
+        'Blocked',
+        'Illegal move',
+        'Room is paused',
+        'Not in a room',
+        'Room is not running',
+        'Max bombs placed',
+        'Bomb already here',
+        'Player is eliminated',
+      ];
       if (!silentErrors.includes(res.error)) toast(res.error);
     }
   };
