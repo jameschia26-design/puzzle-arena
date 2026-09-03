@@ -4,6 +4,20 @@ import type { LogEntry } from '@puzzle-arena/shared';
 export const PLAYFIELD_W = 64;
 export const PLAYFIELD_H = 44;
 
+export const CANVAS_SCALE = 10;
+export const CANVAS_WIDTH = PLAYFIELD_W * CANVAS_SCALE; // 640
+export const CANVAS_HEIGHT = PLAYFIELD_H * CANVAS_SCALE; // 440
+
+export interface SpaceInvadersKillEvent {
+  id: number;
+  target: 'alien' | 'ufo';
+  x: number;
+  y: number;
+  points: number;
+  alienId?: number | undefined;
+  alienType?: AlienType | undefined;
+}
+
 export const ALIEN_ROWS = 5;
 export const ALIEN_COLS = 11;
 export const ALIEN_COUNT = 55;
@@ -104,6 +118,8 @@ export interface SpaceInvadersPlayerState {
   ufo: UFO | null;
   ufoSpawnTimer: number;
   respawnGraceTicks: number;
+  killEvents: SpaceInvadersKillEvent[];
+  nextKillEventId: number;
   gameOver: boolean;
   actionsSubmitted: number;
   actionsAccepted: number;
@@ -145,6 +161,7 @@ export interface SpaceInvadersPublicPlayer {
   aliveCount: number;
   ufo: UFO | null;
   board: number[]; // PLAYFIELD_W * PLAYFIELD_H grid mask for rendering/assist
+  killEvents?: SpaceInvadersKillEvent[];
   gameOver: boolean;
   maxBullets?: number;
   respawnGraceTicks?: number;

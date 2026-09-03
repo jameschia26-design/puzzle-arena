@@ -116,7 +116,7 @@ function classifyFive(cards: BigTwoCard[]): BigTwoCombo | null {
 
 /** A unified strength for cross-category bomb comparison: any straight flush
  *  outranks any four-of-a-kind, and both outrank every non-bomb combo. */
-function bombPower(c: BigTwoCombo): number | null {
+export function bombPower(c: BigTwoCombo): number | null {
   if (c.category === 'straight-flush') return 10_000 + c.value;
   if (c.category === 'four-kind') return 1_000 + c.value;
   return null;
@@ -124,15 +124,23 @@ function bombPower(c: BigTwoCombo): number | null {
 
 /** Standard Big Two 5-card ladder: straight < flush < full-house, so any of
  *  these three categories may beat any other so long as its rung is higher. */
-const FIVE_CARD_RUNG: Record<'straight' | 'flush' | 'full-house', number> = {
+export const FIVE_CARD_RUNG: Record<'straight' | 'flush' | 'full-house', number> = {
   straight: 0,
   flush: 1,
   'full-house': 2,
 };
 
-function fivePower(c: BigTwoCombo): number | null {
+export function fivePower(c: BigTwoCombo): number | null {
   if (c.category !== 'straight' && c.category !== 'flush' && c.category !== 'full-house') return null;
   return FIVE_CARD_RUNG[c.category] * 100 + c.value;
+}
+
+export function comboStrength(c: BigTwoCombo): number {
+  const fp = fivePower(c);
+  if (fp !== null) return fp;
+  const bp = bombPower(c);
+  if (bp !== null) return bp;
+  return c.value;
 }
 
 /** True when `a` may legally be played over `b` (the current lead, or null

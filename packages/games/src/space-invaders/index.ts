@@ -99,6 +99,8 @@ function tickPlayer(
 ): string[] {
   const logs: string[] = [];
   if (player.gameOver) return logs;
+  player.killEvents = [];
+
 
   // Handle respawn grace period
   if (player.respawnGraceTicks > 0) {
@@ -133,6 +135,13 @@ function tickPlayer(
     ) {
       const pts = rng.pick(UFO_SCORES);
       player.score += pts;
+      player.killEvents.push({
+        id: player.nextKillEventId++,
+        target: 'ufo',
+        x: player.ufo.x,
+        y: player.ufo.y,
+        points: pts,
+      });
       player.ufo.alive = false;
       player.ufo.points = pts;
       player.ufo = null;
@@ -155,6 +164,15 @@ function tickPlayer(
         player.aliveCount -= 1;
         player.aliensKilled += 1;
         player.score += a.points;
+        player.killEvents.push({
+          id: player.nextKillEventId++,
+          target: 'alien',
+          alienId: a.id,
+          alienType: a.type,
+          x: ax,
+          y: ay,
+          points: a.points,
+        });
         logs.push(`Alien hit — ${a.points} pts`);
         hitAlien = true;
         break;
@@ -441,6 +459,7 @@ function toPublic(p: SpaceInvadersPlayerState): SpaceInvadersPublicPlayer {
     ufo: p.ufo ? { ...p.ufo } : null,
     board: renderBoard(p),
     gameOver: p.gameOver,
+    killEvents: p.killEvents ? p.killEvents.map((e) => ({ ...e })) : [],
     respawnGraceTicks: p.respawnGraceTicks,
   };
 }

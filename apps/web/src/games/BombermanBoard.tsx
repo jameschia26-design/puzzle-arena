@@ -38,121 +38,325 @@ interface FloatingPopup {
   born: number;
 }
 
+interface CrumbleParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+  size: number;
+  born: number;
+  duration: number;
+}
+
 /* ------------------------------------------------------------------ */
 /* Retro 16x16 Pixel Sprite Drawing Functions                         */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* 16-Bit Sega Genesis / Mega Drive Palette Constants                 */
+/* ------------------------------------------------------------------ */
+
 /**
- * Floor tile: Classic emerald green checkerboard turf with subtle border highlights
+ * Rich 3-tone seat color ramps for 16-bit Genesis Bomberman sprites.
+ * Each seat gets high-contrast highlight, mid, dark shade, boot, and pompom tones.
+ */
+interface SeatPalette {
+  light: string;
+  mid: string;
+  dark: string;
+  boots: string;
+  bootSole: string;
+  pompom: string;
+}
+
+const SEAT_PALETTES: SeatPalette[] = [
+  // Seat 0: Classic White / Cyan Bomber
+  {
+    light: '#6ee4ff',
+    mid: '#14b4e8',
+    dark: '#0a6ca0',
+    boots: '#f0f4fc',
+    bootSole: '#141824',
+    pompom: '#ff3870',
+  },
+  // Seat 1: Crimson Red Bomber
+  {
+    light: '#ff6250',
+    mid: '#d82018',
+    dark: '#7e0e0c',
+    boots: '#ffe8ec',
+    bootSole: '#141824',
+    pompom: '#ffd420',
+  },
+  // Seat 2: Electric Cobalt Blue Bomber
+  {
+    light: '#68a8ff',
+    mid: '#1c62f2',
+    dark: '#0c32a4',
+    boots: '#f0f4fc',
+    bootSole: '#141824',
+    pompom: '#ff3870',
+  },
+  // Seat 3: Emerald Jade Green Bomber
+  {
+    light: '#5ce878',
+    mid: '#1cb244',
+    dark: '#0c6824',
+    boots: '#f0f4fc',
+    bootSole: '#141824',
+    pompom: '#ffea20',
+  },
+  // Seat 4: Golden Amber Yellow Bomber
+  {
+    light: '#ffea48',
+    mid: '#e8b210',
+    dark: '#8c6204',
+    boots: '#f0f4fc',
+    bootSole: '#141824',
+    pompom: '#ff3870',
+  },
+  // Seat 5: Royal Violet Purple Bomber
+  {
+    light: '#d67cff',
+    mid: '#9a2ee8',
+    dark: '#54108a',
+    boots: '#f8f0fc',
+    bootSole: '#141824',
+    pompom: '#ffd420',
+  },
+  // Seat 6: Hot Magenta Pink Bomber
+  {
+    light: '#ff78be',
+    mid: '#e82a84',
+    dark: '#88104c',
+    boots: '#f0f4fc',
+    bootSole: '#141824',
+    pompom: '#38e0ff',
+  },
+  // Seat 7: Dark Steel / Ninja Bomber
+  {
+    light: '#627a9c',
+    mid: '#304058',
+    dark: '#141c28',
+    boots: '#98a8c0',
+    bootSole: '#080c14',
+    pompom: '#ff3870',
+  },
+];
+
+/**
+ * Arena Floor Tile: Deep blue / purple checkerboard stone arena floor
+ * reminiscent of Sega Mega Bomberman stadium tiles with chiseled edges,
+ * inner beveling, and stone texture flecks.
  */
 function drawFloorTile(ctx: CanvasRenderingContext2D, px: number, py: number, gx: number, gy: number): void {
   const isEven = (gx + gy) % 2 === 0;
-  ctx.fillStyle = isEven ? '#449e38' : '#3c8c30';
+
+  // Deep chiseled mortar frame
+  ctx.fillStyle = '#080612';
   ctx.fillRect(px, py, TILE_PX, TILE_PX);
 
-  // Top/left highlight
-  ctx.fillStyle = isEven ? '#52b844' : '#489e3a';
-  ctx.fillRect(px, py, TILE_PX, 1);
-  ctx.fillRect(px, py, 1, TILE_PX);
+  if (isEven) {
+    // Tone A: Deep Royal Violet Flagstone
+    // Base stone body
+    ctx.fillStyle = '#241e44';
+    ctx.fillRect(px + 1, py + 1, 14, 14);
 
-  // Bottom/right shadow
-  ctx.fillStyle = isEven ? '#38882e' : '#307426';
-  ctx.fillRect(px, py + TILE_PX - 1, TILE_PX, 1);
-  ctx.fillRect(px + TILE_PX - 1, py, 1, TILE_PX);
+    // Inner darker field
+    ctx.fillStyle = '#1c1638';
+    ctx.fillRect(px + 2, py + 2, 12, 12);
 
-  // Subtle turf texture dots
-  ctx.fillStyle = isEven ? '#4cb03e' : '#36802c';
-  ctx.fillRect(px + 4, py + 4, 1, 1);
-  ctx.fillRect(px + 11, py + 4, 1, 1);
-  ctx.fillRect(px + 4, py + 11, 1, 1);
-  ctx.fillRect(px + 11, py + 11, 1, 1);
+    // Top/left bevel highlight
+    ctx.fillStyle = '#4e3e84';
+    ctx.fillRect(px + 1, py + 1, 14, 1);
+    ctx.fillRect(px + 1, py + 1, 1, 14);
+
+    // Specular corner glint
+    ctx.fillStyle = '#725eb4';
+    ctx.fillRect(px + 1, py + 1, 1, 1);
+
+    // Bottom/right bevel shadow
+    ctx.fillStyle = '#120e24';
+    ctx.fillRect(px + 1, py + 14, 14, 1);
+    ctx.fillRect(px + 14, py + 1, 1, 14);
+
+    // Subtle stone texture flecks
+    ctx.fillStyle = '#322858';
+    ctx.fillRect(px + 4, py + 4, 1, 1);
+    ctx.fillRect(px + 11, py + 5, 1, 1);
+    ctx.fillRect(px + 5, py + 11, 1, 1);
+    ctx.fillRect(px + 10, py + 10, 1, 1);
+  } else {
+    // Tone B: Deep Midnight Indigo Flagstone
+    // Base stone body
+    ctx.fillStyle = '#1a2444';
+    ctx.fillRect(px + 1, py + 1, 14, 14);
+
+    // Inner darker field
+    ctx.fillStyle = '#141c38';
+    ctx.fillRect(px + 2, py + 2, 12, 12);
+
+    // Top/left bevel highlight
+    ctx.fillStyle = '#3e5288';
+    ctx.fillRect(px + 1, py + 1, 14, 1);
+    ctx.fillRect(px + 1, py + 1, 1, 14);
+
+    // Specular corner glint
+    ctx.fillStyle = '#6480c0';
+    ctx.fillRect(px + 1, py + 1, 1, 1);
+
+    // Bottom/right bevel shadow
+    ctx.fillStyle = '#0e1428';
+    ctx.fillRect(px + 1, py + 14, 14, 1);
+    ctx.fillRect(px + 14, py + 1, 1, 14);
+
+    // Subtle stone texture flecks
+    ctx.fillStyle = '#26345c';
+    ctx.fillRect(px + 5, py + 4, 1, 1);
+    ctx.fillRect(px + 10, py + 4, 1, 1);
+    ctx.fillRect(px + 4, py + 10, 1, 1);
+    ctx.fillRect(px + 11, py + 11, 1, 1);
+  }
 }
 
 /**
- * Hard Block: Indestructible cross-hatch metal pillar with 3D bevel and corner rivets
+ * Hard Block: 16-bit Sega Genesis steel pillar with 3D bevel, recessed cross plate,
+ * and 4 polished steel corner rivets.
  */
 function drawHardBlock(ctx: CanvasRenderingContext2D, px: number, py: number): void {
-  // Outer metallic rim
-  ctx.fillStyle = '#101828';
+  // Dark drop shadow & outer contour
+  ctx.fillStyle = '#060a12';
   ctx.fillRect(px, py, TILE_PX, TILE_PX);
 
-  // Top-left 3D highlight
-  ctx.fillStyle = '#98b4d8';
-  ctx.fillRect(px, py, TILE_PX - 1, 1);
-  ctx.fillRect(px, py, 1, TILE_PX - 1);
+  // Outer steel bevel body
+  ctx.fillStyle = '#223046';
+  ctx.fillRect(px + 1, py + 1, 14, 14);
 
-  // Inner beveled face
-  ctx.fillStyle = '#3a5078';
+  // Top & Left 3D metallic highlight
+  ctx.fillStyle = '#7a96bc';
+  ctx.fillRect(px + 1, py + 1, 13, 1);
+  ctx.fillRect(px + 1, py + 1, 1, 13);
+  // Specular top-left corner glint
+  ctx.fillStyle = '#d8e8fc';
+  ctx.fillRect(px + 1, py + 1, 2, 1);
+  ctx.fillRect(px + 1, py + 1, 1, 2);
+
+  // Bottom & Right 3D metallic shadow
+  ctx.fillStyle = '#0e1420';
+  ctx.fillRect(px + 1, py + 14, 14, 1);
+  ctx.fillRect(px + 14, py + 1, 1, 14);
+
+  // Inner raised steel face
+  ctx.fillStyle = '#3a4e6c';
   ctx.fillRect(px + 2, py + 2, 12, 12);
 
-  // Cross recess slots
-  ctx.fillStyle = '#1a263c';
-  ctx.fillRect(px + 7, py + 4, 2, 8); // vertical groove
-  ctx.fillRect(px + 4, py + 7, 8, 2); // horizontal groove
+  // Recessed center hazard plate / cross-hatch channel
+  ctx.fillStyle = '#162030';
+  ctx.fillRect(px + 4, py + 4, 8, 8);
+  // Inner panel drop shadow
+  ctx.fillStyle = '#0e1622';
+  ctx.fillRect(px + 4, py + 4, 8, 1);
+  ctx.fillRect(px + 4, py + 4, 1, 8);
+  // Inner panel highlight
+  ctx.fillStyle = '#546c8e';
+  ctx.fillRect(px + 4, py + 11, 8, 1);
+  ctx.fillRect(px + 11, py + 4, 1, 8);
 
-  // Groove highlights
-  ctx.fillStyle = '#5274a4';
-  ctx.fillRect(px + 6, py + 4, 1, 8);
-  ctx.fillRect(px + 4, py + 6, 8, 1);
+  // Center embossed steel boss
+  ctx.fillStyle = '#4c6284';
+  ctx.fillRect(px + 6, py + 6, 4, 4);
+  ctx.fillStyle = '#86a2ca';
+  ctx.fillRect(px + 6, py + 6, 3, 1);
+  ctx.fillRect(px + 6, py + 6, 1, 3);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(px + 7, py + 7, 1, 1);
 
-  // 4 Corner metal rivets
-  const rivets = [
-    [3, 3],
-    [11, 3],
-    [3, 11],
+  // 4 Polished Steel Corner Rivets (with specular reflection & cast shadow)
+  const rivets: readonly (readonly [number, number])[] = [
+    [2, 2],
+    [11, 2],
+    [2, 11],
     [11, 11],
   ];
   for (const [rx, ry] of rivets) {
-    ctx.fillStyle = '#141c2c';
+    // Rivet dark shadow socket
+    ctx.fillStyle = '#0a0e16';
+    ctx.fillRect(px + rx, py + ry, 3, 3);
+    // Rivet steel head
+    ctx.fillStyle = '#566e92';
     ctx.fillRect(px + rx, py + ry, 2, 2);
-    ctx.fillStyle = '#c0d8f8';
+    // Specular gleam
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(px + rx, py + ry, 1, 1);
   }
 }
 
 /**
- * Soft Block: Destructible terracotta brick wall with mortar grooves
+ * Soft Block: Destructible terracotta brick wall with warm multi-tone shading,
+ * deep mortar grooves, and realistic hairline stress cracks.
  */
 function drawSoftBlock(ctx: CanvasRenderingContext2D, px: number, py: number): void {
-  // Mortar background
-  ctx.fillStyle = '#261008';
+  // Deep mortar background
+  ctx.fillStyle = '#1c0a06';
   ctx.fillRect(px, py, TILE_PX, TILE_PX);
 
-  const drawBrick = (bx: number, by: number, bw: number, bh: number) => {
-    // Shadow base
-    ctx.fillStyle = '#682010';
+  // Helper to render an individual 16-bit brick with 4-tone depth
+  const renderBrick = (bx: number, by: number, bw: number, bh: number, cracked = false) => {
+    // Deep brick base shadow
+    ctx.fillStyle = '#541406';
     ctx.fillRect(px + bx, py + by, bw, bh);
-    // Body
-    ctx.fillStyle = '#9c401c';
+
+    // Main brick terracotta body
+    ctx.fillStyle = '#942e12';
     ctx.fillRect(px + bx, py + by, bw, bh - 1);
-    // Top highlight
-    ctx.fillStyle = '#cf6030';
+
+    // Warm sunlit face
+    ctx.fillStyle = '#c44618';
+    ctx.fillRect(px + bx, py + by, bw - 1, bh - 1);
+
+    // Top highlight rim
+    ctx.fillStyle = '#f07234';
     ctx.fillRect(px + bx, py + by, bw, 1);
+
     // Left edge highlight
     ctx.fillRect(px + bx, py + by, 1, bh - 1);
+
+    // Specular glint
+    ctx.fillStyle = '#ff9658';
+    ctx.fillRect(px + bx + 1, py + by, Math.max(1, bw - 3), 1);
+
+    if (cracked) {
+      // Hairline crack across brick
+      ctx.fillStyle = '#220a06';
+      ctx.fillRect(px + bx + Math.floor(bw / 2), py + by + 1, 1, bh - 1);
+      ctx.fillStyle = '#f07234';
+      ctx.fillRect(px + bx + Math.floor(bw / 2) + 1, py + by + 1, 1, 1);
+    }
   };
 
-  // Row 0: 2 bricks
-  drawBrick(1, 1, 6, 3);
-  drawBrick(8, 1, 7, 3);
+  // Course 0: 2 bricks
+  renderBrick(1, 1, 6, 3, false);
+  renderBrick(8, 1, 7, 3, true);
 
-  // Row 1: staggered bricks
-  drawBrick(1, 5, 3, 3);
-  drawBrick(5, 5, 6, 3);
-  drawBrick(12, 5, 3, 3);
+  // Course 1: 3 staggered bricks
+  renderBrick(1, 5, 3, 3, false);
+  renderBrick(5, 5, 6, 3, false);
+  renderBrick(12, 5, 3, 3, false);
 
-  // Row 2: 2 bricks
-  drawBrick(1, 9, 6, 3);
-  drawBrick(8, 9, 7, 3);
+  // Course 2: 2 bricks (with crack on left)
+  renderBrick(1, 9, 7, 3, true);
+  renderBrick(9, 9, 6, 3, false);
 
-  // Row 3: staggered bricks
-  drawBrick(1, 13, 3, 2);
-  drawBrick(5, 13, 6, 2);
-  drawBrick(12, 13, 3, 2);
+  // Course 3: 3 staggered bricks at foundation
+  renderBrick(1, 13, 4, 2, false);
+  renderBrick(6, 13, 5, 2, false);
+  renderBrick(12, 13, 3, 2, false);
 }
 
 /**
- * Classic Powerup Badge: Glowing retro icon on a dark beveled pedestal
+ * Classic Powerup Badge: Distinctive 16-bit icons on a dark beveled pedestal
+ * with subtle pickup sparkle.
  */
 function drawPowerup(
   ctx: CanvasRenderingContext2D,
@@ -166,49 +370,76 @@ function drawPowerup(
   const by = py + bob;
 
   // Dark beveled pedestal
-  ctx.fillStyle = '#0c1020';
+  ctx.fillStyle = '#080c16';
   ctx.fillRect(px + 1, by + 1, 14, 14);
-  ctx.fillStyle = '#223050';
+  ctx.fillStyle = '#162032';
   ctx.fillRect(px + 2, by + 2, 12, 12);
-  ctx.fillStyle = '#486494';
+  ctx.fillStyle = '#425e88';
   ctx.fillRect(px + 1, by + 1, 13, 1);
   ctx.fillRect(px + 1, by + 1, 1, 13);
+  ctx.fillStyle = '#0c121e';
+  ctx.fillRect(px + 1, by + 14, 14, 1);
+  ctx.fillRect(px + 14, by + 1, 1, 14);
 
   switch (kind) {
     case 'flame': {
-      // Fiery flame icon (Yellow core, orange body, red border)
-      ctx.fillStyle = '#e81e10';
-      ctx.fillRect(px + 7, by + 3, 2, 3);
-      ctx.fillRect(px + 5, by + 5, 6, 7);
-      ctx.fillRect(px + 4, by + 7, 8, 4);
+      // Fiery 16-bit flame crest (5-tone: deep red outline, scarlet, vivid orange, sun yellow, laser white core)
+      ctx.fillStyle = '#780800';
+      ctx.fillRect(px + 7, by + 3, 2, 1);
+      ctx.fillRect(px + 6, by + 4, 4, 2);
+      ctx.fillRect(px + 5, by + 6, 6, 6);
+      ctx.fillRect(px + 4, by + 8, 8, 4);
 
-      ctx.fillStyle = '#ff8810';
-      ctx.fillRect(px + 7, by + 4, 2, 3);
+      ctx.fillStyle = '#d81c00';
+      ctx.fillRect(px + 7, by + 4, 2, 2);
       ctx.fillRect(px + 6, by + 6, 4, 5);
+      ctx.fillRect(px + 5, by + 9, 6, 2);
 
-      ctx.fillStyle = '#fff030';
+      ctx.fillStyle = '#ff7000';
+      ctx.fillRect(px + 7, by + 5, 2, 3);
+      ctx.fillRect(px + 6, by + 8, 4, 3);
+
+      ctx.fillStyle = '#ffea20';
       ctx.fillRect(px + 7, by + 7, 2, 4);
+      ctx.fillRect(px + 6, by + 9, 4, 1);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(px + 7, by + 8, 2, 2);
       break;
     }
     case 'bomb': {
-      // Classic bomb icon with '1' badge
-      ctx.fillStyle = '#10141e';
+      // 16-Bit bomb badge with brass collar, fuse spark, and gold '+1' numeral
+      ctx.fillStyle = '#080c14';
       ctx.beginPath();
       ctx.arc(px + 8, by + 9, 5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Fuse spark
-      ctx.fillStyle = '#f0a020';
-      ctx.fillRect(px + 7, by + 3, 2, 2);
-      ctx.fillStyle = '#ffe030';
+      ctx.fillStyle = '#1e2c44';
+      ctx.beginPath();
+      ctx.arc(px + 8, by + 9, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Specular shine glint
+      ctx.fillStyle = '#7294c2';
+      ctx.fillRect(px + 6, by + 6, 2, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(px + 6, by + 6, 1, 1);
+
+      // Brass neck
+      ctx.fillStyle = '#d49818';
+      ctx.fillRect(px + 7, by + 4, 2, 1);
+
+      // Animated fuse spark
+      const sparkFlip = Math.floor(timeMs / 90) % 2;
+      ctx.fillStyle = sparkFlip === 0 ? '#ffee24' : '#ff7000';
       ctx.fillRect(px + 9, by + 2, 2, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(px + 10, by + 2, 1, 1);
 
-      // White shine
-      ctx.fillStyle = '#80a0d0';
-      ctx.fillRect(px + 6, by + 7, 2, 2);
-
-      // Gold '1'
-      ctx.fillStyle = '#ffd020';
+      // Embossed Gold '1'
+      ctx.fillStyle = '#8c6400';
+      ctx.fillRect(px + 7, by + 7, 3, 5);
+      ctx.fillStyle = '#ffd420';
       ctx.fillRect(px + 8, by + 7, 1, 4);
       ctx.fillRect(px + 7, by + 8, 1, 1);
       ctx.fillRect(px + 7, by + 10, 3, 1);
@@ -216,25 +447,48 @@ function drawPowerup(
     }
     case 'speed': {
       // Golden winged roller skate
-      ctx.fillStyle = '#ffd020';
-      ctx.fillRect(px + 5, by + 7, 6, 4);
-      ctx.fillRect(px + 3, by + 9, 8, 2);
-
       // Wing feathers
+      ctx.fillStyle = '#789cc4';
+      ctx.fillRect(px + 5, by + 4, 6, 3);
+      ctx.fillStyle = '#d0e4fc';
+      ctx.fillRect(px + 6, by + 3, 5, 3);
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(px + 7, by + 4, 4, 2);
-      ctx.fillRect(px + 9, by + 3, 3, 2);
-      ctx.fillRect(px + 5, by + 5, 3, 2);
+      ctx.fillRect(px + 8, by + 2, 3, 2);
+      ctx.fillRect(px + 6, by + 4, 3, 1);
 
-      // Wheels
-      ctx.fillStyle = '#ff4444';
+      // Gold boot body
+      ctx.fillStyle = '#8a6006';
+      ctx.fillRect(px + 4, by + 7, 8, 4);
+      ctx.fillStyle = '#e8a810';
+      ctx.fillRect(px + 5, by + 7, 6, 3);
+      ctx.fillRect(px + 3, by + 9, 8, 2);
+      ctx.fillStyle = '#ffe240';
+      ctx.fillRect(px + 5, by + 7, 5, 1);
+      ctx.fillRect(px + 3, by + 9, 3, 1);
+
+      // Red roller wheels with silver hubs
+      ctx.fillStyle = '#d41c1c';
       ctx.fillRect(px + 4, by + 11, 2, 2);
       ctx.fillRect(px + 8, by + 11, 2, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(px + 4, by + 11, 1, 1);
+      ctx.fillRect(px + 8, by + 11, 1, 1);
       break;
     }
     case 'pass': {
-      // Ghost / pass-through phantom silhouette
-      ctx.fillStyle = '#b070f8';
+      // Ethereal phantom silhouette with radiant violet / amethyst aura
+      ctx.fillStyle = '#340a54';
+      ctx.beginPath();
+      ctx.arc(px + 8, by + 6, 5, Math.PI, 0);
+      ctx.lineTo(px + 13, by + 12);
+      ctx.lineTo(px + 11, by + 10);
+      ctx.lineTo(px + 8, by + 12);
+      ctx.lineTo(px + 5, by + 10);
+      ctx.lineTo(px + 3, by + 12);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#7c20c0';
       ctx.beginPath();
       ctx.arc(px + 8, by + 6, 4, Math.PI, 0);
       ctx.lineTo(px + 12, by + 11);
@@ -245,17 +499,33 @@ function drawPowerup(
       ctx.closePath();
       ctx.fill();
 
-      // Ghost eyes
+      ctx.fillStyle = '#b860f8';
+      ctx.fillRect(px + 6, by + 5, 4, 4);
+
+      // Glowing white phantom eyes
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(px + 6, by + 6, 1, 2);
       ctx.fillRect(px + 9, by + 6, 1, 2);
       break;
     }
   }
+
+  // Subtle Pickup Sparkle: 4-pointed twinkle glint on corner
+  const sparkleCycle = (timeMs % 1200) / 1200;
+  if (sparkleCycle < 0.3) {
+    const sx = px + 12;
+    const sy = by + 2;
+    ctx.fillStyle = '#ffee60';
+    ctx.fillRect(sx, sy - 1, 1, 3);
+    ctx.fillRect(sx - 1, sy, 3, 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx, sy, 1, 1);
+  }
 }
 
 /**
- * Bomb Sprite: 3D round sphere, pulsating urgency crimson blink on last 6 ticks, animated fuse spark
+ * Bomb Sprite: 16-bit shaded spherical bomb with metallic brass neck,
+ * animated fuse spark, pulsating heartbeat scale, and high-contrast danger flash at low fuse.
  */
 function drawBomb(
   ctx: CanvasRenderingContext2D,
@@ -265,72 +535,140 @@ function drawBomb(
   timeMs: number
 ): void {
   const isUrgent = fuse <= 6;
-  const blinkRed = isUrgent && Math.floor(timeMs / 100) % 2 === 0;
+  const blinkRed = isUrgent && Math.floor(timeMs / 80) % 2 === 0;
 
   // Center of the 16x16 cell
   const cx = px + 8;
   const cy = py + 9;
-  const radius = isUrgent ? 5.5 + Math.sin(timeMs / 60) * 0.5 : 5.5;
+  const baseRadius = 5.2;
+  const radius = isUrgent ? baseRadius + Math.abs(Math.sin(timeMs / 70)) * 1.2 : baseRadius;
 
-  // Drop shadow
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+  // Ground drop shadow (distinguishes stacked bomb cleanly from floor / powerups)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
   ctx.beginPath();
-  ctx.ellipse(cx, cy + 5, 5, 2, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, cy + 5, 5.5, 2.2, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Bomb sphere body
-  ctx.fillStyle = blinkRed ? '#ff2040' : '#141724';
-  ctx.beginPath();
-  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  ctx.fill();
+  if (blinkRed) {
+    // High-contrast Urgent Detonation Flash
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 0.8, 0, Math.PI * 2);
+    ctx.fill();
 
-  // 3D Sphere outline & shading
-  ctx.strokeStyle = blinkRed ? '#ffffff' : '#3a4460';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+    ctx.fillStyle = '#ff1838';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
 
-  // Specular shine glint
-  ctx.fillStyle = blinkRed ? '#ffffff' : '#88a4d4';
-  ctx.fillRect(cx - 3, cy - 3, 2, 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(cx - 3, cy - 3, 1, 1);
+    ctx.fillStyle = '#ff788c';
+    ctx.fillRect(cx - 3, cy - 3, 2, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - 3, cy - 3, 1, 1);
+  } else {
+    // 16-Bit Shaded Spherical Body (4-tone Mega Drive rendering)
+    // Outer dark contour
+    ctx.fillStyle = '#080c14';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fill();
 
-  // Top brass collar
+    // Deep shadow body
+    ctx.fillStyle = '#162032';
+    ctx.beginPath();
+    ctx.arc(cx - 0.5, cy - 0.5, radius - 0.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Mid slate-blue sphere body
+    ctx.fillStyle = '#2a3c58';
+    ctx.beginPath();
+    ctx.arc(cx - 1, cy - 1, radius - 1.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Upper-left highlight crest
+    ctx.fillStyle = '#4e709a';
+    ctx.beginPath();
+    ctx.arc(cx - 1.5, cy - 1.5, radius - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Specular highlight crescent & glint dot
+    ctx.fillStyle = '#7ca0cc';
+    ctx.fillRect(cx - 3, cy - 3, 2, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cx - 3, cy - 3, 1, 1);
+  }
+
+  // Top Brass Collar
+  ctx.fillStyle = '#78500c';
+  ctx.fillRect(cx - 2, cy - radius - 2, 4, 2);
   ctx.fillStyle = '#d49818';
-  ctx.fillRect(cx - 1.5, cy - radius - 1.5, 3, 2);
+  ctx.fillRect(cx - 1.5, cy - radius - 2, 3, 2);
+  ctx.fillStyle = '#ffe440';
+  ctx.fillRect(cx - 1.5, cy - radius - 2, 3, 1);
 
-  // Curved fuse string
-  ctx.strokeStyle = '#c4aa80';
+  // Curved Woven Fuse String
+  ctx.strokeStyle = '#705838';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(cx, cy - radius - 1);
-  ctx.quadraticCurveTo(cx + 2, cy - radius - 3, cx + 4, cy - radius - 2);
+  ctx.quadraticCurveTo(cx + 2, cy - radius - 3.5, cx + 4, cy - radius - 2);
+  ctx.stroke();
+  ctx.strokeStyle = '#bfa878';
+  ctx.beginPath();
+  ctx.moveTo(cx + 1, cy - radius - 1.5);
+  ctx.lineTo(cx + 3, cy - radius - 2.5);
   ctx.stroke();
 
-  // Animated Fuse Spark (2 alternating frames)
-  const sparkFrame = Math.floor(timeMs / 90) % 2;
+  // Animated 4-Frame Fuse Spark
+  const sparkFrame = Math.floor(timeMs / 60) % 4;
   const sx = cx + 4;
   const sy = cy - radius - 2;
 
   if (sparkFrame === 0) {
-    ctx.fillStyle = '#fff030';
-    ctx.fillRect(sx - 1, sy - 1, 3, 3);
+    // 4-point cross flare
     ctx.fillStyle = '#ff6010';
-    ctx.fillRect(sx, sy - 2, 1, 1);
-    ctx.fillRect(sx + 2, sy, 1, 1);
+    ctx.fillRect(sx - 2, sy - 1, 5, 3);
+    ctx.fillRect(sx - 1, sy - 2, 3, 5);
+    ctx.fillStyle = '#ffea20';
+    ctx.fillRect(sx - 1, sy - 1, 3, 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx, sy, 1, 1);
+  } else if (sparkFrame === 1) {
+    // Bursting star with flying embers
+    ctx.fillStyle = '#ff3800';
+    ctx.fillRect(sx - 1, sy - 1, 3, 3);
+    ctx.fillStyle = '#ffee24';
+    ctx.fillRect(sx, sy, 2, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx, sy, 1, 1);
+    // Embers
+    ctx.fillStyle = '#ff8800';
+    ctx.fillRect(sx + 2, sy - 2, 1, 1);
     ctx.fillRect(sx - 2, sy + 1, 1, 1);
+  } else if (sparkFrame === 2) {
+    // Intense center flare
+    ctx.fillStyle = '#ff7010';
+    ctx.fillRect(sx - 2, sy, 5, 1);
+    ctx.fillRect(sx, sy - 2, 1, 5);
+    ctx.fillStyle = '#ffea20';
+    ctx.fillRect(sx - 1, sy - 1, 3, 3);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx - 1, sy - 1, 2, 2);
   } else {
+    // Dual ember fizzle
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(sx, sy, 2, 2);
-    ctx.fillStyle = '#ff8810';
-    ctx.fillRect(sx - 2, sy - 1, 2, 2);
-    ctx.fillRect(sx + 1, sy - 2, 2, 1);
-    ctx.fillRect(sx + 1, sy + 1, 1, 2);
+    ctx.fillStyle = '#ff4400';
+    ctx.fillRect(sx - 1, sy - 1, 1, 1);
+    ctx.fillRect(sx + 1, sy + 1, 1, 1);
+    ctx.fillRect(sx + 2, sy - 1, 1, 1);
   }
 }
 
 /**
- * Explosion Blast Sprite: Authentic 5-part multi-frame flame burst
+ * Explosion Blast Sprite: Sega Genesis 16-bit multi-frame flame burst with
+ * 5 distinct tones (dark ember rim, vivid red, intense orange, bright sun yellow, laser white core),
+ * animated flame turbulence, and clear directional caps making blast reach immediately obvious.
  */
 function drawBlast(
   ctx: CanvasRenderingContext2D,
@@ -340,153 +678,203 @@ function drawBlast(
   ticksRemaining: number,
   timeMs: number
 ): void {
-  // 3-frame animated flame ripple
-  const flameFrame = Math.floor(timeMs / 70) % 3;
-  const opacity = Math.min(1, Math.max(0.5, ticksRemaining / 3));
+  // 4-frame animated flame ripple with spatial offset for organic wave propagation
+  const flameFrame = Math.floor(timeMs / 55 + px * 0.2 + py * 0.3) % 4;
+  const opacity = Math.min(1, Math.max(0.55, ticksRemaining / 3));
   ctx.save();
   ctx.globalAlpha = opacity;
 
-  // Colors
-  const cCore = '#ffffff'; // laser white core
-  const cMid = '#ffe020';  // bright flame yellow
-  const cOuter = '#ff5500'; // intense orange
-  const cEdge = '#cc1100';  // dark flame red
+  // 5-Tone Sega Genesis Flame Palette
+  const cEdge = '#540400';    // dark ember edge
+  const cRed = '#e82a00';     // vivid flame red
+  const cOrange = '#ff7200';  // hot flame orange
+  const cYellow = '#ffee24';  // bright sun yellow
+  const cWhite = '#ffffff';   // laser white core
 
   switch (type) {
     case 'center': {
-      // 4-way blast hub
+      // 4-Way Detonation Hub
       ctx.fillStyle = cEdge;
       ctx.fillRect(px + 1, py + 1, 14, 14);
+      // Flame spikes
+      ctx.fillRect(px, py + 3, 16, 10);
+      ctx.fillRect(px + 3, py, 10, 16);
 
-      ctx.fillStyle = cOuter;
+      ctx.fillStyle = cRed;
       ctx.fillRect(px + 2, py + 2, 12, 12);
-      if (flameFrame === 0) {
-        ctx.fillRect(px, py + 4, 16, 8);
-        ctx.fillRect(px + 4, py, 8, 16);
+      if (flameFrame % 2 === 0) {
+        ctx.fillRect(px + 1, py + 4, 14, 8);
+        ctx.fillRect(px + 4, py + 1, 8, 14);
       } else {
-        ctx.fillRect(px + 1, py + 5, 14, 6);
-        ctx.fillRect(px + 5, py + 1, 6, 14);
+        ctx.fillRect(px + 1, py + 3, 14, 10);
+        ctx.fillRect(px + 3, py + 1, 10, 14);
       }
 
-      ctx.fillStyle = cMid;
+      ctx.fillStyle = cOrange;
+      ctx.fillRect(px + 3, py + 3, 10, 10);
+      ctx.fillRect(px + 2, py + 5, 12, 6);
+      ctx.fillRect(px + 5, py + 2, 6, 12);
+
+      ctx.fillStyle = cYellow;
       ctx.fillRect(px + 4, py + 4, 8, 8);
 
-      ctx.fillStyle = cCore;
+      ctx.fillStyle = cWhite;
       ctx.fillRect(px + 6, py + 6, 4, 4);
+      // Diagonal core glints
+      ctx.fillRect(px + 5, py + 7, 6, 2);
+      ctx.fillRect(px + 7, py + 5, 2, 6);
       break;
     }
     case 'arm_h': {
-      // Horizontal flame corridor
+      // Horizontal Flame Corridor
+      const wav = flameFrame % 2;
       ctx.fillStyle = cEdge;
-      ctx.fillRect(px, py + 3, TILE_PX, 10);
+      ctx.fillRect(px, py + 2 + wav, TILE_PX, 12 - wav * 2);
 
-      ctx.fillStyle = cOuter;
-      const ripple = flameFrame === 1 ? 1 : 0;
-      ctx.fillRect(px, py + 4 + ripple, TILE_PX, 8 - ripple * 2);
+      ctx.fillStyle = cRed;
+      ctx.fillRect(px, py + 3 + wav, TILE_PX, 10 - wav * 2);
 
-      ctx.fillStyle = cMid;
+      ctx.fillStyle = cOrange;
+      ctx.fillRect(px, py + 5, TILE_PX, 6);
+
+      ctx.fillStyle = cYellow;
       ctx.fillRect(px, py + 6, TILE_PX, 4);
 
-      ctx.fillStyle = cCore;
+      ctx.fillStyle = cWhite;
       ctx.fillRect(px, py + 7, TILE_PX, 2);
       break;
     }
     case 'arm_v': {
-      // Vertical flame corridor
+      // Vertical Flame Corridor
+      const wav = flameFrame % 2;
       ctx.fillStyle = cEdge;
-      ctx.fillRect(px + 3, py, 10, TILE_PX);
+      ctx.fillRect(px + 2 + wav, py, 12 - wav * 2, TILE_PX);
 
-      ctx.fillStyle = cOuter;
-      const ripple = flameFrame === 1 ? 1 : 0;
-      ctx.fillRect(px + 4 + ripple, py, 8 - ripple * 2, TILE_PX);
+      ctx.fillStyle = cRed;
+      ctx.fillRect(px + 3 + wav, py, 10 - wav * 2, TILE_PX);
 
-      ctx.fillStyle = cMid;
+      ctx.fillStyle = cOrange;
+      ctx.fillRect(px + 5, py, 6, TILE_PX);
+
+      ctx.fillStyle = cYellow;
       ctx.fillRect(px + 6, py, 4, TILE_PX);
 
-      ctx.fillStyle = cCore;
+      ctx.fillStyle = cWhite;
       ctx.fillRect(px + 7, py, 2, TILE_PX);
       break;
     }
     case 'end_up': {
-      // Rounded flame cap pointing up
+      // Rounded flame arrowhead pointing UP (blast reach edge)
       ctx.fillStyle = cEdge;
       ctx.fillRect(px + 3, py + 4, 10, 12);
       ctx.fillRect(px + 5, py + 2, 6, 4);
       ctx.fillRect(px + 7, py + 1, 2, 2);
 
-      ctx.fillStyle = cOuter;
+      ctx.fillStyle = cRed;
       ctx.fillRect(px + 4, py + 5, 8, 11);
       ctx.fillRect(px + 6, py + 3, 4, 4);
+      ctx.fillRect(px + 7, py + 2, 2, 2);
 
-      ctx.fillStyle = cMid;
-      ctx.fillRect(px + 6, py + 6, 4, 10);
+      ctx.fillStyle = cOrange;
+      ctx.fillRect(px + 5, py + 6, 6, 10);
+      ctx.fillRect(px + 6, py + 4, 4, 3);
 
-      ctx.fillStyle = cCore;
+      ctx.fillStyle = cYellow;
+      ctx.fillRect(px + 6, py + 7, 4, 9);
+      ctx.fillRect(px + 7, py + 5, 2, 3);
+
+      ctx.fillStyle = cWhite;
       ctx.fillRect(px + 7, py + 8, 2, 8);
       break;
     }
     case 'end_down': {
-      // Rounded flame cap pointing down
+      // Rounded flame arrowhead pointing DOWN (blast reach edge)
       ctx.fillStyle = cEdge;
       ctx.fillRect(px + 3, py, 10, 12);
       ctx.fillRect(px + 5, py + 10, 6, 4);
       ctx.fillRect(px + 7, py + 13, 2, 2);
 
-      ctx.fillStyle = cOuter;
+      ctx.fillStyle = cRed;
       ctx.fillRect(px + 4, py, 8, 11);
       ctx.fillRect(px + 6, py + 9, 4, 4);
+      ctx.fillRect(px + 7, py + 12, 2, 2);
 
-      ctx.fillStyle = cMid;
-      ctx.fillRect(px + 6, py, 4, 10);
+      ctx.fillStyle = cOrange;
+      ctx.fillRect(px + 5, py, 6, 10);
+      ctx.fillRect(px + 6, py + 9, 4, 3);
 
-      ctx.fillStyle = cCore;
+      ctx.fillStyle = cYellow;
+      ctx.fillRect(px + 6, py, 4, 9);
+      ctx.fillRect(px + 7, py + 8, 2, 3);
+
+      ctx.fillStyle = cWhite;
       ctx.fillRect(px + 7, py, 2, 8);
       break;
     }
     case 'end_left': {
-      // Rounded flame cap pointing left
+      // Rounded flame arrowhead pointing LEFT (blast reach edge)
       ctx.fillStyle = cEdge;
       ctx.fillRect(px + 4, py + 3, 12, 10);
       ctx.fillRect(px + 2, py + 5, 4, 6);
       ctx.fillRect(px + 1, py + 7, 2, 2);
 
-      ctx.fillStyle = cOuter;
+      ctx.fillStyle = cRed;
       ctx.fillRect(px + 5, py + 4, 11, 8);
       ctx.fillRect(px + 3, py + 6, 4, 4);
+      ctx.fillRect(px + 2, py + 7, 2, 2);
 
-      ctx.fillStyle = cMid;
-      ctx.fillRect(px + 6, py + 6, 10, 4);
+      ctx.fillStyle = cOrange;
+      ctx.fillRect(px + 6, py + 5, 10, 6);
+      ctx.fillRect(px + 4, py + 6, 3, 4);
 
-      ctx.fillStyle = cCore;
+      ctx.fillStyle = cYellow;
+      ctx.fillRect(px + 7, py + 6, 9, 4);
+      ctx.fillRect(px + 5, py + 7, 3, 2);
+
+      ctx.fillStyle = cWhite;
       ctx.fillRect(px + 8, py + 7, 8, 2);
       break;
     }
     case 'end_right': {
-      // Rounded flame cap pointing right
+      // Rounded flame arrowhead pointing RIGHT (blast reach edge)
       ctx.fillStyle = cEdge;
       ctx.fillRect(px, py + 3, 12, 10);
       ctx.fillRect(px + 10, py + 5, 4, 6);
       ctx.fillRect(px + 13, py + 7, 2, 2);
 
-      ctx.fillStyle = cOuter;
+      ctx.fillStyle = cRed;
       ctx.fillRect(px, py + 4, 11, 8);
       ctx.fillRect(px + 9, py + 6, 4, 4);
+      ctx.fillRect(px + 12, py + 7, 2, 2);
 
-      ctx.fillStyle = cMid;
-      ctx.fillRect(px, py + 6, 10, 4);
+      ctx.fillStyle = cOrange;
+      ctx.fillRect(px, py + 5, 10, 6);
+      ctx.fillRect(px + 9, py + 6, 3, 4);
 
-      ctx.fillStyle = cCore;
+      ctx.fillStyle = cYellow;
+      ctx.fillRect(px, py + 6, 9, 4);
+      ctx.fillRect(px + 8, py + 7, 3, 2);
+
+      ctx.fillStyle = cWhite;
       ctx.fillRect(px, py + 7, 8, 2);
       break;
     }
+  }
+
+  // Short-lived animated flame spark embers around perimeter
+  if (flameFrame === 1 || flameFrame === 3) {
+    ctx.fillStyle = cYellow;
+    ctx.fillRect(px + 2, py + 2, 1, 1);
+    ctx.fillRect(px + 13, py + 13, 1, 1);
   }
 
   ctx.restore();
 }
 
 /**
- * Authentic Bomberman Player Silhouette: White helmet, pink antenna ball, pink face,
- * distinct seat-colored suit, belt, boots, and 4-directional poses.
+ * Authentic 16-Bit Bomberman Player Character: White spherical helmet with pompom,
+ * expressive face visor with eye shines and blush, color-coded multi-tone suit per seat,
+ * leather belt with gold buckle, boots, and directional walking step bob.
  */
 function drawPlayer(
   ctx: CanvasRenderingContext2D,
@@ -495,18 +883,19 @@ function drawPlayer(
   player: BombermanPublicPlayer,
   isYou: boolean,
   facing: Dir,
-  timeMs: number
+  timeMs: number,
+  isOnBomb = false
 ): void {
-  const seatColor = SEAT_COLORS[player.seat % SEAT_COLORS.length] ?? '#2ee66b';
+  const pal = SEAT_PALETTES[player.seat % SEAT_PALETTES.length] ?? SEAT_PALETTES[0]!;
 
-  // Dead Player: Cute floating ghost silhouette
+  // Dead Player: 16-Bit floating angel ghost
   if (!player.alive || player.gameOver) {
     const floatY = Math.round(Math.sin(timeMs / 200) * 1.5);
     const gy = py + floatY;
 
     ctx.save();
     ctx.globalAlpha = 0.65;
-    ctx.fillStyle = '#d0e4ff';
+    ctx.fillStyle = '#b8d4fc';
     ctx.beginPath();
     ctx.arc(px + 8, gy + 6, 5, Math.PI, 0);
     ctx.lineTo(px + 13, gy + 12);
@@ -517,15 +906,19 @@ function drawPlayer(
     ctx.closePath();
     ctx.fill();
 
-    // Angel halo
-    ctx.strokeStyle = '#ffd820';
+    ctx.fillStyle = '#e4f0ff';
+    ctx.fillRect(px + 5, gy + 4, 6, 4);
+
+    // Angel golden halo
+    ctx.strokeStyle = '#ffd700';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.ellipse(px + 8, gy + 1, 4, 1.5, 0, 0, Math.PI * 2);
     ctx.stroke();
 
     // Ghost dead 'X' eyes
-    ctx.strokeStyle = '#203050';
+    ctx.strokeStyle = '#182438';
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(px + 5, gy + 5);
     ctx.lineTo(px + 7, gy + 7);
@@ -540,96 +933,180 @@ function drawPlayer(
     return;
   }
 
-  // Walk bob animation
-  const bob = Math.floor(timeMs / 150) % 2 === 0 ? 0 : 1;
+  // Walk step animation: 2-frame walking cycle every 140ms
+  const step = Math.floor(timeMs / 140) % 2;
+  const bob = step === 0 ? 0 : 1;
 
-  // Drop shadow
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  // Drop shadow underneath player
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.beginPath();
   ctx.ellipse(px + 8, py + 14, 5, 2, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 1. Antenna Ball (Pompom)
-  ctx.fillStyle = '#ff4878';
-  ctx.fillRect(px + 7, py + 0 + bob, 2, 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(px + 7, py + 0 + bob, 1, 1);
+  // If player is standing on a bomb, draw an amber hazard indicator under feet so danger zone is never obscured
+  if (isOnBomb) {
+    const pulseFlash = Math.floor(timeMs / 100) % 2 === 0;
+    ctx.strokeStyle = pulseFlash ? '#ffea20' : '#ff4400';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(px + 8, py + 14, 6.5, 2.8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
-  // 2. White Helmet Base
-  ctx.fillStyle = '#b8c4d8'; // helmet shade
+  // 1. Antenna Pompom (Pink / Seat ball with 1 px wiggle during walk)
+  const pomWiggle = step === 1 && (facing === 'left' || facing === 'right') ? (facing === 'left' ? 1 : -1) : 0;
+  ctx.fillStyle = '#202838';
+  ctx.fillRect(px + 7 + pomWiggle, py + 1 + bob, 2, 1);
+
+  ctx.fillStyle = pal.pompom;
+  ctx.fillRect(px + 6 + pomWiggle, py - 1 + bob, 4, 3);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(px + 7 + pomWiggle, py - 1 + bob, 1, 1);
+
+  // 2. White Spherical Helmet (4-tone 16-bit shading)
+  // Helmet dark contour
+  ctx.fillStyle = '#101420';
   ctx.fillRect(px + 3, py + 2 + bob, 10, 7);
-  ctx.fillStyle = '#f0f4fc'; // helmet main
-  ctx.fillRect(px + 4, py + 2 + bob, 8, 7);
-  ctx.fillStyle = '#ffffff'; // helmet top shine
+
+  // Deep shadow edge
+  ctx.fillStyle = '#7c8ea6';
+  ctx.fillRect(px + 3, py + 4 + bob, 10, 5);
+
+  // Mid-tone helmet shade
+  ctx.fillStyle = '#a8bcd4';
+  ctx.fillRect(px + 4, py + 3 + bob, 8, 6);
+
+  // Bright white helmet face
+  ctx.fillStyle = '#e8f0fc';
+  ctx.fillRect(px + 4, py + 2 + bob, 8, 6);
+
+  // Top specular highlight
+  ctx.fillStyle = '#ffffff';
   ctx.fillRect(px + 5, py + 2 + bob, 6, 2);
 
-  // 3. Face Plate & Eyes based on facing
+  // 3. Face Plate & Eyes based on facing direction
   if (facing === 'down') {
-    // Front facing
-    ctx.fillStyle = '#ffc0a8'; // face visor
+    // Front facing visor
+    ctx.fillStyle = '#20283c'; // visor bezel
+    ctx.fillRect(px + 4, py + 3 + bob, 8, 5);
+
+    ctx.fillStyle = '#ffb498'; // warm peach face
     ctx.fillRect(px + 5, py + 4 + bob, 6, 4);
 
-    // Oval black eyes
-    ctx.fillStyle = '#101424';
+    // Cute pink blush
+    ctx.fillStyle = '#ff708c';
+    ctx.fillRect(px + 5, py + 7 + bob, 1, 1);
+    ctx.fillRect(px + 10, py + 7 + bob, 1, 1);
+
+    // 2 Oval pill eyes with white glints
+    ctx.fillStyle = '#0e1220';
     ctx.fillRect(px + 6, py + 5 + bob, 1, 2);
     ctx.fillRect(px + 9, py + 5 + bob, 1, 2);
-    // Eye shines
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(px + 6, py + 5 + bob, 1, 1);
     ctx.fillRect(px + 9, py + 5 + bob, 1, 1);
   } else if (facing === 'up') {
-    // Back facing: helmet only with blue-gray collar
-    ctx.fillStyle = '#9aaac4';
+    // Back facing: helmet rear with dark blue-gray neckline seam
+    ctx.fillStyle = '#8294ac';
     ctx.fillRect(px + 5, py + 6 + bob, 6, 2);
+    ctx.fillStyle = '#283448';
+    ctx.fillRect(px + 5, py + 8 + bob, 6, 1);
   } else if (facing === 'left') {
     // Profile facing left
-    ctx.fillStyle = '#ffc0a8';
+    ctx.fillStyle = '#20283c';
+    ctx.fillRect(px + 3, py + 3 + bob, 7, 5);
+
+    ctx.fillStyle = '#ffb498';
     ctx.fillRect(px + 4, py + 4 + bob, 5, 4);
-    ctx.fillStyle = '#101424';
+
+    ctx.fillStyle = '#ff708c';
+    ctx.fillRect(px + 4, py + 7 + bob, 1, 1);
+
+    // Single profile pill eye
+    ctx.fillStyle = '#0e1220';
     ctx.fillRect(px + 5, py + 5 + bob, 1, 2);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(px + 5, py + 5 + bob, 1, 1);
   } else if (facing === 'right') {
     // Profile facing right
-    ctx.fillStyle = '#ffc0a8';
+    ctx.fillStyle = '#20283c';
+    ctx.fillRect(px + 6, py + 3 + bob, 7, 5);
+
+    ctx.fillStyle = '#ffb498';
     ctx.fillRect(px + 7, py + 4 + bob, 5, 4);
-    ctx.fillStyle = '#101424';
+
+    ctx.fillStyle = '#ff708c';
+    ctx.fillRect(px + 11, py + 7 + bob, 1, 1);
+
+    // Single profile pill eye
+    ctx.fillStyle = '#0e1220';
     ctx.fillRect(px + 10, py + 5 + bob, 1, 2);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(px + 10, py + 5 + bob, 1, 1);
   }
 
-  // 4. Body Suit (Seat Color)
-  ctx.fillStyle = seatColor;
+  // 4. Color-Coded Multi-Tone Body Suit
+  // Deep shadow sides
+  ctx.fillStyle = pal.dark;
   ctx.fillRect(px + 4, py + 9 + bob, 8, 3);
+  // Mid suit body
+  ctx.fillStyle = pal.mid;
+  ctx.fillRect(px + 5, py + 9 + bob, 6, 3);
+  // Light chest highlight
+  ctx.fillStyle = pal.light;
+  ctx.fillRect(px + 6, py + 9 + bob, 4, 1);
 
-  // 5. Dark Belt with Gold Buckle
-  ctx.fillStyle = '#181824';
+  // White gloved hands
+  ctx.fillStyle = '#f0f4fc';
+  ctx.fillRect(px + 3, py + 10 + bob, 1, 2);
+  ctx.fillRect(px + 12, py + 10 + bob, 1, 2);
+
+  // 5. Dark Leather Belt with Golden Buckle
+  ctx.fillStyle = '#10141c';
   ctx.fillRect(px + 4, py + 12 + bob, 8, 1);
-  ctx.fillStyle = '#ffd020';
+  ctx.fillStyle = '#ffd420';
   ctx.fillRect(px + 7, py + 12 + bob, 2, 1);
 
-  // 6. Boots
-  ctx.fillStyle = '#f0f4fc';
-  ctx.fillRect(px + 4, py + 13 + bob, 3, 2);
-  ctx.fillRect(px + 9, py + 13 + bob, 3, 2);
-  ctx.fillStyle = '#181824'; // Soles
+  // 6. Shaded Boots with Step Walking Animation
+  const footL = step === 0 ? 0 : 1;
+  const footR = step === 0 ? 1 : 0;
+
+  // Left boot
+  ctx.fillStyle = pal.boots;
+  ctx.fillRect(px + 4, py + 13 + footL, 3, 2);
+  ctx.fillStyle = pal.bootSole;
   ctx.fillRect(px + 4, py + 15, 3, 1);
+
+  // Right boot
+  ctx.fillStyle = pal.boots;
+  ctx.fillRect(px + 9, py + 13 + footR, 3, 2);
+  ctx.fillStyle = pal.bootSole;
   ctx.fillRect(px + 9, py + 15, 3, 1);
 
   // 7. "YOU" Indicator Arrow
   if (isYou) {
-    const arrowY = py - 4 + Math.round(Math.sin(timeMs / 120) * 1.5);
-    ctx.fillStyle = '#22e0ff';
+    const arrowY = py - 6 + Math.round(Math.sin(timeMs / 120) * 1.5);
+    // Drop shadow
+    ctx.fillStyle = '#06101c';
     ctx.beginPath();
-    ctx.moveTo(px + 8, arrowY + 3);
+    ctx.moveTo(px + 8, arrowY + 5);
+    ctx.lineTo(px + 4, arrowY + 1);
+    ctx.lineTo(px + 12, arrowY + 1);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cyan arrow body
+    ctx.fillStyle = '#28e4ff';
+    ctx.beginPath();
+    ctx.moveTo(px + 8, arrowY + 4);
     ctx.lineTo(px + 5, arrowY);
     ctx.lineTo(px + 11, arrowY);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#003050';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+
+    // Bright highlight edge
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px + 7, arrowY + 1, 2, 1);
   }
 }
 
@@ -758,6 +1235,42 @@ export function BombermanBoard({
   // Floating notifications (+1000 KOS, powerup badges)
   const popupsRef = React.useRef<FloatingPopup[]>([]);
   const nextPopupIdRef = React.useRef(1);
+
+  // Soft block destruction crumble particles (capped at 48 max for mobile performance)
+  const crumblesRef = React.useRef<CrumbleParticle[]>([]);
+  const prevGridRef = React.useRef<number[]>([]);
+
+  // Detect soft blocks destroyed by blast detonations and spawn 16-bit brick rubble
+  React.useEffect(() => {
+    if (prevGridRef.current.length === grid.length) {
+      const rubbleColors = ['#f07438', '#c84a1c', '#9c3214', '#5c1808', '#ff9a5c', '#d65824'];
+      for (let i = 0; i < grid.length; i++) {
+        if (prevGridRef.current[i] === TILE_SOFT && grid[i] === TILE_EMPTY) {
+          const gx = i % ARENA_W;
+          const gy = Math.floor(i / ARENA_W);
+          const px = gx * TILE_PX + 2;
+          const py = gy * TILE_PX + 2;
+          // Spawn 6-8 particles
+          for (let p = 0; p < 7; p++) {
+            if (crumblesRef.current.length >= 48) {
+              crumblesRef.current.shift();
+            }
+            crumblesRef.current.push({
+              x: px + (p % 3) * 4 + Math.random() * 2,
+              y: py + Math.floor(p / 3) * 4 + Math.random() * 2,
+              vx: (Math.random() - 0.5) * 1.8,
+              vy: -Math.random() * 1.6 - 0.4,
+              color: rubbleColors[p % rubbleColors.length]!,
+              size: p % 2 === 0 ? 2 : 1,
+              born: Date.now(),
+              duration: 380,
+            });
+          }
+        }
+      }
+    }
+    prevGridRef.current = [...grid];
+  }, [grid]);
 
   const addPopup = (text: string, color: string, gx: number, gy: number) => {
     popupsRef.current.push({
@@ -1025,6 +1538,16 @@ export function BombermanBoard({
         }
       }
 
+      // (c2) Draw Destruction Crumble Particles
+      crumblesRef.current = crumblesRef.current.filter((p) => now - p.born < p.duration);
+      for (const p of crumblesRef.current) {
+        const age = (now - p.born) / 1000;
+        const curX = p.x + p.vx * age * 28;
+        const curY = p.y + p.vy * age * 28 + 0.5 * 160 * age * age; // gravity fall
+        octx.fillStyle = p.color;
+        octx.fillRect(Math.round(curX), Math.round(curY), p.size, p.size);
+      }
+
       // (d) Live Bombs
       for (const b of bombs) {
         const px = b.x * TILE_PX;
@@ -1064,14 +1587,15 @@ export function BombermanBoard({
       }
 
       // (f) Players (Sorted by Y so front players overlap naturally)
+      const bombSet = new Set(bombs.map((b) => `${b.x},${b.y}`));
       const sortedPlayers = [...viewPlayers].sort((a, b) => a.y - b.y);
       for (const p of sortedPlayers) {
         const px = p.x * TILE_PX;
         const py = p.y * TILE_PX;
         const facing = facingMapRef.current[p.id] ?? 'down';
-        drawPlayer(octx, px, py, p, p.id === youId, facing, now);
+        const isOnBomb = bombSet.has(`${p.x},${p.y}`);
+        drawPlayer(octx, px, py, p, p.id === youId, facing, now, isOnBomb);
       }
-
       // 2. Render to Display Canvas with crisp pixel art scaling + Screen Shake
       const dw = ARENA_W * cellSize;
       const dh = ARENA_H * cellSize;
@@ -1110,7 +1634,10 @@ export function BombermanBoard({
         ctx.font = 'bold 12px monospace';
         ctx.textAlign = 'center';
         ctx.fillStyle = '#000000';
-        ctx.fillText(pop.text, screenX + 1, screenY + 1);
+        ctx.fillText(pop.text, screenX + 1, screenY);
+        ctx.fillText(pop.text, screenX - 1, screenY);
+        ctx.fillText(pop.text, screenX, screenY + 1);
+        ctx.fillText(pop.text, screenX, screenY - 1);
         ctx.fillStyle = pop.color;
         ctx.fillText(pop.text, screenX, screenY);
         ctx.restore();
@@ -1139,51 +1666,54 @@ export function BombermanBoard({
       ref={containerRef}
       className="relative w-full h-full flex flex-col items-center justify-between p-1 sm:p-3 overflow-hidden select-none touch-none bg-pa-bg font-display"
     >
-      {/* TOP HUD BAR */}
-      <div className="w-full max-w-2xl flex items-center justify-between px-3 py-1.5 bg-pa-surface border-2 border-pa-border shadow-[2px_2px_0_var(--color-pa-shadow)] z-20 text-xs shrink-0">
+      {/* TOP HUD BAR: 16-Bit Sega Genesis Arcade Dashboard */}
+      <div className="w-full max-w-2xl flex items-center justify-between px-3 py-1.5 bg-[#0e1424] border-2 border-[#243454] shadow-[0_2px_8px_rgba(0,0,0,0.6),2px_2px_0_#060810] z-20 text-xs shrink-0">
         {/* Alive & Kills */}
-        <div className="flex items-center gap-3">
-          <div>
-            <span className="text-[10px] text-pa-ink-dim uppercase mr-1">ALIVE:</span>
-            <span className="font-bold text-pa-cyan tabular">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-[#141e36] px-2 py-0.5 border border-[#2a406c] shadow-[1px_1px_0_#000]">
+            <span className="text-[9px] text-[#7ea0d4] uppercase tracking-wider font-bold">ALIVE:</span>
+            <span className="font-bold text-[#38e0ff] tabular text-[11px]">
               {alivePlayers.length}/{viewPlayers.length}
             </span>
           </div>
           {you && (
-            <div className="border-l-2 border-pa-border pl-3">
-              <span className="text-[10px] text-pa-ink-dim uppercase mr-1">KILLS:</span>
-              <span className="font-bold text-pa-danger tabular">💀 {you.kills}</span>
+            <div className="flex items-center gap-1 bg-[#240e14] px-2 py-0.5 border border-[#641c28] shadow-[1px_1px_0_#000]">
+              <span className="text-[10px]">💀</span>
+              <span className="text-[9px] text-[#ff8094] uppercase tracking-wider font-bold">KOS:</span>
+              <span className="font-bold text-[#ff3858] tabular text-[11px]">{you.kills}</span>
             </div>
           )}
         </div>
 
         {/* Powers HUD (Blast Radius, Max Bombs, Speed, Pass) */}
         {you ? (
-          <div className="flex items-center gap-2.5">
-            <div title="Blast Radius" className="flex items-center gap-1">
-              <span>🔥</span>
-              <span className="font-bold text-pa-ink tabular">{you.blastRadius}</span>
+          <div className="flex items-center gap-1.5">
+            <div title="Blast Radius" className="flex items-center gap-1 bg-[#241006] px-2 py-0.5 border border-[#68240a] shadow-[1px_1px_0_#000]">
+              <span className="text-[10px]">🔥</span>
+              <span className="text-[9px] text-[#ff9438] font-bold">R</span>
+              <span className="font-bold text-[#ffea20] tabular text-[11px]">{you.blastRadius}</span>
             </div>
-            <div title="Max Bombs" className="flex items-center gap-1">
-              <span>💣</span>
-              <span className="font-bold text-pa-ink tabular">{you.maxBombs}</span>
+            <div title="Max Bombs" className="flex items-center gap-1 bg-[#141a28] px-2 py-0.5 border border-[#2c3e60] shadow-[1px_1px_0_#000]">
+              <span className="text-[10px]">💣</span>
+              <span className="text-[9px] text-[#90b2e8] font-bold">B</span>
+              <span className="font-bold text-[#ffd420] tabular text-[11px]">{you.maxBombs}</span>
             </div>
             {you.speed > 0 && (
-              <div title="Speed Boost" className="flex items-center gap-0.5 text-yellow-400">
-                <span>⚡</span>
-                <span className="font-bold tabular">+{you.speed}</span>
+              <div title="Speed Boost" className="flex items-center gap-1 bg-[#0a2024] px-1.5 py-0.5 border border-[#14545e] shadow-[1px_1px_0_#000]">
+                <span className="text-[10px]">⚡</span>
+                <span className="font-bold text-[#28e4ff] tabular text-[11px]">+{you.speed}</span>
               </div>
             )}
             {you.hasPass && (
-              <div title="Pass Through Bombs" className="flex items-center gap-0.5 text-purple-400">
-                <span>👻</span>
-                <span className="text-[9px] font-bold">PASS</span>
+              <div title="Pass Through Bombs" className="flex items-center gap-1 bg-[#200c30] px-1.5 py-0.5 border border-[#5c1c8a] shadow-[1px_1px_0_#000] text-[#d67cff]">
+                <span className="text-[10px]">👻</span>
+                <span className="text-[9px] font-bold tracking-wider">PASS</span>
               </div>
             )}
           </div>
         ) : (
-          <div className="text-[11px] font-bold tracking-wider text-pa-cyan animate-pulse">
-            SPECTATING
+          <div className="flex items-center gap-1.5 bg-[#141e36] px-2 py-0.5 border border-[#2a406c] text-[10px] font-bold tracking-wider text-[#38e0ff] animate-pulse">
+            <span>👁️</span> SPECTATING
           </div>
         )}
       </div>
@@ -1191,7 +1721,7 @@ export function BombermanBoard({
       {/* CENTER ARENA AREA */}
       <div className="relative flex-1 w-full flex items-center justify-center my-auto min-h-0">
         <div
-          className="relative border-4 border-pa-border shadow-[4px_4px_0_var(--color-pa-shadow)] bg-[#0b101c] overflow-hidden"
+          className="relative border-4 border-[#1e2a44] shadow-[0_0_16px_rgba(0,0,0,0.8),3px_3px_0_#080c14] bg-[#080c18] overflow-hidden"
           style={{
             width: totalW,
             height: totalH,

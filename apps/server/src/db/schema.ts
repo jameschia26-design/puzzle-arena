@@ -93,6 +93,7 @@ export const rooms = pgTable(
     status: text('status').notNull().default('lobby'),
     config: jsonb('config').notNull().default({}),
     timeLimitSec: integer('time_limit_sec').notNull(),
+    seed: bigint('seed', { mode: 'number' }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     endsAt: timestamp('ends_at', { withTimezone: true }),
@@ -131,7 +132,9 @@ export const roomPlayers = pgTable(
     uniqueIndex('room_players_guest')
       .on(t.roomId, t.guestId)
       .where(sql`guest_id is not null`),
-    unique('room_players_seat').on(t.roomId, t.seat),
+    uniqueIndex('room_players_seat')
+      .on(t.roomId, t.seat)
+      .where(sql`left_at is null`),
   ],
 );
 

@@ -1111,8 +1111,10 @@ export const bgm = {
   },
 
   stop() {
-    clearTimeout(bgmLoopTimer);
-    bgmLoopTimer = null;
+    if (bgmLoopTimer) {
+      clearTimeout(bgmLoopTimer);
+      bgmLoopTimer = null;
+    }
     const ctx = audioCtx;
     if (ctx) {
       const now = ctx.currentTime;

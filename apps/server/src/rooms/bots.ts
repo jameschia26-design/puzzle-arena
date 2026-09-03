@@ -183,6 +183,7 @@ function scheduleConcurrentBots(room: LiveRoom): void {
     timers.delete(room.id);
     if (room.status !== 'running') return;
     const bots = room.players.filter((p) => p.isBot && !p.left);
+    let roomTicked = false;
     for (const bot of bots) {
       const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView | SpaceInvadersBotView | BombermanBotView;
       const difficulty: BotDifficulty = bot.botDifficulty ?? 'normal';
@@ -205,8 +206,48 @@ function scheduleConcurrentBots(room: LiveRoom): void {
         action = room.engine().autoAction(room.gameState as never, bot.id);
       }
       const res = room.applyGameAction(bot.id, action as never);
-      if (!res.accepted) room.applyGameAction(bot.id, { type: 'tick' } as never);
+      const isDir = typeof action === 'object' && action !== null && 'type' in action && (action as { type?: unknown }).type === 'dir';
+      const isTick = typeof action === 'object' && action !== null && 'type' in action && (action as { type?: unknown }).type === 'tick';
+
+      if (room.gameId === 'pacman') {
+        // Pac-Man: 'dir' only sets nextDir. Advance simulation with a subsequent tick.
+        if (isDir && res.accepted) {
+          room.applyGameAction(bot.id, { type: 'tick' } as never);
+        } else if (!res.accepted && !isTick) {
+          room.applyGameAction(bot.id, { type: 'tick' } as never);
+        }
+      } else if (room.gameId === 'bomberman') {
+        if (isTick && res.accepted) {
+          roomTicked = true;
+        } else if (!res.accepted) {
+          const fallback = room.applyGameAction(bot.id, { type: 'tick' } as never);
+          if (fallback.accepted) roomTicked = true;
+        }
+      } else {
+        if (!res.accepted && !isTick) {
+          room.applyGameAction(bot.id, { type: 'tick' } as never);
+        }
+      }
     }
+
+    if (room.gameId === 'bomberman' && !roomTicked) {
+      // In bot-only rooms or once human players are gone, ensure Bomberman's shared board ticks.
+      const hasActiveHuman = room.players.some((p) => {
+        if (p.isBot || p.left) return false;
+        const v = room.engine().view(room.gameState as never, p.id) as unknown as { you: { gameOver?: boolean } | null };
+        return Boolean(v?.you && !v.you.gameOver);
+      });
+      if (!hasActiveHuman) {
+        const activeBot = bots.find((b) => {
+          const v = room.engine().view(room.gameState as never, b.id) as unknown as { you: { gameOver?: boolean } | null };
+          return Boolean(v?.you && !v.you.gameOver);
+        });
+        if (activeBot) {
+          room.applyGameAction(activeBot.id, { type: 'tick' } as never);
+        }
+      }
+    }
+
     scheduleConcurrentBots(room);
   }, delay);
   timers.set(room.id, timer);

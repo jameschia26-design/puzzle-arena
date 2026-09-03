@@ -14,6 +14,8 @@ import {
   PLAYER_SPEED,
   PLAYER_WIDTH,
   UFO_SCORES,
+  CANVAS_SCALE,
+  type SpaceInvadersPublicPlayer,
 } from './state.js';
 import {
   createAlienFleet,
@@ -21,6 +23,12 @@ import {
   marchInterval,
   alienFireInterval,
   erodeBunker,
+  computeAlienVisualCenter,
+  computeUfoVisualCenter,
+  computeExplosionOrigin,
+  extractKillEffects,
+  ALIEN_COLORS,
+  COLOR_UFO,
 } from './rules.js';
 import { spaceInvadersBot, type SpaceInvadersBotView } from './bot.js';
 
@@ -451,5 +459,207 @@ describe('space-invaders: bot only-view invariant & policy', () => {
     }
 
     expect(s.seq).toBeGreaterThan(0);
+  });
+});
+
+describe('space-invaders: visual coordinates and kill effects', () => {
+  it('computes exact visual center for all alien types and rows', () => {
+    // Formation at (10, 2)
+    // Row 0: Squid (col 0, row 0)
+    const squidCenter = computeAlienVisualCenter(10, 2, 0, 0);
+    expect(squidCenter).toEqual({ x: 115, y: 26 });
+
+    // Row 1: Crab (col 5, row 1)
+    // ax = (10 + 5 * 4) * 10 = 300; ay = (2 + 1 * 2) * 10 = 40
+    const crabCenter = computeAlienVisualCenter(10, 2, 5, 1);
+    expect(crabCenter).toEqual({ x: 315, y: 46 });
+
+    // Row 4: Octopus (col 10, row 4)
+    // ax = (10 + 10 * 4) * 10 = 500; ay = (2 + 4 * 2) * 10 = 100
+    const octoCenter = computeAlienVisualCenter(10, 2, 10, 4);
+    expect(octoCenter).toEqual({ x: 515, y: 106 });
+  });
+
+  it('computes exact visual center for UFO dreadnought', () => {
+    // UFO at (12, 1) -> ux = 120, uy = 10 -> center (140, 16)
+    const ufoCenter = computeUfoVisualCenter(12, 1);
+    expect(ufoCenter).toEqual({ x: 140, y: 16 });
+  });
+
+  it('centers explosion fireball origin exactly on sprite visual center', () => {
+    const center = { x: 255, y: 66 };
+    const exp = computeExplosionOrigin(center.x, center.y);
+    expect(exp).toEqual({ x: 243, y: 58 });
+    // Explosion draw routine centers flash and blast at (exp.x + 12, exp.y + 8)
+    expect(exp.x + 12).toBe(center.x);
+    expect(exp.y + 8).toBe(center.y);
+  });
+
+  it('extracts kill effects from explicit kill events', () => {
+    const curr: SpaceInvadersPublicPlayer = {
+      id: 'p1',
+      seat: 0,
+      score: 132,
+      lives: 3,
+      wave: 1,
+      playerX: 30,
+      playerY: 41,
+      bullet: null,
+      bullets: [],
+      alienBombs: [],
+      bunkers: [],
+      aliens: [],
+      formationX: 11,
+      formationY: 2,
+      formationDir: 1,
+      aliveCount: 53,
+      ufo: null,
+      board: [],
+      gameOver: false,
+      killEvents: [
+        {
+          id: 1,
+          target: 'alien',
+          alienId: 0,
+          alienType: 'squid',
+          x: 10,
+          y: 2,
+          points: 32,
+        },
+        {
+          id: 2,
+          target: 'ufo',
+          x: 20,
+          y: 1,
+          points: 100,
+        },
+      ],
+    };
+
+    const effects = extractKillEffects(null, curr);
+    expect(effects).toHaveLength(2);
+
+    // Alien kill effect
+    expect(effects[0]).toEqual({
+      id: 1,
+      target: 'alien',
+      alienId: 0,
+      alienType: 'squid',
+      score: 32,
+      centerX: 10 * CANVAS_SCALE + 15, // 115
+      centerY: 2 * CANVAS_SCALE + 6,  // 26
+      explosionX: 10 * CANVAS_SCALE + 3, // 103
+      explosionY: 2 * CANVAS_SCALE - 2, // 18
+      color: ALIEN_COLORS.squid,
+    });
+
+    // UFO kill effect
+    expect(effects[1]).toEqual({
+      id: 2,
+      target: 'ufo',
+      score: 100,
+      centerX: 20 * CANVAS_SCALE + 20, // 220
+      centerY: 1 * CANVAS_SCALE + 6,  // 16
+      explosionX: 20 * CANVAS_SCALE + 8, // 208
+      explosionY: 1 * CANVAS_SCALE - 2, // 8
+      color: COLOR_UFO,
+    });
+  });
+
+  it('extracts kill effects using pre-march formation coordinates during diffing fallback', () => {
+    const aliens = createAlienFleet();
+    const prevAliens = aliens.map((a) => ({ ...a }));
+    // Alien col 0, row 0 (squid id 0) is alive in prev, dead in curr
+    const currAliens = aliens.map((a) => (a.id === 0 ? { ...a, alive: false } : { ...a }));
+
+    const prev: SpaceInvadersPublicPlayer = {
+      id: 'p1',
+      seat: 0,
+      score: 0,
+      lives: 3,
+      wave: 1,
+      playerX: 30,
+      playerY: 41,
+      bullet: null,
+      bullets: [],
+      alienBombs: [],
+      bunkers: [],
+      aliens: prevAliens,
+      formationX: 10,
+      formationY: 2,
+      formationDir: 1,
+      aliveCount: 55,
+      ufo: null,
+      board: [],
+      gameOver: false,
+    };
+
+    // Formation stepped to 11 in curr, but the alien was destroyed at formationX = 10
+    const curr: SpaceInvadersPublicPlayer = {
+      ...prev,
+      score: 32,
+      formationX: 11,
+      aliveCount: 54,
+      aliens: currAliens,
+    };
+
+    const effects = extractKillEffects(prev, curr);
+    expect(effects).toHaveLength(1);
+    // Crucial check: uses prev.formationX (10), NOT curr.formationX (11)
+    expect(effects[0]!.centerX).toBe(115);
+    expect(effects[0]!.centerY).toBe(26);
+    expect(effects[0]!.score).toBe(32);
+  });
+
+  it('records killEvents in state and view when bullet destroys alien', () => {
+    const s = spaceInvaders.setup(['p1'], 42, {});
+    const p = s.players[0]!;
+    // Position bullet right beneath top-left squid (col 0, row 0, grid ax=10, ay=2)
+    // Squid is at y=2, width=3 (x=10..12). Place bullet at x=11, y=3
+    p.bullet = { x: 11, y: 3 };
+    p.bullets = [{ x: 11, y: 3 }];
+
+    const res = spaceInvaders.reduce(s, 'p1', { type: 'tick' });
+    expect(res.ok).toBe(true);
+
+    const view = spaceInvaders.view(res.state, 'p1');
+    const you = view.you!;
+    expect(you.killEvents).toBeDefined();
+    expect(you.killEvents).toHaveLength(1);
+
+    const kill = you.killEvents![0]!;
+    expect(kill.target).toBe('alien');
+    expect(kill.points).toBe(32);
+    expect(kill.x).toBe(10);
+    expect(kill.y).toBe(2);
+  });
+
+  it('records killEvents in state and view when bullet destroys UFO', () => {
+    const s = spaceInvaders.setup(['p1'], 42, {});
+    const p = s.players[0]!;
+    p.ufo = {
+      x: 20,
+      y: 1,
+      dir: 1,
+      points: 0,
+      alive: true,
+    };
+    // Bullet hits UFO at x=21, y=2 (bullet moves to y=1 on tick)
+    p.bullet = { x: 21, y: 2 };
+    p.bullets = [{ x: 21, y: 2 }];
+
+    const res = spaceInvaders.reduce(s, 'p1', { type: 'tick' });
+    expect(res.ok).toBe(true);
+
+    const view = spaceInvaders.view(res.state, 'p1');
+    const you = view.you!;
+    expect(you.killEvents).toBeDefined();
+    expect(you.killEvents).toHaveLength(1);
+
+    const kill = you.killEvents![0]!;
+    expect(kill.target).toBe('ufo');
+    expect(UFO_SCORES).toContain(kill.points as (typeof UFO_SCORES)[number]);
+    expect(kill.x).toBe(20);
+    expect(kill.y).toBe(1);
   });
 });

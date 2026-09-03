@@ -204,6 +204,102 @@ describe('big two game engine', () => {
       expect(['play', 'pass']).toContain(action.type);
     }
   });
+  it('chooses to play an 8-high straight over a 7-high lead straight rather than passing', () => {
+    // 7-high lead straight: 3-4-5-6-7 (ranks 0..4)
+    const lead = classifyCombo([c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)])!;
+    // 8-high bot straight: 4-5-6-7-8 (ranks 1..5)
+    const botHand: BigTwoCard[] = [c(1, 0), c(2, 1), c(3, 2), c(4, 3), c(5, 0)];
+    const view: BigTwoBotView = {
+      players: [
+        { id: 'leader', seat: 0, handSize: 8 },
+        { id: 'bot', seat: 1, handSize: 5 },
+      ],
+      current: 'bot',
+      phase: 'awaiting_play',
+      currentLead: lead,
+      currentLeaderId: 'leader',
+      firstPlayDone: true,
+      you: { id: 'bot', hand: botHand },
+    };
+    const rng = mulberry32(42);
+    for (const diff of ['easy', 'normal', 'hard'] as BotDifficulty[]) {
+      const action = bigTwoBot.chooseAction(view, 'bot', rng, diff);
+      expect(action.type).toBe('play');
+      if (action.type === 'play') {
+        const played = classifyCombo(action.cards);
+        expect(played?.category).toBe('straight');
+        expect(beats(played!, lead)).toBe(true);
+      }
+    }
+  });
+
+  it('respects straight suit tie behavior in bot choice', () => {
+    // Lead: 7-high straight ending in 7 of Diamonds (suit 0)
+    const leadLowSuit = classifyCombo([c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)])!;
+    // Bot hand: 7-high straight ending in 7 of Spades (suit 3)
+    const botHandHighSuit: BigTwoCard[] = [c(0, 1), c(1, 2), c(2, 3), c(3, 0), c(4, 3)];
+
+    const viewCanBeat: BigTwoBotView = {
+      players: [
+        { id: 'leader', seat: 0, handSize: 8 },
+        { id: 'bot', seat: 1, handSize: 5 },
+      ],
+      current: 'bot',
+      phase: 'awaiting_play',
+      currentLead: leadLowSuit,
+      currentLeaderId: 'leader',
+      firstPlayDone: true,
+      you: { id: 'bot', hand: botHandHighSuit },
+    };
+    const actionBeat = bigTwoBot.chooseAction(viewCanBeat, 'bot', mulberry32(1), 'normal');
+    expect(actionBeat.type).toBe('play');
+    if (actionBeat.type === 'play') {
+      expect(beats(classifyCombo(actionBeat.cards)!, leadLowSuit)).toBe(true);
+    }
+
+    // Inverse: Lead has 7 of Spades (suit 3), bot only has 7 of Diamonds (suit 0)
+    const leadHighSuit = classifyCombo([c(0, 1), c(1, 2), c(2, 3), c(3, 0), c(4, 3)])!;
+    const botHandLowSuit: BigTwoCard[] = [c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)];
+    const viewCannotBeat: BigTwoBotView = {
+      players: [
+        { id: 'leader', seat: 0, handSize: 8 },
+        { id: 'bot', seat: 1, handSize: 5 },
+      ],
+      current: 'bot',
+      phase: 'awaiting_play',
+      currentLead: leadHighSuit,
+      currentLeaderId: 'leader',
+      firstPlayDone: true,
+      you: { id: 'bot', hand: botHandLowSuit },
+    };
+    const actionPass = bigTwoBot.chooseAction(viewCannotBeat, 'bot', mulberry32(1), 'normal');
+    expect(actionPass.type).toBe('pass');
+  });
+
+  it('plays higher 5-card category (flush or full house) over lead straight', () => {
+    const leadStraight = classifyCombo([c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 0)])!;
+    // Bot hand: a flush
+    const botHandFlush: BigTwoCard[] = [c(0, 0), c(2, 0), c(4, 0), c(6, 0), c(9, 0)];
+    const view: BigTwoBotView = {
+      players: [
+        { id: 'leader', seat: 0, handSize: 8 },
+        { id: 'bot', seat: 1, handSize: 5 },
+      ],
+      current: 'bot',
+      phase: 'awaiting_play',
+      currentLead: leadStraight,
+      currentLeaderId: 'leader',
+      firstPlayDone: true,
+      you: { id: 'bot', hand: botHandFlush },
+    };
+    const action = bigTwoBot.chooseAction(view, 'bot', mulberry32(1), 'normal');
+    expect(action.type).toBe('play');
+    if (action.type === 'play') {
+      const played = classifyCombo(action.cards);
+      expect(played?.category).toBe('flush');
+      expect(beats(played!, leadStraight)).toBe(true);
+    }
+  });
 
   it('runs a full bot-vs-bot game to completion deterministically', () => {
     let s = engine.setup(['bot_a', 'bot_b', 'bot_c', 'bot_d'], 777, {});

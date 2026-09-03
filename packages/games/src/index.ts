@@ -140,7 +140,21 @@ export type { PacManState, PacManPlayerState, PacManConfig, PacManAction, PacMan
 export { spaceInvaders } from './space-invaders/index.js';
 export * as spaceInvadersRules from './space-invaders/rules.js';
 export { spaceInvadersBot, type SpaceInvadersBotView } from './space-invaders/bot.js';
-export { PLAYFIELD_W, PLAYFIELD_H } from './space-invaders/state.js';
+export {
+  PLAYFIELD_W,
+  PLAYFIELD_H,
+  CANVAS_SCALE,
+  CANVAS_WIDTH,
+  CANVAS_HEIGHT,
+} from './space-invaders/state.js';
+export {
+  computeAlienVisualCenter,
+  computeUfoVisualCenter,
+  computeExplosionOrigin,
+  ALIEN_COLORS,
+  extractKillEffects,
+  type VisualKillEffect,
+} from './space-invaders/rules.js';
 export type {
   SpaceInvadersState,
   SpaceInvadersPlayerState,
@@ -148,6 +162,7 @@ export type {
   SpaceInvadersAction,
   SpaceInvadersView,
   SpaceInvadersPublicPlayer,
+  SpaceInvadersKillEvent,
   Alien,
   AlienType,
   Bunker,

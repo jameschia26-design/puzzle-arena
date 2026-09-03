@@ -467,8 +467,8 @@ function score(s: XiangqiState, playerId: string): ScoreInput {
   return {
     progress,
     accuracy: player.actionsSubmitted > 0 ? player.actionsAccepted / player.actionsSubmitted : 1,
-    completed: over,
-    completedAtMs: over ? s.winnerAtMs : null,
+    completed: won,
+    completedAtMs: won ? s.winnerAtMs : null,
     penalties: player.penalties,
   };
 }

@@ -418,6 +418,23 @@ describe('xiangqi game engine', () => {
     expect(view['rng']).toBeUndefined();
     expect(JSON.stringify(view)).not.toContain('"rng"');
   });
+  it('scores completion strictly per player so loser does not get completed speed score', () => {
+    const s = engine.setup(['alice', 'bob'], 1, {});
+    const r = engine.reduce(s, 'alice', { type: 'forfeit', reason: 'time' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    r.state.winnerAtMs = 12345;
+
+    const winnerScore = engine.score(r.state, 'bob');
+    expect(winnerScore.completed).toBe(true);
+    expect(winnerScore.completedAtMs).toBe(12345);
+    expect(winnerScore.progress).toBe(1);
+
+    const loserScore = engine.score(r.state, 'alice');
+    expect(loserScore.completed).toBe(false);
+    expect(loserScore.completedAtMs).toBeNull();
+    expect(loserScore.progress).toBe(0);
+  });
 });
 
 /* ================================================================== */

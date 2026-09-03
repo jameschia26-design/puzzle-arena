@@ -3,15 +3,17 @@ import { useRoom, emit } from '../net/socket.js';
 import { sfx, bgm } from '../ui/sound.js';
 import { EV } from '@puzzle-arena/shared';
 import { SEAT_COLORS, resolvePlayer, type PlayerLike } from '../ui/seat.js';
-import type {
-  SpaceInvadersView,
-  SpaceInvadersPublicPlayer,
-  SpaceInvadersAction,
-  Bunker,
-  Bullet,
-  AlienBomb,
-  UFO,
-  SpaceInvadersConfig,
+import {
+  extractKillEffects,
+  type SpaceInvadersView,
+  type SpaceInvadersPublicPlayer,
+  type SpaceInvadersAction,
+  type Bunker,
+  type Bullet,
+  type AlienBomb,
+  type UFO,
+  type SpaceInvadersConfig,
+  type VisualKillEffect,
 } from '@puzzle-arena/games';
 
 export const PLAYFIELD_W = 64;
@@ -656,8 +658,11 @@ export function renderPlayfieldCanvas(
   if (options?.popups) {
     ctx.font = 'bold 12px "Press Start 2P", monospace';
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     for (const pop of options.popups) {
       const py = pop.y - pop.age * 2;
+      const alpha = Math.max(0, 1 - pop.age / 20);
+      ctx.globalAlpha = alpha;
       // High-contrast dark shadow outline
       ctx.fillStyle = '#05060d';
       ctx.fillText(pop.text, pop.x + 1, py + 1);
@@ -668,7 +673,9 @@ export function renderPlayfieldCanvas(
       ctx.fillStyle = pop.color;
       ctx.fillText(pop.text, pop.x, py);
     }
+    ctx.globalAlpha = 1;
     ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
   }
 
   ctx.restore();
@@ -907,12 +914,13 @@ export function SpaceInvadersBoard({
   const heartbeatStepRef = React.useRef(0);
 
   // State diff tracking for sound & effects
+  const prevPlayerRef = React.useRef<SpaceInvadersPublicPlayer | null>(null);
+  const lastProcessedKillEventIdRef = React.useRef(0);
   const prevKilledRef = React.useRef(you?.aliveCount ?? 55);
   const prevWaveRef = React.useRef(you?.wave ?? 1);
   const prevScoreRef = React.useRef(you?.score ?? 0);
   const prevLivesRef = React.useRef(you?.lives ?? 3);
   const prevUfoRef = React.useRef(Boolean(you?.ufo && you.ufo.alive));
-
   const [waveClearFlash, setWaveClearFlash] = React.useState(false);
   const [touchActiveX, setTouchActiveX] = React.useState<number | null>(null);
 
@@ -942,37 +950,80 @@ export function SpaceInvadersBoard({
     // reruns on an actual UFO appearance/movement, not every tick.
   }, [you?.ufo?.x, you?.ufo?.alive, you?.gameOver, view.phase]);
 
-  // Kills, waves, score gain, lives loss diff reactions
+  // Wave progression
   React.useEffect(() => {
     if (!you) return;
+    if (you.wave > prevWaveRef.current) {
+      prevWaveRef.current = you.wave;
+      setWaveClearFlash(true);
+      screenShakeRef.current = 4;
+      sfx.correct();
+      const t = window.setTimeout(() => setWaveClearFlash(false), 2000);
+      return () => window.clearTimeout(t);
+    }
+  }, [you?.wave]);
 
-    // Alien killed
-    if (you.aliveCount < prevKilledRef.current) {
-      customSfx.invaderExplosion?.() ?? sfx.bomb();
-      const scoreGained = Math.max(8, you.score - prevScoreRef.current);
-      const estX = (you.formationX + 16) * CANVAS_SCALE;
-      const estY = (you.formationY + 4) * CANVAS_SCALE;
-      explosionsRef.current.push({
-        id: nextEffectIdRef.current++,
-        x: estX,
-        y: estY,
-        color: COLOR_CRAB,
-        age: 0,
-      });
-      scorePopupsRef.current.push({
-        id: nextEffectIdRef.current++,
-        x: estX + 10,
-        y: estY,
-        text: `+${scoreGained}`,
-        color: COLOR_BULLET,
-        age: 0,
-      });
+  // Kills, score popups, lives loss diff reactions
+  React.useEffect(() => {
+    if (!you) return;
+    const prev = prevPlayerRef.current;
+    if (!prev) {
+      prevPlayerRef.current = you;
       prevKilledRef.current = you.aliveCount;
-    } else if (you.aliveCount > prevKilledRef.current) {
-      prevKilledRef.current = you.aliveCount;
+      prevScoreRef.current = you.score;
+      prevLivesRef.current = you.lives;
+      if (you.killEvents && you.killEvents.length > 0) {
+        lastProcessedKillEventIdRef.current = Math.max(...you.killEvents.map((e) => e.id));
+      }
+      return;
     }
 
-    // Player lost life: trigger explosion + screen shake
+    // 1. Process kills (via explicit killEvents or state diffing)
+    let effects: VisualKillEffect[] = [];
+    if (you.killEvents && you.killEvents.length > 0) {
+      const newEvents = you.killEvents.filter((e) => e.id > lastProcessedKillEventIdRef.current);
+      if (newEvents.length > 0) {
+        lastProcessedKillEventIdRef.current = Math.max(
+          lastProcessedKillEventIdRef.current,
+          ...newEvents.map((e) => e.id),
+        );
+        effects = extractKillEffects(null, { ...you, killEvents: newEvents });
+      }
+    } else {
+      effects = extractKillEffects(prev, you);
+    }
+
+    if (effects.length > 0) {
+      let hasUfoKill = false;
+      for (const eff of effects) {
+        if (eff.target === 'ufo') {
+          hasUfoKill = true;
+        }
+        explosionsRef.current.push({
+          id: nextEffectIdRef.current++,
+          x: eff.explosionX,
+          y: eff.explosionY,
+          color: eff.color,
+          age: 0,
+        });
+        scorePopupsRef.current.push({
+          id: nextEffectIdRef.current++,
+          x: eff.centerX,
+          y: eff.centerY,
+          text: String(eff.score),
+          color: eff.target === 'ufo' ? COLOR_UFO : COLOR_BULLET,
+          age: 0,
+        });
+      }
+      if (hasUfoKill) {
+        customSfx.invaderExplosion?.() ?? sfx.tembak();
+        screenShakeRef.current = 6;
+      } else {
+        customSfx.invaderExplosion?.() ?? sfx.bomb();
+      }
+    }
+
+    // 2. Player lost life: trigger explosion + screen shake
     if (you.lives < prevLivesRef.current) {
       sfx.gameOver();
       screenShakeRef.current = 8;
@@ -988,36 +1039,10 @@ export function SpaceInvadersBoard({
       prevLivesRef.current = you.lives;
     }
 
-    // Wave progression
-    if (you.wave > prevWaveRef.current) {
-      prevWaveRef.current = you.wave;
-      setWaveClearFlash(true);
-      screenShakeRef.current = 4;
-      sfx.correct();
-      const t = window.setTimeout(() => setWaveClearFlash(false), 2000);
-      return () => window.clearTimeout(t);
-    }
-
-    // UFO destruction or high score pop
-    if (you.score > prevScoreRef.current + 40 && prevScoreRef.current > 0) {
-      customSfx.invaderExplosion?.() ?? sfx.tembak();
-      screenShakeRef.current = 6;
-      scorePopupsRef.current.push({
-        id: nextEffectIdRef.current++,
-        x: CW / 2,
-        y: 20,
-        text: `+${you.score - prevScoreRef.current}`,
-        color: COLOR_UFO,
-        age: 0,
-      });
-    }
+    prevPlayerRef.current = you;
+    prevKilledRef.current = you.aliveCount;
     prevScoreRef.current = you.score;
-    // Deliberately NOT depending on `you` itself: it's a fresh object on
-    // every tick broadcast, so including it reran this effect ~every 60ms —
-    // which fired this effect's cleanup (clearTimeout) on the very next tick
-    // after a wave clear, cancelling the timer before it could hide the
-    // "WAVE CLEARED!" overlay, leaving it flashing on screen indefinitely.
-  }, [you?.aliveCount, you?.wave, you?.score, you?.lives]);
+  }, [you]);
 
   // -------------------------------------------------------------------------
   // Input Responsiveness: Fire-and-forget direct socket emit + coalescing

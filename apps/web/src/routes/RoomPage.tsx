@@ -891,7 +891,26 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
             if (res.hint) {
               setHintCount((n) => n + 1);
               const [r, c] = res.hint.path.split(',').map(Number);
-              await commit(`${r},${c}`, res.hint.value);
+              const cols = (state?.puzzle?.cols as number | undefined) ?? 9;
+              await commit(`${r},${c}`, res.hint.value, (prev: unknown) => {
+                const current = (prev && typeof prev === 'object'
+                  ? prev
+                  : state?.initialState && typeof state.initialState === 'object'
+                    ? state.initialState
+                    : {}) as { revealed?: boolean[]; moves?: number };
+                const revealed = Array.isArray(current.revealed)
+                  ? [...current.revealed]
+                  : new Array<boolean>(((state?.puzzle?.rows as number | undefined) ?? 9) * cols).fill(false);
+                const idx = (r ?? 0) * cols + (c ?? 0);
+                if (idx >= 0 && idx < revealed.length) {
+                  revealed[idx] = true;
+                }
+                return {
+                  ...current,
+                  revealed,
+                  moves: (current.moves ?? 0) + 1,
+                };
+              });
               toast(`Safe cell revealed at row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
             }
           }}
@@ -909,7 +928,26 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
             if (res.hint) {
               setHintCount((n) => n + 1);
               const [r, c] = res.hint.path.split(',').map(Number);
-              await commit(`${r},${c}`, res.hint.value);
+              const cols = (state?.puzzle?.cols as number | undefined) ?? 9;
+              await commit(`${r},${c}`, res.hint.value, (prev: unknown) => {
+                const current = (prev && typeof prev === 'object'
+                  ? prev
+                  : state?.initialState && typeof state.initialState === 'object'
+                    ? state.initialState
+                    : {}) as { revealed?: boolean[]; moves?: number };
+                const revealed = Array.isArray(current.revealed)
+                  ? [...current.revealed]
+                  : new Array<boolean>(((state?.puzzle?.rows as number | undefined) ?? 9) * cols).fill(false);
+                const idx = (r ?? 0) * cols + (c ?? 0);
+                if (idx >= 0 && idx < revealed.length) {
+                  revealed[idx] = true;
+                }
+                return {
+                  ...current,
+                  revealed,
+                  moves: (current.moves ?? 0) + 1,
+                };
+              });
               toast(`Safe cell revealed at row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
             }
           }}

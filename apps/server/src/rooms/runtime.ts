@@ -48,6 +48,7 @@ import {
   spaceInvaders,
   bomberman,
   xiangqi,
+  xiangqiRules,
 } from '@puzzle-arena/games';
 import { wordSearch } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -130,6 +131,7 @@ export class LiveRoom {
   log: LogEntry[] = [];
   chat: ChatMessage[] = [];
   consecutiveBotActions = 0;
+  seed: number | null = null;
   /**
    * Chess-clock games only (Chess, Xiangqi): each human player's remaining
    * time bank, keyed by playerId. Null for every other game. Bots are never
@@ -156,6 +158,7 @@ export class LiveRoom {
     gameId: string;
     config: unknown;
     timeLimitSec: number;
+    seed?: number | null;
     status: string;
     startedAt: Date | null;
     endsAt: Date | null;
@@ -166,6 +169,7 @@ export class LiveRoom {
     this.kind = GAME_REGISTRY[this.gameId].kind;
     this.config = (row.config ?? {}) as RoomConfig;
     this.timeLimitSec = row.timeLimitSec;
+    this.seed = row.seed ?? null;
     this.status = row.status as LiveRoom['status'];
     this.startedAt = row.startedAt ? row.startedAt.getTime() : null;
     this.endsAt = row.endsAt ? row.endsAt.getTime() : null;
@@ -211,6 +215,7 @@ export class LiveRoom {
     if (!active.some((p) => !p.isBot)) throw new Error('At least one human must be seated');
 
     const seed = Math.floor(Math.random() * 2 ** 31);
+    this.seed = seed;
 
     if (this.kind === 'puzzle') {
       this.puzzle = await generatePuzzle(this.gameId, seed, this.config);
@@ -249,6 +254,7 @@ export class LiveRoom {
         status: 'running',
         startedAt: new Date(startsAt),
         endsAt: this.endsAt ? new Date(this.endsAt) : null,
+        seed,
       })
       .where(eq(rooms.id, this.id));
 
@@ -313,6 +319,7 @@ export class LiveRoom {
     if (this.gameId === 'reversi') return reversiRules.actorToAct(this.gameState as never);
     if (this.gameId === 'connect4') return connect4Rules.actorToAct(this.gameState as never);
     if (this.gameId === 'chess') return chessRules.actorToAct(this.gameState as never);
+    if (this.gameId === 'xiangqi') return xiangqiRules.actorToAct(this.gameState as never);
     if (this.gameId === 'tetris') return null; // concurrent — no turn
     if (this.gameId === 'pacman') return null; // concurrent — no turn
     if (this.gameId === 'space-invaders') return null; // concurrent — no turn
@@ -332,6 +339,12 @@ export class LiveRoom {
     if (this.endTimer) clearTimeout(this.endTimer);
     this.remainingTurnMs = this.turnEndsAt ? Math.max(0, this.turnEndsAt - Date.now()) : null;
     if (this.turnTimer) clearTimeout(this.turnTimer);
+    this.turnEndsAt = null;
+    if (this.usesChessClock() && this.clocks && this.clockActor && this.clockSince !== null) {
+      const elapsed = Date.now() - this.clockSince;
+      this.clocks.set(this.clockActor, Math.max(0, (this.clocks.get(this.clockActor) ?? 0) - elapsed));
+      this.clockSince = null;
+    }
     // The pre-game "get ready" countdown must pause too, or a host pausing
     // mid-countdown gets an unpaused game the instant it elapses underneath them.
     this.remainingStartMs = this.startTimer && this.startedAt ? Math.max(0, this.startedAt - Date.now()) : null;
@@ -362,6 +375,9 @@ export class LiveRoom {
     }
     if (this.remainingTurnMs !== null) {
       this.turnEndsAt = Date.now() + this.remainingTurnMs;
+      this.remainingTurnMs = null;
+      this.armTurnTimer();
+    } else if (this.usesChessClock() && this.remainingStartMs === null) {
       this.armTurnTimer();
     }
     if (this.remainingStartMs !== null) {
@@ -416,6 +432,7 @@ export class LiveRoom {
     this.gameState = null;
     this.puzzle = null;
     this.consecutiveBotActions = 0;
+    this.seed = null;
     this.clocks = null;
     this.clockActor = null;
     this.clockSince = null;
@@ -436,6 +453,7 @@ export class LiveRoom {
         startedAt: null,
         endsAt: null,
         finishedAt: null,
+        seed: null,
       })
       .where(eq(rooms.id, this.id));
 
@@ -718,6 +736,43 @@ export class LiveRoom {
     if (grade.complete) this.checkAllDone();
     return ack;
   }
+  replayCommit(actorPlayerId: string, action: { path?: string; value?: unknown }): void {
+    const p = this.player(actorPlayerId);
+    if (!p || !this.puzzle) return;
+    if (this.gameId === 'word-search') {
+      const path = String(action.path ?? '');
+      const [y1, x1, y2, x2] = path.split(',').map(Number);
+      if (![y1, x1, y2, x2].some((n) => n === undefined || Number.isNaN(n))) {
+        const st = (p.state ?? { found: [], selections: 0 }) as {
+          found: string[];
+          selections: number;
+        };
+        const word = wordSearch.checkSelection(
+          this.puzzle.puzzle as never,
+          this.puzzle.solution as never,
+          x1 as number,
+          y1 as number,
+          x2 as number,
+          y2 as number,
+        );
+        const found = [...st.found];
+        if (word && !found.includes(word)) {
+          found.push(word);
+        }
+        p.state = { found, selections: st.selections + 1 };
+      }
+    } else {
+      const next = applyCommit(
+        this.gameId,
+        p.state,
+        this.puzzle.puzzle,
+        String(action.path),
+        (action.value ?? null) as number | string | null,
+      );
+      if (next !== null) p.state = next;
+    }
+  }
+
 
   private isCommitCorrect(path: string, value: number | string | null): boolean {
     if (!this.puzzle) return false;
@@ -810,7 +865,10 @@ export class LiveRoom {
     if (this.usesChessClock() && this.clocks && this.clockActor === playerId && this.clockSince !== null) {
       const elapsed = Date.now() - this.clockSince;
       const remaining = Math.max(0, (this.clocks.get(playerId) ?? 0) - elapsed);
-      const incrementMs = Number((this.config as { incrementSec?: number }).incrementSec ?? 0) * 1000;
+      const isMove = !fromTimeout && (action as { type?: string })?.type === 'move';
+      const incrementMs = isMove
+        ? Number((this.config as { incrementSec?: number }).incrementSec ?? 0) * 1000
+        : 0;
       this.clocks.set(playerId, remaining + incrementMs);
       this.clockActor = null;
       this.clockSince = null;
@@ -1301,6 +1359,7 @@ export async function loadRoom(roomId: string, io: IOServer): Promise<LiveRoom |
     gameId: row.gameId,
     config: row.config,
     timeLimitSec: row.timeLimitSec,
+    seed: row.seed,
     status: row.status,
     startedAt: row.startedAt,
     endsAt: row.endsAt,
@@ -1333,6 +1392,46 @@ export async function loadRoom(roomId: string, io: IOServer): Promise<LiveRoom |
   registerRoom(room);
   return room;
 }
+/**
+ * Reconstructs chess clock banks from the full sequence of room events.
+ * Only accepted 'move' actions receive the Fischer increment.
+ */
+export function rehydrateChessClocks(
+  config: { clockMinutes?: number; incrementSec?: number },
+  players: { id: string; isBot: boolean }[],
+  startedAt: Date | null,
+  allEvents: Array<{ actorPlayerId: string | null; action: unknown; at: Date }>,
+  nowActor: string | null,
+  now = Date.now(),
+): Map<string, number> {
+  const minutes = Number(config.clockMinutes ?? 10);
+  const incrementMs = Number(config.incrementSec ?? 0) * 1000;
+  const bankMs = minutes * 60_000;
+  const clocks = new Map<string, number>(
+    players.filter((p) => !p.isBot).map((p) => [p.id, bankMs]),
+  );
+
+  let prevAt = startedAt;
+  for (const ev of allEvents) {
+    const actorId = ev.actorPlayerId;
+    const action = ev.action as { type?: string };
+    if (prevAt && actorId && clocks.has(actorId)) {
+      const spent = ev.at.getTime() - prevAt.getTime();
+      const currentBank = clocks.get(actorId) ?? 0;
+      const remaining = spent > 0 ? Math.max(0, currentBank - spent) : currentBank;
+      const inc = action?.type === 'move' ? incrementMs : 0;
+      clocks.set(actorId, remaining + inc);
+    }
+    prevAt = ev.at;
+  }
+  // Whoever's turn it is now has been thinking since the last event.
+  if (nowActor && prevAt && clocks.has(nowActor)) {
+    const spent = now - prevAt.getTime();
+    if (spent > 0) clocks.set(nowActor, Math.max(0, (clocks.get(nowActor) ?? 0) - spent));
+  }
+  return clocks;
+}
+
 
 /**
  * Rehydrate rooms left `running` by a crash: load the newest snapshot, then
@@ -1396,7 +1495,7 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
         const active = room.players.filter((p) => !p.left);
         room.gameState = room.engine().setup(
           active.map((p) => p.id),
-          Number(inst?.seed ?? 1),
+          Number(room.seed ?? inst?.seed ?? 1),
           room.config,
         );
       } else if (room.kind === 'puzzle' && room.puzzle) {
@@ -1418,17 +1517,7 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
           const r = room.engine().reduce(room.gameState as never, ev.actorPlayerId, action as never);
           if (r.ok) room.gameState = r.state;
         } else if (room.kind === 'puzzle' && ev.actorPlayerId && action.type === 'commit') {
-          const p = room.player(ev.actorPlayerId);
-          if (p && room.puzzle) {
-            const next = applyCommit(
-              room.gameId,
-              p.state,
-              room.puzzle.puzzle,
-              String(action.path),
-              (action.value ?? null) as number | string | null,
-            );
-            if (next !== null) p.state = next;
-          }
+          room.replayCommit(ev.actorPlayerId, action);
         } else if (room.kind === 'puzzle' && ev.actorPlayerId && action.type === 'hint') {
           const p = room.player(ev.actorPlayerId);
           if (p) p.penalties += 1;
@@ -1474,32 +1563,18 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
       // closed it. This needs the FULL event history from room start, not
       // just the post-snapshot tail already loaded into `events`.
       if (room.kind === 'board' && room.usesChessClock()) {
-        const minutes = Number((room.config as { clockMinutes?: number }).clockMinutes ?? 10);
-        const bankMs = minutes * 60_000;
-        const clocks = new Map<string, number>(
-          room.players.filter((p) => !p.isBot).map((p) => [p.id, bankMs]),
-        );
         const allEvents = await db
           .select()
           .from(roomEvents)
           .where(eq(roomEvents.roomId, row.id))
           .orderBy(asc(roomEvents.seq));
-        let prevAt = room.startedAt !== null ? new Date(room.startedAt) : null;
-        for (const ev of allEvents) {
-          const actorId = ev.actorPlayerId;
-          if (prevAt && actorId && clocks.has(actorId)) {
-            const spent = ev.at.getTime() - prevAt.getTime();
-            if (spent > 0) clocks.set(actorId, Math.max(0, (clocks.get(actorId) ?? 0) - spent));
-          }
-          prevAt = ev.at;
-        }
-        // Whoever's turn it is now has been thinking since the last event.
-        const nowActor = room.actorToAct();
-        if (nowActor && prevAt && clocks.has(nowActor)) {
-          const spent = Date.now() - prevAt.getTime();
-          if (spent > 0) clocks.set(nowActor, Math.max(0, (clocks.get(nowActor) ?? 0) - spent));
-        }
-        room.clocks = clocks;
+        room.clocks = rehydrateChessClocks(
+          room.config as { clockMinutes?: number; incrementSec?: number },
+          room.players,
+          room.startedAt !== null ? new Date(room.startedAt) : null,
+          allEvents,
+          room.actorToAct(),
+        );
       }
 
       room.armTurnTimer();
