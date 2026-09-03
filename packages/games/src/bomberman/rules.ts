@@ -79,24 +79,54 @@ export const SPAWN_POINTS: { x: number; y: number }[] = [
  */
 export function getSafeZoneCells(): Set<number> {
   const safe = new Set<number>();
-  for (const sp of SPAWN_POINTS) {
-    safe.add(cellIndex(sp.x, sp.y));
-    for (const d of DIRS) {
-      const nx = sp.x + DIR_VEC[d].dx;
-      const ny = sp.y + DIR_VEC[d].dy;
-      if (!isOutOfBounds(nx, ny) && !isBorder(nx, ny) && !isHardPillar(nx, ny)) {
-        safe.add(cellIndex(nx, ny));
-      }
+
+  // 1. Classic 4 corner safe zones (Seats 0..3)
+  // Each corner has an open corridor loop around its corner pillar so every player can
+  // place an opening bomb and legally step behind the pillar into safety without dying.
+  const cornerClearPatterns = [
+    // Top-left (spawn: 1,1; corner pillar: 2,2)
+    [
+      { x: 1, y: 1 }, { x: 2, y: 1 }, { x: 3, y: 1 },
+      { x: 1, y: 2 },                 { x: 3, y: 2 },
+      { x: 1, y: 3 }, { x: 2, y: 3 },
+    ],
+    // Top-right (spawn: 13,1; corner pillar: 12,2)
+    [
+      { x: 13, y: 1 }, { x: 12, y: 1 }, { x: 11, y: 1 },
+      { x: 13, y: 2 },                  { x: 11, y: 2 },
+      { x: 13, y: 3 }, { x: 12, y: 3 },
+    ],
+    // Bottom-left (spawn: 1,11; corner pillar: 2,10)
+    [
+      { x: 1, y: 11 }, { x: 2, y: 11 }, { x: 3, y: 11 },
+      { x: 1, y: 10 },                  { x: 3, y: 10 },
+      { x: 1, y: 9 },  { x: 2, y: 9 },
+    ],
+    // Bottom-right (spawn: 13,11; corner pillar: 12,10)
+    [
+      { x: 13, y: 11 }, { x: 12, y: 11 }, { x: 11, y: 11 },
+      { x: 13, y: 10 },                   { x: 11, y: 10 },
+      { x: 13, y: 9 },  { x: 12, y: 9 },
+    ],
+  ];
+
+  for (const group of cornerClearPatterns) {
+    for (const pt of group) {
+      safe.add(cellIndex(pt.x, pt.y));
     }
   }
-  // Extra safety around (7,6) area
+
+  // 2. Central arena safe zone (Seats 4..7: (7,5), (7,7), (5,6), (9,6))
+  // Clearing corridors in x: 5..9, y: 5..7 ensures central players can maneuver,
+  // place an initial bomb, and duck behind central pillars (6,6) and (8,6) safely.
   for (let y = 5; y <= 7; y++) {
-    for (let x = 6; x <= 8; x++) {
-      if (!isHardPillar(x, y)) {
+    for (let x = 5; x <= 9; x++) {
+      if (!isBorder(x, y) && !isHardPillar(x, y)) {
         safe.add(cellIndex(x, y));
       }
     }
   }
+
   return safe;
 }
 

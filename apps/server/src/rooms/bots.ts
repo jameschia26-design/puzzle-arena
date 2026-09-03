@@ -69,8 +69,13 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
-function thinkDelay(rng: Rng): number {
+function thinkDelay(rng: Rng, gameId?: string): number {
   if (env.botThinkMs !== null) return env.botThinkMs;
+  if (gameId === 'bomberman') {
+    // Bomberman is a real-time arcade grid combat game with 60ms ticks.
+    // 120-220ms think delay delivers responsive human-reflex movement (~5-8 actions/sec).
+    return 120 + rng.int(100);
+  }
   return 500 + rng.int(1200);
 }
 
@@ -178,7 +183,7 @@ function scheduleConcurrentBots(room: LiveRoom): void {
   // ever elapse, so bots never acted. Once a timer is armed, let it run.
   if (timers.has(room.id)) return;
   const rng = rngFor(room);
-  const delay = thinkDelay(rng);
+  const delay = thinkDelay(rng, room.gameId);
   const timer = setTimeout(() => {
     timers.delete(room.id);
     if (room.status !== 'running') return;

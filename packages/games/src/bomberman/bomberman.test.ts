@@ -381,13 +381,88 @@ describe('7. DETERMINISM', () => {
   });
 });
 
-describe('bot policy', () => {
+describe('8. safe-spawn invariant & opening bomb escape for all 8 seats', () => {
+  it('guarantees every spawn point (seats 0..7) has an opening route with safe legal escape after bomb placement', () => {
+    // Test all 8 spawn points under arbitrary map seeds
+    const seeds = [42, 12345, 99999];
+    for (const seed of seeds) {
+      const players = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7'];
+      const s = bomberman.setup(players, seed, { softDensity: 80 }); // max density
+
+      for (let seat = 0; seat < players.length; seat++) {
+        const pid = players[seat]!;
+        const p = s.players[seat]!;
+        const sp = SPAWN_POINTS[seat]!;
+        expect(p.x).toBe(sp.x);
+        expect(p.y).toBe(sp.y);
+        expect(s.grid[cellIndex(p.x, p.y)]).toBe(TILE_EMPTY);
+
+        // Clone state to test this seat independently
+        let sim = structuredClone(s);
+        sim.graceTicksRemaining = 0; // ensure lethal damage is active
+
+        // 1. Player drops bomb at initial spawn point
+        const rBomb = bomberman.reduce(sim, pid, { type: 'bomb' });
+        expect(rBomb.ok).toBe(true);
+        sim = (rBomb as { state: BombermanState }).state;
+        const bomb = sim.bombs.find((b) => b.ownerId === pid)!;
+        expect(bomb).toBeDefined();
+        expect(bomb.x).toBe(sp.x);
+        expect(bomb.y).toBe(sp.y);
+
+        // 2. Bot policy view from this player
+        const rng = rngFrom({ seed: seat * 100 + 1, calls: 0 });
+        let escaped = false;
+
+        // Walk using bot policy (or legal moves) for up to 10 actions
+        for (let step = 0; step < 10; step++) {
+          const v = bomberman.view(sim, pid);
+          const act = bombermanBot.chooseAction(v as never, pid, rng, 'normal');
+          if (act.type === 'move') {
+            const rMove = bomberman.reduce(sim, pid, act);
+            expect(rMove.ok).toBe(true);
+            sim = (rMove as { state: BombermanState }).state;
+          } else {
+            // If bot chose not to move, tick
+            const rTick = bomberman.reduce(sim, pid, { type: 'tick' });
+            expect(rTick.ok).toBe(true);
+            sim = (rTick as { state: BombermanState }).state;
+          }
+
+          const curP = sim.players.find((pl) => pl.id === pid)!;
+          // Safe cell: not in line of sight of spawn within blast radius 2
+          const inXLine = curP.x === sp.x && Math.abs(curP.y - sp.y) <= 2;
+          const inYLine = curP.y === sp.y && Math.abs(curP.x - sp.x) <= 2;
+          if (!inXLine && !inYLine) {
+            escaped = true;
+            break;
+          }
+        }
+
+        expect(escaped).toBe(true);
+
+        // 3. Detonate the bomb by ticking out its fuse and verify player survives
+        while (sim.bombs.some((b) => b.ownerId === pid)) {
+          const rTick = bomberman.reduce(sim, pid, { type: 'tick' });
+          expect(rTick.ok).toBe(true);
+          sim = (rTick as { state: BombermanState }).state;
+        }
+        // Tick through blast
+        for (let t = 0; t < 5; t++) {
+          const rTick = bomberman.reduce(sim, pid, { type: 'tick' });
+          if (rTick.ok) sim = rTick.state;
+        }
+
+        const finalP = sim.players.find((pl) => pl.id === pid)!;
+        expect(finalP.alive).toBe(true);
+      }
+    }
+  });
+});
+
+describe('9. bot policy progression & behavioral intelligence', () => {
   it('easy, normal, hard bots choose legal actions based on view alone', () => {
     const s = bomberman.setup(['bot1', 'bot2'], 12345, {});
-    const rng1 = mulberry32(111);
-    const rng2 = mulberry32(222);
-    const rng3 = mulberry32(333);
-
     const v = bomberman.view(s, 'bot1') as Parameters<typeof bombermanBot.chooseAction>[0];
     expect(v.you).not.toBeNull();
 
@@ -399,5 +474,61 @@ describe('bot policy', () => {
 
     const actHard = bombermanBot.chooseAction(v, 'bot1', rngFrom({ seed: 333, calls: 0 }), 'hard');
     expect(['move', 'bomb', 'tick']).toContain(actHard.type);
+  });
+
+  it('bot actively moves and places bombs to destroy soft blocks and make progress', () => {
+    let s = bomberman.setup(['bot1', 'bot2'], 42, {});
+    const rng = rngFrom({ seed: 777, calls: 0 });
+
+    let bombPlacedCount = 0;
+    let movesCount = 0;
+    const initialSoftCount = s.grid.filter((t) => t === TILE_SOFT).length;
+
+    // Run 120 steps of simulation for bot1
+    for (let i = 0; i < 120; i++) {
+      const v = bomberman.view(s, 'bot1');
+      const action = bombermanBot.chooseAction(v as never, 'bot1', rng, 'normal');
+      if (action.type === 'bomb') bombPlacedCount++;
+      if (action.type === 'move') movesCount++;
+
+      const res = bomberman.reduce(s, 'bot1', action);
+      if (res.ok) s = res.state;
+
+      // Tick room clock to allow bombs to explode and advance state
+      const tickRes = bomberman.reduce(s, 'bot1', { type: 'tick' });
+      if (tickRes.ok) s = tickRes.state;
+    }
+
+    // Bot must have made multiple moves and placed bombs
+    expect(movesCount).toBeGreaterThan(10);
+    expect(bombPlacedCount).toBeGreaterThan(0);
+    // Bot must have survived its own actions
+    expect(s.players[0]!.alive).toBe(true);
+    // Soft blocks must have been destroyed
+    const finalSoftCount = s.grid.filter((t) => t === TILE_SOFT).length;
+    expect(finalSoftCount).toBeLessThan(initialSoftCount);
+  });
+
+  it('bot flees immediate blast danger and avoids suicidal moves', () => {
+    let s = bomberman.setup(['bot1', 'bot2'], 999, {});
+    s.graceTicksRemaining = 0;
+
+    // Put bot1 at (1, 1). Place bomb at (1, 1) with fuse 1.
+    s.players[0]!.x = 1;
+    s.players[0]!.y = 1;
+    s.bombs.push({ id: 10, ownerId: 'bot2', x: 1, y: 1, fuse: 1, radius: 2 });
+
+    const rng = rngFrom({ seed: 55, calls: 0 });
+    const v = bomberman.view(s, 'bot1');
+    const action = bombermanBot.chooseAction(v as never, 'bot1', rng, 'hard');
+
+    // Bot must choose to move away, NOT bomb or sit and tick
+    expect(action.type).toBe('move');
+    if (action.type === 'move') {
+      expect(['down', 'right']).toContain(action.dir);
+      // Execute move
+      const res = bomberman.reduce(s, 'bot1', action);
+      expect(res.ok).toBe(true);
+    }
   });
 });

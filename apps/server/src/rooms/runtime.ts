@@ -535,14 +535,32 @@ export class LiveRoom {
     }
     this.arcadeTickTimer = setInterval(() => {
       if (this.status !== 'running' || !this.gameState) return;
+      let humanTicked = false;
       for (const player of this.players) {
         if (player.isBot || player.left) continue;
         const lastAt = this.playerLastActionMs.get(player.id) ?? 0;
-        if (Date.now() - lastAt < 1500) continue; // Player is actively ticking on client; do not inject extra ticks!
+        if (Date.now() - lastAt < 1500) {
+          humanTicked = true;
+          continue; // Player is actively ticking on client; do not inject extra ticks!
+        }
         const view = this.engine().view(this.gameState as never, player.id) as unknown as { you: { gameOver?: boolean } | null };
         const you = view?.you;
         if (!you || you.gameOver) continue;
         this.applyGameAction(player.id, { type: 'tick' });
+        humanTicked = true;
+      }
+
+      // Bomberman shares a single board across all players. In bot-only rooms or when all humans
+      // are eliminated/disconnected, ensure the shared arena continues ticking.
+      if (this.gameId === 'bomberman' && !humanTicked) {
+        const activeActor = this.players.find((p) => {
+          if (p.left) return false;
+          const view = this.engine().view(this.gameState as never, p.id) as unknown as { you: { gameOver?: boolean } | null };
+          return Boolean(view?.you && !view.you.gameOver);
+        });
+        if (activeActor) {
+          this.applyGameAction(activeActor.id, { type: 'tick' });
+        }
       }
     }, 1000);
   }
