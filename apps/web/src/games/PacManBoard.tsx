@@ -47,7 +47,10 @@ function applySpriteTransform(el: HTMLElement | null, a: SpriteAnim | null, now:
   return position;
 }
 
-function MazeCell({ tile, fruit }: {
+const MazeCell = React.memo(function MazeCell({
+  tile,
+  fruit,
+}: {
   tile: number;
   fruit: { kind: string; points: number } | null;
 }) {
@@ -67,7 +70,7 @@ function MazeCell({ tile, fruit }: {
       {fruit && <div className="pa-fruit-badge text-[9px] leading-none w-[14px] h-[14px] flex items-center justify-center">{fruitIcon(fruit.kind)}</div>}
     </div>
   );
-}
+});
 // Pac-Man and ghosts render on a separate absolutely-positioned overlay that
 // glides between tiles via rAF interpolation — see the anim refs in
 // PacManBoard. Dots stay in the grid underneath, exactly like the arcade.
@@ -229,12 +232,380 @@ function buildWallPath(maze: number[], w: number, h: number): string {
   return wallPath;
 }
 
+interface PacMazeViewProps {
+  player: PacManPublicPlayer;
+  mazeW: number;
+  mazeH: number;
+  isLivePlayer: boolean;
+  phase: PacManView['phase'];
+  winner?: string | null;
+  youId?: string | null;
+}
+
 /**
- * Read-only maze for a spectator (`youId` has no seat): renders one active
- * player's board — walls, dots, fruit, and Pac-Man/ghosts at their current
- * tile — with no controls, keyboard, or tick loop attached. Positions are
- * static (no rAF glide) since the interpolation refs in `PacManBoard`
- * belong to the live player, not to whichever player is being watched.
+ * Shared maze canvas with smooth 60 FPS sprite interpolation and synchronized
+ * dot consumption: dots only visually disappear when Pac-Man's mouth actually
+ * crosses their cell center, both for live players and spectators.
+ */
+function PacMazeView({
+  player,
+  mazeW,
+  mazeH,
+  isLivePlayer,
+  phase,
+  winner,
+  youId,
+}: PacMazeViewProps): React.ReactElement {
+  const mazeBoxRef = React.useRef<HTMLDivElement>(null);
+  const [scale, setScale] = React.useState(1);
+
+  React.useEffect(() => {
+    const update = () => {
+      const el = mazeBoxRef.current;
+      if (!el) return;
+      const shellChrome = 20;
+      const vw = window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      const availW = Math.max(0, (vw < 1024 ? vw : el.clientWidth) - shellChrome - 16);
+      if (vw < 1024) {
+        const nonMazeHeight = isLivePlayer ? 310 : 120;
+        const availH = Math.max(180, vh - nonMazeHeight);
+        const s = Math.min(availW / (mazeW * CELL), availH / (mazeH * CELL));
+        setScale(Math.max(0.35, Math.min(s, 2.5)));
+      } else {
+        const top = el.getBoundingClientRect().top;
+        const availH = Math.max(220, vh - top - 40);
+        const s = Math.min(availW / (mazeW * CELL), availH / (mazeH * CELL));
+        setScale(Math.max(0.35, Math.min(s, 1.35)));
+      }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    if (mazeBoxRef.current) ro.observe(mazeBoxRef.current);
+    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+      window.visualViewport?.removeEventListener('resize', update);
+    };
+  }, [mazeW, mazeH, isLivePlayer]);
+
+  const [pacMoving, setPacMoving] = React.useState(false);
+  const pacMotionSeqRef = React.useRef(0);
+  const pacMotionTimerRef = React.useRef<number | null>(null);
+  React.useEffect(() => () => {
+    if (pacMotionTimerRef.current !== null) window.clearTimeout(pacMotionTimerRef.current);
+  }, []);
+
+  const stopPacChomp = () => {
+    pacMotionSeqRef.current += 1;
+    if (pacMotionTimerRef.current !== null) {
+      window.clearTimeout(pacMotionTimerRef.current);
+      pacMotionTimerRef.current = null;
+    }
+    setPacMoving(false);
+  };
+
+  const startPacChomp = () => {
+    const seq = pacMotionSeqRef.current + 1;
+    pacMotionSeqRef.current = seq;
+    if (pacMotionTimerRef.current !== null) window.clearTimeout(pacMotionTimerRef.current);
+    setPacMoving(true);
+    pacMotionTimerRef.current = window.setTimeout(() => {
+      if (pacMotionSeqRef.current === seq) {
+        pacMotionTimerRef.current = null;
+        setPacMoving(false);
+      }
+    }, TICK_MS);
+  };
+
+  const pacElRef = React.useRef<HTMLDivElement | null>(null);
+  const ghostElsRef = React.useRef<Map<number, HTMLDivElement>>(new Map());
+  const spriteAnimRef = React.useRef<{ pac: SpriteAnim | null; ghosts: Map<number, SpriteAnim> }>({
+    pac: null,
+    ghosts: new Map(),
+  });
+  const spriteVisualRef = React.useRef<{ pac: TilePosition | null; ghosts: Map<number, TilePosition> }>({
+    pac: null,
+    ghosts: new Map(),
+  });
+  const lastPacPosRef = React.useRef<TilePosition | null>(null);
+  const lastGhostPosRef = React.useRef<Map<number, TilePosition>>(new Map());
+  const lastLevelRef = React.useRef<number>(player.level);
+  const lastPlayerIdRef = React.useRef<string>(player.id);
+
+  type PendingDot = { idx: number; x: number; y: number; isPower: boolean };
+  const pendingDotsRef = React.useRef<PendingDot[]>([]);
+  const [visibleMaze, setVisibleMaze] = React.useState<number[]>(() => [...player.maze]);
+  const visibleMazeRef = React.useRef<number[]>(visibleMaze);
+
+  React.useLayoutEffect(() => {
+    const now = performance.now();
+    const anim = spriteAnimRef.current;
+    const visual = spriteVisualRef.current;
+    const cur = player.pacPos;
+    const last = lastPacPosRef.current;
+
+    const isDifferentPlayer = lastPlayerIdRef.current !== player.id;
+    lastPlayerIdRef.current = player.id;
+    const isNewLevel = lastLevelRef.current !== player.level;
+    lastLevelRef.current = player.level;
+
+    if (isDifferentPlayer || isNewLevel) {
+      lastPacPosRef.current = null;
+      lastGhostPosRef.current.clear();
+      anim.pac = null;
+      anim.ghosts.clear();
+      visual.pac = null;
+      visual.ghosts.clear();
+      pendingDotsRef.current = [];
+      visibleMazeRef.current = [...player.maze];
+      setVisibleMaze([...player.maze]);
+    }
+
+    const axis = last ? gridStepAxis(last, cur) : null;
+    const stepDist = last ? Math.max(Math.abs(cur.x - last.x), Math.abs(cur.y - last.y)) : 0;
+    const isTunnelWrapOrTeleport = stepDist > 1;
+    const isDead = player.dyingTicks > 0 || player.gameOver;
+    const snap = isDifferentPlayer || isNewLevel || !last || isTunnelWrapOrTeleport || isDead || !axis;
+
+    if (!last || last.x !== cur.x || last.y !== cur.y) {
+      const from = !snap && axis === anim.pac?.axis && visual.pac
+        ? visual.pac
+        : snap
+          ? { ...cur }
+          : { ...last! };
+      const duration = Math.max(1, Math.hypot(cur.x - from.x, cur.y - from.y) * TICK_MS);
+      anim.pac = { from, to: { ...cur }, axis, start: now, duration };
+      visual.pac = from;
+      if (snap) stopPacChomp();
+      else startPacChomp();
+    }
+    lastPacPosRef.current = { ...cur };
+
+    for (const g of player.ghosts) {
+      const gLast = lastGhostPosRef.current.get(g.id);
+      if (!gLast || gLast.x !== g.pos.x || gLast.y !== g.pos.y) {
+        const gAxis = gLast ? gridStepAxis(gLast, g.pos) : null;
+        const gSnap = !gLast || !gAxis || Math.abs(g.pos.x - gLast.x) > 1 || Math.abs(g.pos.y - gLast.y) > 1;
+        const previous = anim.ghosts.get(g.id);
+        const visualPosition = visual.ghosts.get(g.id);
+        const from = !gSnap && gAxis === previous?.axis && visualPosition
+          ? visualPosition
+          : gSnap
+            ? { ...g.pos }
+            : { ...gLast! };
+        const duration = Math.max(1, Math.hypot(g.pos.x - from.x, g.pos.y - from.y) * TICK_MS);
+        anim.ghosts.set(g.id, { from, to: { ...g.pos }, axis: gAxis, start: now, duration });
+      }
+      lastGhostPosRef.current.set(g.id, { ...g.pos });
+    }
+
+    // Client-side dot visibility tracking:
+    if (snap) {
+      pendingDotsRef.current = [];
+      visibleMazeRef.current = [...player.maze];
+      setVisibleMaze([...player.maze]);
+    } else {
+      const curIdx = cur.y * mazeW + cur.x;
+      const curTileInVisible = visibleMazeRef.current[curIdx];
+      const curTileInServer = player.maze[curIdx];
+
+      // Dot eaten in server state for this step -> delay visual removal until mouth reaches it
+      if ((curTileInVisible === 1 || curTileInVisible === 2) && curTileInServer === 0) {
+        if (!pendingDotsRef.current.some((d) => d.idx === curIdx)) {
+          pendingDotsRef.current.push({
+            idx: curIdx,
+            x: cur.x,
+            y: cur.y,
+            isPower: curTileInVisible === 2,
+          });
+        }
+      }
+
+      // Sync any other cells that changed on server (not pending consumption)
+      const pendingIndices = new Set(pendingDotsRef.current.map((d) => d.idx));
+      let changed = false;
+      const nextMaze = [...visibleMazeRef.current];
+      for (let i = 0; i < player.maze.length; i++) {
+        if (pendingIndices.has(i)) continue;
+        if (nextMaze[i] !== player.maze[i]) {
+          nextMaze[i] = player.maze[i]!;
+          changed = true;
+        }
+      }
+      if (changed) {
+        visibleMazeRef.current = nextMaze;
+        setVisibleMaze(nextMaze);
+      }
+    }
+
+    const pacVisual = applySpriteTransform(pacElRef.current, anim.pac, now);
+    if (pacVisual) visual.pac = pacVisual;
+    for (const [id, a] of anim.ghosts) {
+      const ghostVisual = applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
+      if (ghostVisual) visual.ghosts.set(id, ghostVisual);
+    }
+  });
+
+  // 60 FPS glide: lerp sprites and consume pending dots when Pac-Man's mouth arrives
+  React.useEffect(() => {
+    let raf = 0;
+    const step = () => {
+      const now = performance.now();
+      const anim = spriteAnimRef.current;
+      const visual = spriteVisualRef.current;
+      const pacVisual = applySpriteTransform(pacElRef.current, anim.pac, now);
+      if (pacVisual) visual.pac = pacVisual;
+      for (const [id, a] of anim.ghosts) {
+        const ghostVisual = applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
+        if (ghostVisual) visual.ghosts.set(id, ghostVisual);
+      }
+
+      // Check if visual Pac-Man reached any pending dot
+      if (pacVisual && pendingDotsRef.current.length > 0) {
+        let dotsEatenThisFrame = false;
+        const remainingPending: PendingDot[] = [];
+        for (const dot of pendingDotsRef.current) {
+          const dist = Math.hypot(pacVisual.x - dot.x, pacVisual.y - dot.y);
+          if (dist < 0.45) {
+            visibleMazeRef.current[dot.idx] = 0;
+            dotsEatenThisFrame = true;
+            if (isLivePlayer) {
+              if (dot.isPower) {
+                sfx.pacPower && sfx.pacPower();
+              } else {
+                sfx.pacWaka && sfx.pacWaka();
+              }
+            }
+          } else {
+            remainingPending.push(dot);
+          }
+        }
+        pendingDotsRef.current = remainingPending;
+        if (dotsEatenThisFrame) {
+          setVisibleMaze([...visibleMazeRef.current]);
+        }
+      }
+
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [isLivePlayer]);
+
+  const wallPath = React.useMemo(() => buildWallPath(player.maze, mazeW, mazeH), [player.maze, mazeW, mazeH]);
+
+  return (
+    <div ref={mazeBoxRef} className="w-full flex justify-center">
+      <div
+        className="relative pa-maze-shell"
+        style={{ width: mazeW * CELL * scale + 20, height: mazeH * CELL * scale + 20 }}
+      >
+        <div className="relative overflow-hidden select-none pa-maze-clip" style={{ width: mazeW * CELL * scale, height: mazeH * CELL * scale }}>
+          <div
+            className="absolute top-0 left-0 origin-top-left"
+            style={{ width: mazeW * CELL, height: mazeH * CELL, transform: `scale(${scale})` }}
+          >
+            <div
+              className="grid gap-0"
+              style={{
+                gridTemplateColumns: `repeat(${mazeW}, ${CELL}px)`,
+                gridTemplateRows: `repeat(${mazeH}, ${CELL}px)`,
+                width: mazeW * CELL,
+                height: mazeH * CELL,
+              }}
+            >
+              {Array.from({ length: mazeW * mazeH }).map((_, i) => {
+                const x = i % mazeW;
+                const y = Math.floor(i / mazeW);
+                const fruit = player.fruit && player.fruit.pos.x === x && player.fruit.pos.y === y ? player.fruit : null;
+                return (
+                  <div key={i} style={{ width: CELL, height: CELL }}>
+                    <MazeCell tile={visibleMaze[i] ?? 9} fruit={fruit} />
+                  </div>
+                );
+              })}
+            </div>
+            {/* Gliding sprite layer — Pac-Man and ghosts interpolate
+                between tick positions via rAF. Ghosts render first so Pac-Man
+                eats visually on overlap. */}
+            <div className="absolute inset-0 pointer-events-none">
+              {player.ghosts.map((g) => (
+                <div
+                  key={g.id}
+                  ref={(el) => {
+                    if (el) ghostElsRef.current.set(g.id, el);
+                    else ghostElsRef.current.delete(g.id);
+                  }}
+                  className="absolute top-0 left-0 flex items-center justify-center"
+                  style={{ width: CELL, height: CELL }}
+                >
+                  <GhostIcon ghost={g} />
+                </div>
+              ))}
+              {player.dyingTicks === 0 && (
+                <div
+                  ref={pacElRef}
+                  className="absolute top-0 left-0 flex items-center justify-center"
+                  style={{ width: CELL, height: CELL }}
+                >
+                  <PacIcon dir={player.pacDir} moving={pacMoving} />
+                </div>
+              )}
+            </div>
+            <svg
+              className="absolute inset-0 pointer-events-none"
+              width={mazeW * CELL}
+              height={mazeH * CELL}
+              viewBox={`0 0 ${mazeW * CELL} ${mazeH * CELL}`}
+              aria-hidden="true"
+            >
+              <defs>
+                <filter id="paWallGlow" x="-15%" y="-15%" width="130%" height="130%">
+                  <feGaussianBlur stdDeviation="1" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              {/* neon triple-stroke: soft halo, bright body, cool highlight */}
+              <path d={wallPath} fill="none" stroke="#1a3cff" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" opacity={0.4} filter="url(#paWallGlow)" />
+              <path d={wallPath} fill="none" stroke="#3d5bff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+              <path d={wallPath} fill="none" stroke="#9db4ff" strokeWidth={0.7} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
+            </svg>
+          </div>
+          {(player.gameOver || phase === 'game_over') && (
+            <div className="absolute inset-0 bg-pa-bg/85 flex flex-col items-center justify-center gap-2">
+              <div className="font-display text-pa-danger text-sm">GAME OVER</div>
+              {isLivePlayer && (
+                <div className="text-pa-ink text-xs">{winner === youId ? 'You win!' : winner ? 'Game over' : 'Game over'}</div>
+              )}
+              <div className="font-display text-pa-amber">{player.score} PTS</div>
+            </div>
+          )}
+          {player.dyingTicks > 0 && !player.gameOver && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="font-display text-pa-danger text-xs bg-pa-bg border-2 border-pa-danger px-3 py-1">— HIT —</div>
+            </div>
+          )}
+          {player.levelClearTicks > 0 && (
+            <div className="absolute inset-0 bg-pa-amber/10 flex items-center justify-center">
+              <div className="font-display text-pa-amber text-sm animate-pulse">LEVEL CLEAR!</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Read-only maze for a spectator (`youId` has no seat): renders the active
+ * player's board with identical 60 FPS sprite gliding and synchronized dot
+ * disappearance, with no controls or client tick loop attached.
  */
 function PacManSpectatorView({
   target,
@@ -249,69 +620,26 @@ function PacManSpectatorView({
   playerCount: number;
   phase: PacManView['phase'];
 }): React.ReactElement {
-  const wallPath = buildWallPath(target.maze, mazeW, mazeH);
   return (
     <div className="w-full h-full max-h-full overflow-auto flex flex-col items-center gap-2 p-2">
       <div className="text-center font-display text-[10px] tracking-widest text-pa-ink-dim">
         SPECTATING · P{target.seat + 1} · {target.score.toLocaleString()} PTS
         {playerCount > 1 ? ` · Lv ${target.level}` : ''}
       </div>
-      <div className="relative" style={{ width: mazeW * CELL, height: mazeH * CELL }}>
-        <div
-          className="grid gap-0"
-          style={{
-            gridTemplateColumns: `repeat(${mazeW}, ${CELL}px)`,
-            gridTemplateRows: `repeat(${mazeH}, ${CELL}px)`,
-            width: mazeW * CELL,
-            height: mazeH * CELL,
-          }}
-        >
-          {Array.from({ length: mazeW * mazeH }).map((_, i) => {
-            const x = i % mazeW;
-            const y = Math.floor(i / mazeW);
-            const fruit = target.fruit && target.fruit.pos.x === x && target.fruit.pos.y === y ? target.fruit : null;
-            return (
-              <div key={i} style={{ width: CELL, height: CELL }}>
-                <MazeCell tile={target.maze[i] ?? 9} fruit={fruit} />
-              </div>
-            );
-          })}
-        </div>
-        <div className="absolute inset-0 pointer-events-none">
-          {target.ghosts.map((g) => (
-            <div
-              key={g.id}
-              className="absolute top-0 left-0 flex items-center justify-center"
-              style={{ width: CELL, height: CELL, transform: `translate(${g.pos.x * CELL}px, ${g.pos.y * CELL}px)` }}
-            >
-              <GhostIcon ghost={g} />
-            </div>
-          ))}
-          {target.dyingTicks === 0 && (
-            <div
-              className="absolute top-0 left-0 flex items-center justify-center"
-              style={{ width: CELL, height: CELL, transform: `translate(${target.pacPos.x * CELL}px, ${target.pacPos.y * CELL}px)` }}
-            >
-              <PacIcon dir={target.pacDir} moving={false} />
-            </div>
-          )}
-        </div>
-        <svg
-          className="absolute inset-0 pointer-events-none"
-          width={mazeW * CELL}
-          height={mazeH * CELL}
-          viewBox={`0 0 ${mazeW * CELL} ${mazeH * CELL}`}
-          aria-hidden="true"
-        >
-          <path d={wallPath} fill="none" stroke="#3d5bff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-          <path d={wallPath} fill="none" stroke="#9db4ff" strokeWidth={0.7} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
-        </svg>
-        {(target.gameOver || phase === 'game_over') && (
-          <div className="absolute inset-0 bg-pa-bg/85 flex flex-col items-center justify-center gap-2">
-            <div className="font-display text-pa-danger text-sm">GAME OVER</div>
-            <div className="font-display text-pa-amber">{target.score} PTS</div>
-          </div>
-        )}
+      <PacMazeView
+        player={target}
+        mazeW={mazeW}
+        mazeH={mazeH}
+        isLivePlayer={false}
+        phase={phase}
+      />
+      <div className="flex gap-1 lg:gap-2 justify-center">
+        {GHOST_NAMES.map((n, i) => (
+          <span key={i} className="pa-chip text-[9px] font-display px-2 py-0.5 border flex items-center gap-1" style={{ borderColor: GHOST_COLORS[i], color: GHOST_COLORS[i], background: 'rgba(0,0,0,0.35)' }}>
+            <MiniGhostIcon color={GHOST_COLORS[i] ?? '#fff'} />
+          </span>
+        ))}
+        <span className="pa-chip text-[9px] font-display text-pa-amber border border-pa-amber px-2">○ POWER</span>
       </div>
     </div>
   );
@@ -381,20 +709,22 @@ export function PacManBoard({
 
   const prevScore = React.useRef(you?.score ?? 0);
   const prevDots = React.useRef(you?.dotsRemaining ?? 244);
+  const prevDying = React.useRef(you?.dyingTicks ?? 0);
   React.useEffect(() => {
     if (!you) return;
+    if (you.dyingTicks > 0 && prevDying.current === 0) {
+      sfx.pacDeath && sfx.pacDeath();
+    }
+    prevDying.current = you.dyingTicks;
+
     if (you.score > prevScore.current) {
-      if (you.dotsRemaining < prevDots.current) {
-        // ate pellet
-        if (you.score - prevScore.current >= 50) sfx.pacPower && sfx.pacPower();
-        else sfx.pacWaka && sfx.pacWaka();
-      } else if (you.score - prevScore.current >= 200) {
+      if (you.dotsRemaining === prevDots.current && you.score - prevScore.current >= 200) {
         sfx.pacEatGhost && sfx.pacEatGhost();
       }
     }
     prevScore.current = you.score;
     prevDots.current = you.dotsRemaining;
-  }, [you?.score, you?.dotsRemaining, you]);
+  }, [you?.score, you?.dotsRemaining, you?.dyingTicks, you]);
 
   // Keyboard
   React.useEffect(() => {
@@ -428,179 +758,46 @@ export function PacManBoard({
 
   // Pac-Man is client-driven: the server watchdog is only a one-second
   // recovery path. Emit authoritative logic ticks at the engine cadence while
-  // this player is alive; rAF below makes each resulting tile step smooth.
+  // this player is alive; rAF in PacMazeView makes each resulting tile step smooth.
+  // Pacing: recursive setTimeout ensures ticks are strictly paced and never queue
+  // multiple overlapping ticks even on network lag or tab throttling.
   React.useEffect(() => {
     if (!you || you.gameOver || view.phase === 'game_over' || paused) return;
-    const interval = window.setInterval(() => actionRef.current({ type: 'tick' }), TICK_MS);
-    return () => window.clearInterval(interval);
-  }, [you?.gameOver, view.phase, paused]);
 
+    let timer: number | null = null;
+    let cancelled = false;
+    let lastTickAt = performance.now();
 
-
-  // --- Responsive maze scaling -------------------------------------------
-  // 28x31 cells at 18px is 504x558 — wider than a 390px portrait phone.
-  // The maze renders at fixed CELL geometry and is scaled to fit the space
-  // left over after the HUD (top) and D-pad (bottom thumb zone).
-  const mazeBoxRef = React.useRef<HTMLDivElement>(null);
-  const [scale, setScale] = React.useState(1);
-  React.useEffect(() => {
-    const update = () => {
-      const el = mazeBoxRef.current;
-      if (!el) return;
-      const shellChrome = 20;
-      const vw = window.innerWidth;
-      const vh = window.visualViewport?.height ?? window.innerHeight;
-      const availW = Math.max(0, (vw < 1024 ? vw : el.clientWidth) - shellChrome - 16);
-      if (vw < 1024) {
-        // Mobile portrait: top HUD (~42px), ghost legend (~24px), Joypad/Joystick (~196px), safe areas + gaps (~48px)
-        const nonMazeHeight = 310;
-        const availH = Math.max(180, vh - nonMazeHeight);
-        const s = Math.min(availW / (W * CELL), availH / (H * CELL));
-        setScale(Math.max(0.35, Math.min(s, 2.5)));
-      } else {
-        const top = el.getBoundingClientRect().top;
-        const availH = Math.max(220, vh - top - 40);
-        const s = Math.min(availW / (W * CELL), availH / (H * CELL));
-        setScale(Math.max(0.35, Math.min(s, 1.35)));
-      }
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    if (mazeBoxRef.current) ro.observe(mazeBoxRef.current);
-    window.addEventListener('resize', update);
-    window.visualViewport?.addEventListener('resize', update);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener('resize', update);
-      window.visualViewport?.removeEventListener('resize', update);
-    };
-  }, [W, H]);
-
-  // Chomping belongs to the actual interpolation window, not to a one-render
-  // comparison of server snapshots. Room-state updates that arrive mid-glide
-  // must not close Pac-Man's mouth before the sprite has reached its tile.
-  const [pacMoving, setPacMoving] = React.useState(false);
-  const pacMotionSeqRef = React.useRef(0);
-  const pacMotionTimerRef = React.useRef<number | null>(null);
-  React.useEffect(() => () => {
-    if (pacMotionTimerRef.current !== null) window.clearTimeout(pacMotionTimerRef.current);
-  }, []);
-
-  const stopPacChomp = () => {
-    pacMotionSeqRef.current += 1;
-    if (pacMotionTimerRef.current !== null) {
-      window.clearTimeout(pacMotionTimerRef.current);
-      pacMotionTimerRef.current = null;
-    }
-    setPacMoving(false);
-  };
-
-  const startPacChomp = () => {
-    const seq = pacMotionSeqRef.current + 1;
-    pacMotionSeqRef.current = seq;
-    if (pacMotionTimerRef.current !== null) window.clearTimeout(pacMotionTimerRef.current);
-    setPacMoving(true);
-    pacMotionTimerRef.current = window.setTimeout(() => {
-      if (pacMotionSeqRef.current === seq) {
-        pacMotionTimerRef.current = null;
-        setPacMoving(false);
-      }
-    }, TICK_MS);
-  };
-
-  // --- Smooth sprite interpolation ---------------------------------------
-  // The engine moves one tile per tick (TICK_MS); rendering bare tick
-  // snapshots makes Pac-Man and ghosts pop tile-by-tile. The rAF loop tracks
-  // each sprite's rendered float position. A tick that continues along the
-  // same axis starts from that float; a turn instead starts at the last
-  // confirmed tile, preserving its orthogonal corner. Tunnel wraps and
-  // respawns (|delta| > 1 tile) still snap instantly — never fly linearly
-  // across tunnel mouths.
-  const pacElRef = React.useRef<HTMLDivElement | null>(null);
-  const ghostElsRef = React.useRef<Map<number, HTMLDivElement>>(new Map());
-  const spriteAnimRef = React.useRef<{ pac: SpriteAnim | null; ghosts: Map<number, SpriteAnim> }>({
-    pac: null,
-    ghosts: new Map(),
-  });
-  const spriteVisualRef = React.useRef<{ pac: TilePosition | null; ghosts: Map<number, TilePosition> }>({
-    pac: null,
-    ghosts: new Map(),
-  });
-  const lastPacPosRef = React.useRef<TilePosition | null>(null);
-  const lastGhostPosRef = React.useRef<Map<number, TilePosition>>(new Map());
-
-  // Re-arm targets only when a tick actually changes a sprite's tile.
-  // useLayoutEffect writes its current visual position before paint, so
-  // sprites never flash or reset to an older tile when socket timing varies.
-  React.useLayoutEffect(() => {
-    const now = performance.now();
-    const anim = spriteAnimRef.current;
-    const visual = spriteVisualRef.current;
-    if (you) {
-      const cur = you.pacPos;
-      const last = lastPacPosRef.current;
-      if (!last || last.x !== cur.x || last.y !== cur.y) {
-        const axis = last ? gridStepAxis(last, cur) : null;
-        const snap = !last || !axis || Math.abs(cur.x - last.x) > 1 || Math.abs(cur.y - last.y) > 1;
-        // A turn must start at its last confirmed tile, not a fractional
-        // position still travelling along the prior axis.
-        const from = !snap && axis === anim.pac?.axis && visual.pac
-          ? visual.pac
-          : snap
-            ? { ...cur }
-            : { ...last! };
-        const duration = Math.max(1, Math.hypot(cur.x - from.x, cur.y - from.y) * TICK_MS);
-        anim.pac = { from, to: { ...cur }, axis, start: now, duration };
-        visual.pac = from;
-        if (snap) stopPacChomp();
-        else startPacChomp();
-      }
-      lastPacPosRef.current = { ...cur };
-      for (const g of you.ghosts) {
-        const gLast = lastGhostPosRef.current.get(g.id);
-        if (!gLast || gLast.x !== g.pos.x || gLast.y !== g.pos.y) {
-          const axis = gLast ? gridStepAxis(gLast, g.pos) : null;
-          const snap = !gLast || !axis || Math.abs(g.pos.x - gLast.x) > 1 || Math.abs(g.pos.y - gLast.y) > 1;
-          const previous = anim.ghosts.get(g.id);
-          const visualPosition = visual.ghosts.get(g.id);
-          const from = !snap && axis === previous?.axis && visualPosition
-            ? visualPosition
-            : snap
-              ? { ...g.pos }
-              : { ...gLast! };
-          const duration = Math.max(1, Math.hypot(g.pos.x - from.x, g.pos.y - from.y) * TICK_MS);
-          anim.ghosts.set(g.id, { from, to: { ...g.pos }, axis, start: now, duration });
-        }
-        lastGhostPosRef.current.set(g.id, { ...g.pos });
-      }
-    }
-    const pacVisual = applySpriteTransform(pacElRef.current, anim.pac, now);
-    if (pacVisual) visual.pac = pacVisual;
-    for (const [id, a] of anim.ghosts) {
-      const ghostVisual = applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
-      if (ghostVisual) visual.ghosts.set(id, ghostVisual);
-    }
-  });
-
-  // 60 FPS glide: lerp every sprite toward its tick target. Transform is
-  // written straight to the DOM — React stays out of the animation path.
-  React.useEffect(() => {
-    let raf = 0;
-    const step = () => {
+    const scheduleNext = () => {
+      if (cancelled) return;
       const now = performance.now();
-      const anim = spriteAnimRef.current;
-      const visual = spriteVisualRef.current;
-      const pacVisual = applySpriteTransform(pacElRef.current, anim.pac, now);
-      if (pacVisual) visual.pac = pacVisual;
-      for (const [id, a] of anim.ghosts) {
-        const ghostVisual = applySpriteTransform(ghostElsRef.current.get(id) ?? null, a, now);
-        if (ghostVisual) visual.ghosts.set(id, ghostVisual);
-      }
-      raf = requestAnimationFrame(step);
+      const elapsed = now - lastTickAt;
+      const drift = Math.max(0, elapsed - TICK_MS);
+      const nextDelay = Math.max(50, TICK_MS - drift);
+
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        lastTickAt = performance.now();
+        actionRef.current({ type: 'tick' });
+        scheduleNext();
+      }, nextDelay);
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+
+    timer = window.setTimeout(() => {
+      if (cancelled) return;
+      lastTickAt = performance.now();
+      actionRef.current({ type: 'tick' });
+      scheduleNext();
+    }, TICK_MS);
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+  }, [you?.gameOver, view.phase, paused]);
 
   if (!you) {
     const activePlayers = view.players.filter((p) => !p.gameOver);
@@ -618,8 +815,6 @@ export function PacManBoard({
       />
     );
   }
-
-  const wallPath = buildWallPath(you.maze, W, H);
   return (
 
     <div
@@ -687,100 +882,15 @@ export function PacManBoard({
       {/* Maze — fixed CELL geometry scaled to fill portrait */}
       <div className="w-full lg:w-auto flex flex-col items-center gap-1 lg:gap-2">
 
-        <div ref={mazeBoxRef} className="w-full flex justify-center">
-          <div
-            className="relative pa-maze-shell"
-            style={{ width: W * CELL * scale + 20, height: H * CELL * scale + 20 }}
-          >
-            <div className="relative overflow-hidden select-none pa-maze-clip" style={{ width: W * CELL * scale, height: H * CELL * scale }}>
-              <div
-                className="absolute top-0 left-0 origin-top-left"
-                style={{ width: W * CELL, height: H * CELL, transform: `scale(${scale})` }}
-              >
-                <div
-                  className="grid gap-0"
-                  style={{ gridTemplateColumns: `repeat(${W}, ${CELL}px)`, gridTemplateRows: `repeat(${H}, ${CELL}px)`, width: W * CELL, height: H * CELL }}
-                >
-                  {Array.from({ length: W * H }).map((_, i) => {
-                    const x = i % W;
-                    const y = Math.floor(i / W);
-                    const fruit = you.fruit && you.fruit.pos.x === x && you.fruit.pos.y === y ? you.fruit : null;
-                    return (
-                      <div key={i} style={{ width: CELL, height: CELL }}>
-                        <MazeCell tile={you.maze[i] ?? 9} fruit={fruit as never} />
-                      </div>
-                    );
-                  })}
-                </div>
-                {/* Gliding sprite layer — Pac-Man and ghosts interpolate
-                    between tick positions via rAF (see spriteAnimRef above).
-                    Ghosts render first so Pac-Man eats visually on overlap. */}
-                <div className="absolute inset-0 pointer-events-none">
-                  {you.ghosts.map((g) => (
-                    <div
-                      key={g.id}
-                      ref={(el) => {
-                        if (el) ghostElsRef.current.set(g.id, el);
-                        else ghostElsRef.current.delete(g.id);
-                      }}
-                      className="absolute top-0 left-0 flex items-center justify-center"
-                      style={{ width: CELL, height: CELL }}
-                    >
-                      <GhostIcon ghost={g} />
-                    </div>
-                  ))}
-                  {you.dyingTicks === 0 && (
-                    <div
-                      ref={pacElRef}
-                      className="absolute top-0 left-0 flex items-center justify-center"
-                      style={{ width: CELL, height: CELL }}
-                    >
-                      <PacIcon dir={you.pacDir} moving={pacMoving} />
-                    </div>
-                  )}
-                </div>
-                <svg
-                  className="absolute inset-0 pointer-events-none"
-                  width={W * CELL}
-                  height={H * CELL}
-                  viewBox={`0 0 ${W * CELL} ${H * CELL}`}
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <filter id="paWallGlow" x="-15%" y="-15%" width="130%" height="130%">
-                      <feGaussianBlur stdDeviation="1" result="blur" />
-                      <feMerge>
-                        <feMergeNode in="blur" />
-                        <feMergeNode in="SourceGraphic" />
-                      </feMerge>
-                    </filter>
-                  </defs>
-                  {/* neon triple-stroke: soft halo, bright body, cool highlight */}
-                  <path d={wallPath} fill="none" stroke="#1a3cff" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" opacity={0.4} filter="url(#paWallGlow)" />
-                  <path d={wallPath} fill="none" stroke="#3d5bff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-                  <path d={wallPath} fill="none" stroke="#9db4ff" strokeWidth={0.7} strokeLinecap="round" strokeLinejoin="round" opacity={0.85} />
-                </svg>
-              </div>
-              {(you.gameOver || view.phase === 'game_over') && (
-                <div className="absolute inset-0 bg-pa-bg/85 flex flex-col items-center justify-center gap-2">
-                  <div className="font-display text-pa-danger text-sm">GAME OVER</div>
-                  <div className="text-pa-ink text-xs">{view.winner === youId ? 'You win!' : view.winner ? 'Game over' : 'Game over'}</div>
-                  <div className="font-display text-pa-amber">{you.score} PTS</div>
-                </div>
-              )}
-              {you.dyingTicks > 0 && !you.gameOver && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="font-display text-pa-danger text-xs bg-pa-bg border-2 border-pa-danger px-3 py-1">— HIT —</div>
-                </div>
-              )}
-              {you.levelClearTicks > 0 && (
-                <div className="absolute inset-0 bg-pa-amber/10 flex items-center justify-center">
-                  <div className="font-display text-pa-amber text-sm animate-pulse">LEVEL CLEAR!</div>
-                </div>
-              )}
-              </div>
-            </div>
-        </div>
+        <PacMazeView
+          player={you}
+          mazeW={W}
+          mazeH={H}
+          isLivePlayer={true}
+          phase={view.phase}
+          winner={view.winner}
+          youId={youId}
+        />
         {/* Ghost legend */}
         <div className="flex gap-1 lg:gap-2 justify-center">
           {GHOST_NAMES.map((n, i) => (
