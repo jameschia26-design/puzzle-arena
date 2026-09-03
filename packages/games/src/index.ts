@@ -137,6 +137,50 @@ export { pacman } from './pacman/index.js';
 export * as pacmanRules from './pacman/rules.js';
 export { pacmanBot, type PacManBotView } from './pacman/bot.js';
 export type { PacManState, PacManPlayerState, PacManConfig, PacManAction, PacManView, PacManPublicPlayer, GhostState } from './pacman/state.js';
+export { spaceInvaders } from './space-invaders/index.js';
+export * as spaceInvadersRules from './space-invaders/rules.js';
+export { spaceInvadersBot, type SpaceInvadersBotView } from './space-invaders/bot.js';
+export { PLAYFIELD_W, PLAYFIELD_H } from './space-invaders/state.js';
+export type {
+  SpaceInvadersState,
+  SpaceInvadersPlayerState,
+  SpaceInvadersConfig,
+  SpaceInvadersAction,
+  SpaceInvadersView,
+  SpaceInvadersPublicPlayer,
+  Alien,
+  AlienType,
+  Bunker,
+  Bullet,
+  AlienBomb,
+  UFO,
+} from './space-invaders/state.js';
+
+export { bomberman } from './bomberman/index.js';
+export * as bombermanRules from './bomberman/rules.js';
+export { bombermanBot, type BombermanBotView } from './bomberman/bot.js';
+export {
+  ARENA_W,
+  ARENA_H,
+  ARENA_SIZE,
+  TILE_EMPTY,
+  TILE_HARD,
+  TILE_SOFT,
+} from './bomberman/state.js';
+export type {
+  BombermanState,
+  BombermanPlayerState,
+  BombermanConfig,
+  BombermanAction,
+  BombermanView,
+  BombermanPublicPlayer,
+  BombState,
+  BlastCell,
+  PowerUpItem,
+  PowerUpKind,
+  Dir,
+  Tile,
+} from './bomberman/state.js';
 
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
@@ -152,6 +196,8 @@ import { xiangqi } from './xiangqi/index.js';
 import { animalChess } from './animal-chess/index.js';
 import { tetris } from './tetris/index.js';
 import { pacman } from './pacman/index.js';
+import { spaceInvaders } from './space-invaders/index.js';
+import { bomberman } from './bomberman/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
@@ -169,4 +215,6 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   'animal-chess': animalChess as unknown as GameEngine<never, never>,
   tetris: tetris as unknown as GameEngine<never, never>,
   pacman: pacman as unknown as GameEngine<never, never>,
+  'space-invaders': spaceInvaders as unknown as GameEngine<never, never>,
+  bomberman: bomberman as unknown as GameEngine<never, never>,
 };

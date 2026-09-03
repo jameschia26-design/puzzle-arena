@@ -12,6 +12,8 @@ import {
   animalChessBot,
   tetrisBot,
   pacmanBot,
+  spaceInvadersBot,
+  bombermanBot,
   type BigTwoBotView,
   type CheckersBotView,
   type ChessBotView,
@@ -25,6 +27,8 @@ import {
   type AnimalChessBotView,
   type TetrisBotView,
   type PacManBotView,
+  type SpaceInvadersBotView,
+  type BombermanBotView,
 } from '@puzzle-arena/games';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
 import { env } from '../env.js';
@@ -77,7 +81,7 @@ function thinkDelay(rng: Rng): number {
  */
 export function scheduleBots(room: LiveRoom): void {
   if (room.kind !== 'board' || room.status !== 'running') return;
-  if (room.gameId === 'tetris' || room.gameId === 'pacman') {
+  if (room.gameId === 'tetris' || room.gameId === 'pacman' || room.gameId === 'space-invaders' || room.gameId === 'bomberman') {
     scheduleConcurrentBots(room);
     return;
   }
@@ -175,7 +179,7 @@ function scheduleConcurrentBots(room: LiveRoom): void {
     timers.delete(room.id);
     if (room.status !== 'running') return;
     for (const bot of bots) {
-      const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView;
+      const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView | SpaceInvadersBotView | BombermanBotView;
       const difficulty: BotDifficulty = bot.botDifficulty ?? 'normal';
       // concurrent games expose `you` with gameOver; narrow via typed view, not inline shape cast
       const concurrentView = view as unknown as { you: { gameOver?: boolean } | null };
@@ -185,6 +189,10 @@ function scheduleConcurrentBots(room: LiveRoom): void {
       try {
         if (room.gameId === 'pacman') {
           action = pacmanBot.chooseAction(view as PacManBotView, bot.id, rng, difficulty);
+        } else if (room.gameId === 'space-invaders') {
+          action = spaceInvadersBot.chooseAction(view as SpaceInvadersBotView, bot.id, rng, difficulty);
+        } else if (room.gameId === 'bomberman') {
+          action = bombermanBot.chooseAction(view as BombermanBotView, bot.id, rng, difficulty);
         } else {
           action = tetrisBot.chooseAction(view as TetrisBotView, bot.id, rng, difficulty);
         }

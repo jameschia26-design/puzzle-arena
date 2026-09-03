@@ -190,6 +190,20 @@ export const pacmanActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tick') }),
 ]);
 export type PacmanAction = z.infer<typeof pacmanActionSchema>;
+export const spaceInvadersActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('move'), dir: z.enum(['left', 'right']) }),
+  z.object({ type: z.literal('fire') }),
+  z.object({ type: z.literal('toggleAssist') }),
+  z.object({ type: z.literal('tick') }),
+]);
+export type SpaceInvadersAction = z.infer<typeof spaceInvadersActionSchema>;
+
+export const bombermanActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('move'), dir: z.enum(['up', 'down', 'left', 'right']) }),
+  z.object({ type: z.literal('bomb') }),
+  z.object({ type: z.literal('tick') }),
+]);
+export type BombermanAction = z.infer<typeof bombermanActionSchema>;
 
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
@@ -204,6 +218,8 @@ export const gameActionSchema = z.union([
   xiangqiActionSchema,
   tetrisActionSchema,
   pacmanActionSchema,
+  spaceInvadersActionSchema,
+  bombermanActionSchema,
 ]);
 export type GameAction =
   | PropertyTycoonAction
@@ -217,7 +233,9 @@ export type GameAction =
   | ChessAction
   | XiangqiAction
   | TetrisAction
-  | PacmanAction;
+  | PacmanAction
+  | SpaceInvadersAction
+  | BombermanAction;
 
 /**
  * `forfeit` is deliberately NOT part of `gameActionSchema` — it is produced

@@ -19,6 +19,8 @@ export const GAME_IDS = [
   'animal-chess',
   'tetris',
   'pacman',
+  'space-invaders',
+  'bomberman',
 ] as const;
 export type GameId = (typeof GAME_IDS)[number];
 
@@ -123,6 +125,16 @@ export const tetrisConfigSchema = z.object({
 export const pacmanConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(90),
   startLevel: z.number().int().min(1).max(21).default(1),
+});
+export const spaceInvadersConfigSchema = z.object({
+  tickMs: z.number().int().min(20).max(200).default(60),
+  startWave: z.number().int().min(1).max(10).default(1),
+  assist: z.boolean().default(false),
+  waves: z.number().int().min(1).optional(),
+});
+export const bombermanConfigSchema = z.object({
+  tickMs: z.number().int().min(20).max(200).default(60),
+  softDensity: z.number().int().min(30).max(80).default(65),
 });
 /**
  * Chess and Xiangqi are the only two board games that use a real chess-clock
@@ -356,6 +368,28 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: pacmanConfigSchema,
     blurb: 'Navigate the 28×31 maze, eat dots, chase frightened ghosts and grab fruit through 21 levels.',
+  },
+  'space-invaders': {
+    id: 'space-invaders',
+    title: 'Space Invaders',
+    kind: 'board',
+    minPlayers: 1,
+    maxPlayers: 8,
+    defaultTimeLimitSec: 0,
+    supportsBots: true,
+    configSchema: spaceInvadersConfigSchema,
+    blurb: 'Defend Earth from marching alien armadas across 64×32 arenas — shoot through destructible bunkers, intercept UFOs and survive escalating attack waves.',
+  },
+  bomberman: {
+    id: 'bomberman',
+    title: 'Bomberman',
+    kind: 'board',
+    minPlayers: 1,
+    maxPlayers: 8,
+    defaultTimeLimitSec: 0,
+    supportsBots: true,
+    configSchema: bombermanConfigSchema,
+    blurb: 'Blast soft blocks, collect power-ups, trap rivals and dodge fiery cross-explosions in dynamic grid arenas.',
   },
 };
 

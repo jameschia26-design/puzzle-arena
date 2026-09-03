@@ -45,6 +45,8 @@ import {
   animalChessRules,
   tetris,
   pacman,
+  spaceInvaders,
+  bomberman,
   xiangqi,
 } from '@puzzle-arena/games';
 import { wordSearch } from '@puzzle-arena/puzzles';
@@ -237,7 +239,7 @@ export class LiveRoom {
 
     const startsAt = Date.now() + START_COUNTDOWN_MS;
     this.startedAt = startsAt;
-    const hasTimeLimit = this.timeLimitMs > 0 && this.gameId !== 'pacman' && this.gameId !== 'tetris';
+    const hasTimeLimit = this.timeLimitMs > 0 && this.gameId !== 'pacman' && this.gameId !== 'tetris' && this.gameId !== 'space-invaders' && this.gameId !== 'bomberman';
     this.endsAt = hasTimeLimit ? startsAt + this.timeLimitMs : null;
     this.status = 'running';
 
@@ -295,6 +297,8 @@ export class LiveRoom {
     if (this.gameId === 'animal-chess') return animalChess as unknown as typeof propertyTycoon;
     if (this.gameId === 'tetris') return tetris as unknown as typeof propertyTycoon;
     if (this.gameId === 'pacman') return pacman as unknown as typeof propertyTycoon;
+    if (this.gameId === 'space-invaders') return spaceInvaders as unknown as typeof propertyTycoon;
+    if (this.gameId === 'bomberman') return bomberman as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -311,6 +315,8 @@ export class LiveRoom {
     if (this.gameId === 'chess') return chessRules.actorToAct(this.gameState as never);
     if (this.gameId === 'tetris') return null; // concurrent — no turn
     if (this.gameId === 'pacman') return null; // concurrent — no turn
+    if (this.gameId === 'space-invaders') return null; // concurrent — no turn
+    if (this.gameId === 'bomberman') return null; // concurrent — no turn
     if (this.gameId === 'animal-chess') return animalChessRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
@@ -506,7 +512,7 @@ export class LiveRoom {
       clearInterval(this.arcadeTickTimer);
       this.arcadeTickTimer = null;
     }
-    if (this.kind !== 'board' || (this.gameId !== 'pacman' && this.gameId !== 'tetris') || this.status !== 'running') {
+    if (this.kind !== 'board' || (this.gameId !== 'pacman' && this.gameId !== 'tetris' && this.gameId !== 'space-invaders' && this.gameId !== 'bomberman') || this.status !== 'running') {
       return;
     }
     this.arcadeTickTimer = setInterval(() => {
@@ -930,7 +936,7 @@ export class LiveRoom {
         // (total asset value for PT, raw point total for Scrabble). See the
         // comment on `assetValueBreakdown` in property-tycoon/rules.ts.
         const usesAssetValue =
-          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble' || this.gameId === 'congkak' || this.gameId === 'tetris' || this.gameId === 'pacman') &&
+          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble' || this.gameId === 'congkak' || this.gameId === 'tetris' || this.gameId === 'pacman' || this.gameId === 'space-invaders' || this.gameId === 'bomberman') &&
           input.assetValue !== undefined;
         const score = usesAssetValue
           ? Math.round(input.assetValue as number)

@@ -45,6 +45,8 @@ import XiangqiBoard from '../games/XiangqiBoard.js';
 import { AnimalChessBoard } from '../games/AnimalChessBoard.js';
 import { TetrisBoard } from '../games/TetrisBoard.js';
 import { PacManBoard } from '../games/PacManBoard.js';
+import { SpaceInvadersBoard } from '../games/SpaceInvadersBoard.js';
+import { BombermanBoard } from '../games/BombermanBoard.js';
 import { ResultsTable } from './ResultsPage.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
@@ -147,7 +149,7 @@ export default function RoomPage(): React.ReactElement {
   const meta = GAME_REGISTRY[gameId];
   const you = store.you;
   const isHost = you?.isHost ?? false;
-  const isFullscreenEligible = (gameId === 'tetris' || gameId === 'pacman') && room?.status === 'running';
+  const isFullscreenEligible = (gameId === 'tetris' || gameId === 'pacman' || gameId === 'space-invaders' || gameId === 'bomberman') && room?.status === 'running';
   const isGameFullscreen = isFullscreenEligible && inGameMode;
 
   React.useEffect(() => {
@@ -173,6 +175,7 @@ export default function RoomPage(): React.ReactElement {
       else if (GAME_REGISTRY[gameId].kind === 'puzzle') bgm.play('puzzle');
       else if (gameId === 'pacman') bgm.play('pacman');
       else if (gameId === 'tetris') bgm.play('tetris');
+      else if (gameId === 'space-invaders' || gameId === 'bomberman') bgm.play('arcade');
       else bgm.play('board');
     } else if (room.status === 'finished') {
       sfx.victory();
@@ -1070,6 +1073,32 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
       />
     );
   }
+  if (gameId === 'space-invaders') {
+    return (
+      <SpaceInvadersBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
+  if (gameId === 'bomberman') {
+    return (
+      <BombermanBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+
 
   return (
     <ManorMysteryBoard

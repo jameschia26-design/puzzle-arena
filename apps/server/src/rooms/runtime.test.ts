@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LiveRoom, type LivePlayer } from './runtime.js';
+import { scheduleBots, stopBots } from './bots.js';
 
 /**
  * These exercise `LiveRoom`'s timer bookkeeping in isolation, without a real
@@ -15,6 +16,7 @@ interface LiveRoomInternals {
   clockSince: number | null;
   scheduleStartCountdown(delay: number): void;
   armChessClock(actorId: string, actor: LivePlayer): void;
+  arcadeTickTimer: NodeJS.Timeout | null;
 }
 
 /** Casts to the private-member view above; the shape is verified by the room's own source, not runtime data. */
@@ -231,6 +233,126 @@ describe('pause during the pre-game start countdown', () => {
     } finally {
       vi.useRealTimers();
       room.paused = false;
+    }
+  });
+});
+
+describe('concurrent arcade games wiring (space-invaders & bomberman)', () => {
+  it('wires space-invaders runtime invariants correctly', () => {
+    const room = new LiveRoom({
+      id: 'si-room',
+      code: 'SI1234',
+      gameId: 'space-invaders',
+      config: { tickMs: 60, startWave: 1, assist: false },
+      timeLimitSec: 0,
+      status: 'lobby',
+      startedAt: null,
+      endsAt: null,
+    });
+    room.players = [makePlayer('p1', { seat: 0, isHost: true }), makePlayer('p2', { seat: 1, isBot: true })];
+    room.gameState = room.engine().setup(['p1', 'p2'], 42, room.config);
+    room.status = 'running';
+
+    expect(room.actorToAct()).toBeNull();
+    expect(room.engine().id).toBe('space-invaders');
+    const score = room.scoreInputFor(room.players[0]!);
+    expect(score.assetValue).toBeDefined();
+
+    // Watchdog
+    vi.useFakeTimers();
+    try {
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      room.armArcadeTickWatchdog();
+      vi.advanceTimersByTime(1100);
+      expect(applySpy).toHaveBeenCalledWith('p1', { type: 'tick' });
+    } finally {
+      clearInterval(internals(room).arcadeTickTimer);
+      vi.useRealTimers();
+    }
+  });
+
+  it('wires bomberman runtime invariants correctly', () => {
+    const room = new LiveRoom({
+      id: 'bm-room',
+      code: 'BM1234',
+      gameId: 'bomberman',
+      config: { tickMs: 60, softDensity: 65 },
+      timeLimitSec: 0,
+      status: 'lobby',
+      startedAt: null,
+      endsAt: null,
+    });
+    room.players = [makePlayer('p1', { seat: 0, isHost: true }), makePlayer('p2', { seat: 1, isBot: true })];
+    room.gameState = room.engine().setup(['p1', 'p2'], 42, room.config);
+    room.status = 'running';
+
+    expect(room.actorToAct()).toBeNull();
+    expect(room.engine().id).toBe('bomberman');
+    const score = room.scoreInputFor(room.players[0]!);
+    expect(score.assetValue).toBeDefined();
+
+    // Watchdog
+    vi.useFakeTimers();
+    try {
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      room.armArcadeTickWatchdog();
+      vi.advanceTimersByTime(1100);
+      expect(applySpy).toHaveBeenCalledWith('p1', { type: 'tick' });
+    } finally {
+      clearInterval(internals(room).arcadeTickTimer);
+      vi.useRealTimers();
+    }
+  });
+
+  it('schedules concurrent bots for space-invaders and bomberman without error', () => {
+    vi.useFakeTimers();
+    try {
+      const room = new LiveRoom({
+        id: 'si-bots',
+        code: 'SIBOTS',
+        gameId: 'space-invaders',
+        config: { tickMs: 60, startWave: 1, assist: false },
+        timeLimitSec: 0,
+        status: 'lobby',
+        startedAt: null,
+        endsAt: null,
+      });
+      room.players = [makePlayer('b1', { seat: 0, isBot: true })];
+      room.gameState = room.engine().setup(['b1'], 42, room.config);
+      room.status = 'running';
+
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      scheduleBots(room);
+      vi.advanceTimersByTime(500);
+      expect(applySpy).toHaveBeenCalledWith('b1', expect.anything());
+    } finally {
+      stopBots('si-bots');
+      vi.useRealTimers();
+    }
+
+    vi.useFakeTimers();
+    try {
+      const room = new LiveRoom({
+        id: 'bm-bots',
+        code: 'BMBOTS',
+        gameId: 'bomberman',
+        config: { tickMs: 60, softDensity: 65 },
+        timeLimitSec: 0,
+        status: 'lobby',
+        startedAt: null,
+        endsAt: null,
+      });
+      room.players = [makePlayer('b1', { seat: 0, isBot: true })];
+      room.gameState = room.engine().setup(['b1'], 42, room.config);
+      room.status = 'running';
+
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      scheduleBots(room);
+      vi.advanceTimersByTime(500);
+      expect(applySpy).toHaveBeenCalledWith('b1', expect.anything());
+    } finally {
+      stopBots('bm-bots');
+      vi.useRealTimers();
     }
   });
 });
