@@ -73,6 +73,9 @@ export async function buildServer() {
         headers,
         ...(req.method === 'POST' ? { body: JSON.stringify(req.body ?? {}) } : {}),
       });
+      if (req.url.includes('/sign-in') || req.url.includes('/callback') || req.url.includes('/social')) {
+        logger.info({ method: req.method, url: req.url, ip: req.ip, userAgent: req.headers['user-agent'] }, 'Auth request received');
+      }
       const response = await auth.handler(request);
       reply.status(response.status);
       for (const [key, value] of response.headers.entries()) {

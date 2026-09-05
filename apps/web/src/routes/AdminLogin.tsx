@@ -139,6 +139,42 @@ export default function AdminLogin(): React.ReactElement {
             {busy ? 'Signing in…' : 'Sign in'}
           </PixelButton>
         </form>
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-pa-line" />
+          </div>
+          <div className="relative flex justify-center text-[12px] uppercase">
+            <span className="bg-pa-panel px-2 text-pa-ink-dim font-mono">Or</span>
+          </div>
+        </div>
+        <PixelButton
+          type="button"
+          variant="secondary"
+          size="lg"
+          className="w-full flex items-center justify-center gap-2"
+          disabled={busy}
+          onClick={() => void signInWithGoogle()}
+        >
+          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="#EA4335"
+              d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.3 9 5 12 5z"
+            />
+            <path
+              fill="#4285F4"
+              d="M23.5 12.3c0-.8-.1-1.7-.2-2.3H12v4.6h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.9z"
+            />
+            <path
+              fill="#FBBC05"
+              d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.8s.7 5.1 1.9 7.5l3.7-2.9c-.2-.8-.4-1.6-.4-2.3z"
+            />
+            <path
+              fill="#34A853"
+              d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.3-6.4-5.2L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z"
+            />
+          </svg>
+          Sign in with Google to Host
+        </PixelButton>
         <p className="mt-6 text-[13px] text-pa-ink-dim">
           No account?{' '}
           <Link to="/admin/signup" className="text-pa-cyan underline">

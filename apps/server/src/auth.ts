@@ -3,6 +3,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { db } from './db/index.js';
 import * as schema from './db/schema.js';
 import { env } from './env.js';
+import { logger } from './logger.js';
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -34,10 +35,22 @@ export const auth = betterAuth({
           google: {
             clientId: env.googleClientId,
             clientSecret: env.googleClientSecret,
-            disableImplicitSignUp: true,
+
           },
         }
       : {}),
+  },
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          logger.info(
+            { userId: session.userId, ipAddress: session.ipAddress, userAgent: session.userAgent },
+            'User authenticated / session created',
+          );
+        },
+      },
+    },
   },
   advanced: {
     // Same origin for API and SPA, so no cross-site cookie work is needed.

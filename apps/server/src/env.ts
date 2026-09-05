@@ -45,6 +45,7 @@ export const env = {
   adminSignupCode: required('ADMIN_SIGNUP_CODE', 'letmein'),
   googleClientId: process.env['GOOGLE_CLIENT_ID'] ?? '',
   googleClientSecret: process.env['GOOGLE_CLIENT_SECRET'] ?? '',
+
   /**
    * Extra origins Better Auth will accept, comma-separated. Needed whenever the
    * app is reached on something other than BETTER_AUTH_URL — e.g. over Tailscale,

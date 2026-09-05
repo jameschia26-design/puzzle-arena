@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { aiProviders, aiTaskProviders } from '../db/schema.js';
+import { aiProviders, aiTaskProviders, rooms, session, user } from '../db/schema.js';
 import { auth } from '../auth.js';
 import { env } from '../env.js';
 import { decrypt, encrypt, keyLast4, safeEqual } from '../ai/crypto.js';
@@ -132,6 +132,59 @@ export function registerAdminRoutes(app: FastifyInstance): void {
     const session = await auth.api.getSession({ headers: toHeaders(req.headers) });
     if (!session?.user) return reply.code(401).send({ error: 'Not signed in' });
     return reply.send({ user: { id: session.user.id, email: session.user.email, name: session.user.name } });
+  });
+
+  app.get('/api/admin/audit', async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+
+    const usersList = await db
+      .select({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        image: user.image,
+        createdAt: user.createdAt,
+      })
+      .from(user)
+      .orderBy(desc(user.createdAt));
+
+    const recentSessions = await db
+      .select({
+        id: session.id,
+        userId: session.userId,
+        userName: user.name,
+        userEmail: user.email,
+        ipAddress: session.ipAddress,
+        userAgent: session.userAgent,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+      })
+      .from(session)
+      .leftJoin(user, eq(session.userId, user.id))
+      .orderBy(desc(session.createdAt))
+      .limit(50);
+
+    const hostedRooms = await db
+      .select({
+        id: rooms.id,
+        code: rooms.code,
+        gameId: rooms.gameId,
+        status: rooms.status,
+        hostUserId: rooms.hostUserId,
+        hostUserName: user.name,
+        hostUserEmail: user.email,
+        createdAt: rooms.createdAt,
+      })
+      .from(rooms)
+      .leftJoin(user, eq(rooms.hostUserId, user.id))
+      .orderBy(desc(rooms.createdAt))
+      .limit(50);
+
+    return reply.send({
+      users: usersList,
+      sessions: recentSessions,
+      rooms: hostedRooms,
+    });
   });
 
   /* ---------------- AI providers ---------------- */

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { BarChart2, Copy, Link2, LogOut, Plus, Trash2, XCircle } from 'lucide-react';
+import { Activity, BarChart2, Copy, Cpu, Link2, LogOut, Plus, Shield, Trash2, Users, XCircle } from 'lucide-react';
 import { GAME_IDS, GAME_REGISTRY, WORD_SEARCH_THEMES, type GameId } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -22,6 +22,42 @@ interface RoomRow {
   createdAt: string;
 }
 
+interface AuditUser {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  createdAt: string;
+}
+
+interface AuditSession {
+  id: string;
+  userId: string;
+  userName: string | null;
+  userEmail: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+interface AuditRoom {
+  id: string;
+  code: string;
+  gameId: string;
+  status: string;
+  hostUserId: string;
+  hostUserName: string | null;
+  hostUserEmail: string | null;
+  createdAt: string;
+}
+
+interface AuditData {
+  users: AuditUser[];
+  sessions: AuditSession[];
+  rooms: AuditRoom[];
+}
+
 export default function AdminDashboard(): React.ReactElement {
   const navigate = useNavigate();
   const [gameId, setGameId] = React.useState<GameId>('sudoku');
@@ -36,17 +72,25 @@ export default function AdminDashboard(): React.ReactElement {
   const [rooms, setRooms] = React.useState<RoomRow[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [auditData, setAuditData] = React.useState<AuditData | null>(null);
+  const [auditTab, setAuditTab] = React.useState<'sessions' | 'users' | 'rooms'>('sessions');
 
   const meta = GAME_REGISTRY[gameId];
   const isPuzzle = meta.kind === 'puzzle';
 
   const refresh = React.useCallback(async () => {
-    const res = await api<{ rooms: RoomRow[]; error?: string }>('/api/rooms');
-    if (res.status === 401) {
+    const [roomsRes, auditRes] = await Promise.all([
+      api<{ rooms: RoomRow[]; error?: string }>('/api/rooms'),
+      api<AuditData>('/api/admin/audit'),
+    ]);
+    if (roomsRes.status === 401 || auditRes.status === 401) {
       navigate('/admin/login');
       return;
     }
-    setRooms(res.body.rooms ?? []);
+    setRooms(roomsRes.body.rooms ?? []);
+    if (auditRes.status === 200 && auditRes.body) {
+      setAuditData(auditRes.body);
+    }
   }, [navigate]);
 
   React.useEffect(() => {
@@ -371,6 +415,136 @@ export default function AdminDashboard(): React.ReactElement {
               );
             })}
           </ul>
+        )}
+      </PixelPanel>
+
+      <PixelPanel title="Admin Monitoring & Sign-in Activity">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <PixelButton
+            size="sm"
+            variant={auditTab === 'sessions' ? 'primary' : 'ghost'}
+            onClick={() => setAuditTab('sessions')}
+          >
+            <Activity size={14} strokeWidth={3} className="lucide" />
+            Sign-in Sessions ({auditData?.sessions.length ?? 0})
+          </PixelButton>
+          <PixelButton
+            size="sm"
+            variant={auditTab === 'users' ? 'primary' : 'ghost'}
+            onClick={() => setAuditTab('users')}
+          >
+            <Users size={14} strokeWidth={3} className="lucide" />
+            Registered Users ({auditData?.users.length ?? 0})
+          </PixelButton>
+          <PixelButton
+            size="sm"
+            variant={auditTab === 'rooms' ? 'primary' : 'ghost'}
+            onClick={() => setAuditTab('rooms')}
+          >
+            <Shield size={14} strokeWidth={3} className="lucide" />
+            Hosted Rooms ({auditData?.rooms.length ?? 0})
+          </PixelButton>
+        </div>
+
+        {!auditData ? (
+          <p className="text-pa-ink-dim text-[13px]">Loading monitoring logs…</p>
+        ) : auditTab === 'sessions' ? (
+          auditData.sessions.length === 0 ? (
+            <p className="text-pa-ink-dim text-[13px]">No active or recorded sessions.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[13px] border-collapse">
+                <thead>
+                  <tr className="border-b border-pa-line text-pa-ink-dim uppercase text-[11px] font-mono">
+                    <th className="p-2">User</th>
+                    <th className="p-2">Email</th>
+                    <th className="p-2">IP Address</th>
+                    <th className="p-2">Device / Browser</th>
+                    <th className="p-2">Sign-in Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditData.sessions.map((s) => (
+                    <tr key={s.id} className="border-b border-pa-line/40 hover:bg-pa-panel-dim/40">
+                      <td className="p-2 font-medium">{s.userName ?? 'Unknown'}</td>
+                      <td className="p-2 text-pa-cyan font-mono text-[12px]">{s.userEmail ?? s.userId}</td>
+                      <td className="p-2 font-mono text-[12px]">{s.ipAddress ?? '—'}</td>
+                      <td className="p-2 text-pa-ink-dim max-w-[220px] truncate text-[11px]" title={s.userAgent ?? ''}>
+                        {s.userAgent ?? '—'}
+                      </td>
+                      <td className="p-2 text-pa-ink-dim whitespace-nowrap text-[12px]">
+                        {new Date(s.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : auditTab === 'users' ? (
+          auditData.users.length === 0 ? (
+            <p className="text-pa-ink-dim text-[13px]">No users registered yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[13px] border-collapse">
+                <thead>
+                  <tr className="border-b border-pa-line text-pa-ink-dim uppercase text-[11px] font-mono">
+                    <th className="p-2">Name</th>
+                    <th className="p-2">Email</th>
+                    <th className="p-2">Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditData.users.map((u) => (
+                    <tr key={u.id} className="border-b border-pa-line/40 hover:bg-pa-panel-dim/40">
+                      <td className="p-2 font-medium">{u.name}</td>
+                      <td className="p-2 text-pa-cyan font-mono text-[12px]">{u.email}</td>
+                      <td className="p-2 text-pa-ink-dim whitespace-nowrap text-[12px]">
+                        {new Date(u.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (
+          auditData.rooms.length === 0 ? (
+            <p className="text-pa-ink-dim text-[13px]">No hosted rooms recorded.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-[13px] border-collapse">
+                <thead>
+                  <tr className="border-b border-pa-line text-pa-ink-dim uppercase text-[11px] font-mono">
+                    <th className="p-2">Code</th>
+                    <th className="p-2">Game</th>
+                    <th className="p-2">Host Name</th>
+                    <th className="p-2">Host Email</th>
+                    <th className="p-2">Status</th>
+                    <th className="p-2">Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditData.rooms.map((r) => (
+                    <tr key={r.id} className="border-b border-pa-line/40 hover:bg-pa-panel-dim/40">
+                      <td className="p-2 font-display tabular tracking-wider">{r.code}</td>
+                      <td className="p-2">{GAME_REGISTRY[r.gameId as GameId]?.title ?? r.gameId}</td>
+                      <td className="p-2 font-medium">{r.hostUserName ?? 'Unknown'}</td>
+                      <td className="p-2 text-pa-cyan font-mono text-[12px]">{r.hostUserEmail ?? r.hostUserId}</td>
+                      <td className="p-2">
+                        <PixelBadge tone={r.status === 'running' ? 'success' : r.status === 'lobby' ? 'cyan' : 'default'}>
+                          {r.status}
+                        </PixelBadge>
+                      </td>
+                      <td className="p-2 text-pa-ink-dim whitespace-nowrap text-[12px]">
+                        {new Date(r.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </PixelPanel>
     </main>
