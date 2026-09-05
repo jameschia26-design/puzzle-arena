@@ -263,21 +263,23 @@ function PacMazeView({
     const update = () => {
       const el = mazeBoxRef.current;
       if (!el) return;
-      const shellChrome = 20;
+      const rect = el.getBoundingClientRect();
+      const shellChrome = 20; // 10px on each side of .pa-maze-shell (8px padding + 2px border)
+      const safetyMargin = 6;
       const vw = window.innerWidth;
       const vh = window.visualViewport?.height ?? window.innerHeight;
-      const availW = Math.max(0, (vw < 1024 ? vw : el.clientWidth) - shellChrome - 16);
-      if (vw < 1024) {
-        const nonMazeHeight = isLivePlayer ? 310 : 120;
-        const availH = Math.max(180, vh - nonMazeHeight);
-        const s = Math.min(availW / (mazeW * CELL), availH / (mazeH * CELL));
-        setScale(Math.max(0.35, Math.min(s, 2.5)));
-      } else {
-        const top = el.getBoundingClientRect().top;
-        const availH = Math.max(220, vh - top - 40);
-        const s = Math.min(availW / (mazeW * CELL), availH / (mazeH * CELL));
-        setScale(Math.max(0.35, Math.min(s, 1.35)));
-      }
+
+      // Available width and height from the measured element box.
+      // If rect has not laid out yet (0 or tiny), fallback to safe viewport estimates.
+      const boxW = rect.width > 50 ? rect.width : (vw < 1024 ? vw - 16 : vw - 540);
+      const boxH = rect.height > 50 ? rect.height : (vw < 1024 ? (isLivePlayer ? vh - 260 : vh - 100) : vh - 120);
+
+      const availW = Math.max(120, boxW - shellChrome - safetyMargin);
+      const availH = Math.max(120, boxH - shellChrome - safetyMargin);
+
+      const s = Math.min(availW / (mazeW * CELL), availH / (mazeH * CELL));
+      // Dynamic scaling: scale up to fill screen on desktop (up to 3.5x for large displays)
+      setScale(Math.max(0.35, Math.min(s, 3.5)));
     };
     update();
     const ro = new ResizeObserver(update);
@@ -507,9 +509,9 @@ function PacMazeView({
   const wallPath = React.useMemo(() => buildWallPath(player.maze, mazeW, mazeH), [player.maze, mazeW, mazeH]);
 
   return (
-    <div ref={mazeBoxRef} className="w-full flex justify-center">
+    <div ref={mazeBoxRef} className="w-full h-full flex-1 min-w-0 min-h-0 flex items-center justify-center overflow-hidden">
       <div
-        className="relative pa-maze-shell"
+        className="relative pa-maze-shell shrink-0"
         style={{ width: mazeW * CELL * scale + 20, height: mazeH * CELL * scale + 20 }}
       >
         <div className="relative overflow-hidden select-none pa-maze-clip" style={{ width: mazeW * CELL * scale, height: mazeH * CELL * scale }}>
@@ -630,19 +632,21 @@ function PacManSpectatorView({
   phase: PacManView['phase'];
 }): React.ReactElement {
   return (
-    <div className="w-full h-full max-h-full overflow-auto flex flex-col items-center gap-2 p-2">
-      <div className="text-center font-display text-[10px] tracking-widest text-pa-ink-dim">
+    <div className="w-full h-full max-h-full overflow-hidden flex flex-col items-center justify-between gap-1 lg:gap-2 p-1.5 sm:p-2">
+      <div className="text-center font-display text-[10px] tracking-widest text-pa-ink-dim shrink-0">
         SPECTATING · P{target.seat + 1} · {target.score.toLocaleString()} PTS
         {playerCount > 1 ? ` · Lv ${target.level}` : ''}
       </div>
-      <PacMazeView
-        player={target}
-        mazeW={mazeW}
-        mazeH={mazeH}
-        isLivePlayer={false}
-        phase={phase}
-      />
-      <div className="flex gap-1 lg:gap-2 justify-center">
+      <div className="flex-1 w-full min-w-0 min-h-0 flex flex-col items-center justify-center overflow-hidden">
+        <PacMazeView
+          player={target}
+          mazeW={mazeW}
+          mazeH={mazeH}
+          isLivePlayer={false}
+          phase={phase}
+        />
+      </div>
+      <div className="flex gap-1 lg:gap-2 justify-center shrink-0">
         {GHOST_NAMES.map((n, i) => (
           <span key={i} className="pa-chip text-[9px] font-display px-2 py-0.5 border flex items-center gap-1" style={{ borderColor: GHOST_COLORS[i], color: GHOST_COLORS[i], background: 'rgba(0,0,0,0.35)' }}>
             <MiniGhostIcon color={GHOST_COLORS[i] ?? '#fff'} />
@@ -827,7 +831,7 @@ export function PacManBoard({
   return (
 
     <div
-      className="w-full h-full max-h-full overflow-hidden flex flex-col lg:flex-row gap-1 lg:gap-4 items-center lg:items-start justify-start lg:justify-between min-w-0 p-1.5 sm:p-2"
+      className="w-full h-full max-h-full overflow-hidden flex flex-col lg:flex-row gap-2 lg:gap-4 items-center justify-between min-w-0 p-1.5 sm:p-2"
       style={{
         paddingTop: 'max(6px, env(safe-area-inset-top))',
         paddingBottom: 'max(6px, env(safe-area-inset-bottom))',
@@ -836,42 +840,53 @@ export function PacManBoard({
       }}
     >
       {/* Desktop left HUD rail */}
-      <div className="hidden lg:flex flex-col gap-3 min-w-[160px]">
-        <div className="bg-pa-surface border-2 border-pa-border p-3 shadow-[4px_4px_0_var(--color-pa-shadow)]">
-          <div className="font-display text-[10px] text-pa-ink-dim tracking-widest">SCORE</div>
-          <div className="font-display text-[18px] text-pa-amber tabular-nums">{you.score.toLocaleString()}</div>
-          <div className="flex gap-2 mt-2 text-xs font-body">
-            <span className="text-pa-ink-dim">Level</span><span className="text-pa-cyan font-bold">{you.level}</span>
-            <span className="text-pa-ink-dim">Dots</span><span className="text-pa-ink">{you.dotsRemaining}</span>
+      <div className="hidden lg:flex flex-col gap-2.5 w-[190px] xl:w-[210px] shrink-0 h-full overflow-hidden justify-between">
+        <div className="flex flex-col gap-2.5 overflow-y-auto pr-1">
+          <div className="bg-pa-surface border-2 border-pa-border p-3 shadow-[4px_4px_0_var(--color-pa-shadow)]">
+            <div className="font-display text-[10px] text-pa-ink-dim tracking-widest">SCORE</div>
+            <div className="font-display text-[20px] text-pa-amber tabular-nums">{you.score.toLocaleString()}</div>
+            <div className="flex gap-2 mt-2 text-xs font-body">
+              <span className="text-pa-ink-dim">Level</span><span className="text-pa-cyan font-bold">{you.level}</span>
+              <span className="text-pa-ink-dim">Dots</span><span className="text-pa-ink">{you.dotsRemaining}</span>
+            </div>
+            {you.fruit && <div className="mt-2 text-xs text-pa-lime animate-pulse">{fruitIcon(you.fruit.kind)} {you.fruit.kind} {you.fruit.points}</div>}
           </div>
-          {you.fruit && <div className="mt-2 text-xs text-pa-lime animate-pulse">{fruitIcon(you.fruit.kind)} {you.fruit.kind} {you.fruit.points}</div>}
-        </div>
-        <div className="bg-pa-surface border-2 border-pa-border p-2 flex items-center gap-1">
-          <span className="font-display text-[9px] text-pa-ink-dim">LIVES</span>
-          <span className="flex gap-1 ml-1">
-            {Array.from({ length: Math.max(0, you.lives) }).map((_, i) => (
-              <MiniPacIcon key={i} />
-            ))}
-            {you.lives === 0 && <span className="text-pa-danger text-xs font-display">0</span>}
-          </span>
-        </div>
-        <div className="text-[11px] text-pa-ink-dim leading-relaxed">
-          Arrow keys / WASD to steer • Eat <span className="text-pa-amber">○</span> power pellets to frighten ghosts • <span className="text-pa-cyan">200</span>/<span className="text-pa-cyan">400</span>/<span className="text-pa-cyan">800</span>/<span className="text-pa-cyan">1600</span> per ghost
-        </div>
-        {view.players.length > 1 && (
+          <div className="bg-pa-surface border-2 border-pa-border p-2 flex items-center gap-1">
+            <span className="font-display text-[9px] text-pa-ink-dim">LIVES</span>
+            <span className="flex gap-1.5 ml-1">
+              {Array.from({ length: Math.max(0, you.lives) }).map((_, i) => (
+                <MiniPacIcon key={i} size={14} />
+              ))}
+              {you.lives === 0 && <span className="text-pa-danger text-xs font-display">0</span>}
+            </span>
+          </div>
+          <div className="text-[11px] text-pa-ink-dim leading-relaxed bg-pa-surface/50 border border-pa-border/60 p-2">
+            Arrow keys / WASD to steer • Eat <span className="text-pa-amber">○</span> power pellets to frighten ghosts • <span className="text-pa-cyan">200</span>/<span className="text-pa-cyan">400</span>/<span className="text-pa-cyan">800</span>/<span className="text-pa-cyan">1600</span> per ghost
+          </div>
+          {view.players.length > 1 && (
+            <div className="bg-pa-surface border-2 border-pa-border p-2">
+              <div className="font-display text-[9px] text-pa-ink-dim mb-1">STANDINGS</div>
+              {[...view.players].sort((a, b) => (b as PacManView['players'][number]).score - (a as PacManView['players'][number]).score).map((p) => (
+                <div key={p.id} className={`flex justify-between text-xs px-2 py-1 border ${p.id === youId ? 'border-pa-cyan bg-pa-surface-2' : 'border-pa-border'}`}>
+                  <span>{p.id === youId ? 'YOU' : `P${p.seat + 1}`}</span><span className="font-display text-[10px]">{p.score}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Integrated Activity Log on Left Rail */}
           <div className="bg-pa-surface border-2 border-pa-border p-2">
-            <div className="font-display text-[9px] text-pa-ink-dim mb-1">STANDINGS</div>
-            {[...view.players].sort((a, b) => (b as PacManView['players'][number]).score - (a as PacManView['players'][number]).score).map((p) => (
-              <div key={p.id} className={`flex justify-between text-xs px-2 py-1 border ${p.id === youId ? 'border-pa-cyan bg-pa-surface-2' : 'border-pa-border'}`}>
-                <span>{p.id === youId ? 'YOU' : `P${p.seat + 1}`}</span><span className="font-display text-[10px]">{p.score}</span>
-              </div>
-            ))}
+            <div className="font-display text-[9px] text-pa-ink-dim mb-1">ACTIVITY LOG</div>
+            <div className="max-h-[140px] overflow-y-auto text-xs font-body space-y-1 pr-1">
+              {view.log.slice(-10).map((e, i) => (
+                <div key={i} className="text-pa-ink-dim leading-tight text-[11px]">• {e.text}</div>
+              ))}
+              {view.log.length === 0 && <div className="text-pa-ink-dim italic text-[11px]">No events yet</div>}
+            </div>
           </div>
-        )}
+        </div>
       </div>
-
       {/* Mobile compact HUD (top bar) */}
-      <div className="lg:hidden w-full flex items-center justify-between gap-2 bg-pa-surface border-2 border-pa-border px-3 py-1.5 pa-shadow pr-10">
+      <div className="lg:hidden w-full flex items-center justify-between gap-2 bg-pa-surface border-2 border-pa-border px-3 py-1.5 pa-shadow pr-10 shrink-0">
         <div className="flex items-baseline gap-2">
           <span className="font-display text-[9px] text-pa-ink-dim">SCORE</span>
           <span className="font-display text-[13px] text-pa-amber tabular-nums">{you.score.toLocaleString()}</span>
@@ -888,9 +903,8 @@ export function PacManBoard({
           <span className="text-pa-ink-dim ml-1.5">Dots</span><span className="text-pa-ink">{you.dotsRemaining}</span>
         </div>
       </div>
-      {/* Maze — fixed CELL geometry scaled to fill portrait */}
-      <div className="w-full lg:w-auto flex flex-col items-center gap-1 lg:gap-2">
-
+      {/* Center column: Maze + Ghost legend. Fills all available screen space! */}
+      <div className="flex-1 w-full h-full min-w-0 min-h-0 flex flex-col items-center justify-center gap-1 lg:gap-2 overflow-hidden">
         <PacMazeView
           player={you}
           mazeW={W}
@@ -901,7 +915,7 @@ export function PacManBoard({
           youId={youId}
         />
         {/* Ghost legend */}
-        <div className="flex gap-1 lg:gap-2 justify-center">
+        <div className="flex gap-1 lg:gap-2 justify-center shrink-0">
           {GHOST_NAMES.map((n, i) => (
             <span key={i} className="pa-chip text-[9px] font-display px-2 py-0.5 border flex items-center gap-1" style={{ borderColor: GHOST_COLORS[i], color: GHOST_COLORS[i], background: 'rgba(0,0,0,0.35)' }}>
               <MiniGhostIcon color={GHOST_COLORS[i] ?? '#fff'} />
@@ -911,7 +925,7 @@ export function PacManBoard({
         </div>
       </div>
       {/* Mobile Controls & Mode / Alignment Settings */}
-      <div className="lg:hidden w-full max-w-sm mx-auto px-2 flex flex-col items-center gap-1">
+      <div className="lg:hidden w-full max-w-sm mx-auto px-2 flex flex-col items-center gap-1 shrink-0">
         {/* Compact Settings row */}
         <div className="w-full flex items-center justify-between gap-2 px-1 text-[9px] font-display">
           {/* Mode toggle: STICK | PAD */}
@@ -1009,16 +1023,6 @@ export function PacManBoard({
         )}
       </div>
 
-      {/* Right rail log */}
-      <div className="min-w-[180px] max-w-[220px] hidden lg:block">
-        <div className="font-display text-[10px] text-pa-ink-dim mb-1">LOG</div>
-        <div className="bg-pa-surface border-2 border-pa-border p-2 h-[280px] overflow-auto text-xs font-body space-y-1">
-          {view.log.slice(-12).map((e, i) => (
-            <div key={i} className="text-pa-ink-dim leading-tight">• {e.text}</div>
-          ))}
-          {view.log.length === 0 && <div className="text-pa-ink-dim italic">No events yet</div>}
-        </div>
-      </div>
     </div>
   );
 }
