@@ -532,3 +532,63 @@ describe('9. bot policy progression & behavioral intelligence', () => {
     }
   });
 });
+
+describe('10. consistent blast radius and active flame hazard', () => {
+  it('eliminates player immediately if stepping into an active flame', () => {
+    let s = bomberman.setup(['p1', 'p2'], 123, {});
+    s.graceTicksRemaining = 0;
+    // Place an active blast at (2, 1)
+    s.blasts.push({ x: 2, y: 1, ticksRemaining: 5, ownerId: 'p2' });
+    s.grid[cellIndex(2, 1)] = TILE_EMPTY;
+
+    // p1 at (1, 1) steps right into the flame
+    const rMove = bomberman.reduce(s, 'p1', { type: 'move', dir: 'right' });
+    expect(rMove.ok).toBe(true);
+    if (rMove.ok) {
+      expect(rMove.state.players[0]!.alive).toBe(false);
+      expect(rMove.state.players[0]!.gameOver).toBe(true);
+    }
+  });
+
+  it('eliminates player standing in existing active flame on tick even when no new bomb detonates', () => {
+    let s = bomberman.setup(['p1', 'p2'], 123, {});
+    s.graceTicksRemaining = 0;
+    // p1 at (1, 1), place active blast under p1 with 3 ticks left, no live bombs
+    s.blasts.push({ x: 1, y: 1, ticksRemaining: 3, ownerId: 'p2' });
+    s.bombs = [];
+
+    const rTick = bomberman.reduce(s, 'p1', { type: 'tick' });
+    expect(rTick.ok).toBe(true);
+    if (rTick.ok) {
+      expect(rTick.state.players[0]!.alive).toBe(false);
+      expect(rTick.state.players[0]!.gameOver).toBe(true);
+      expect(rTick.state.players[1]!.kills).toBe(1);
+    }
+  });
+
+  it('deduplicates overlapping blast cells and preserves maximum duration', () => {
+    let s = bomberman.setup(['p1', 'p2'], 123, {});
+    s.graceTicksRemaining = 0;
+    // Clear corridor (1,1) to (4,1)
+    for (let x = 1; x <= 4; x++) s.grid[cellIndex(x, 1)] = TILE_EMPTY;
+    // Existing blast at (2, 1) with 2 ticks left
+    s.blasts.push({ x: 2, y: 1, ticksRemaining: 2, ownerId: 'p2' });
+
+    // Detonate bomb at (1, 1) with radius 2, which reaches (2, 1) with 6 ticks
+    s.bombs.push({ id: 1, ownerId: 'p1', x: 1, y: 1, fuse: 0, radius: 2 });
+    // Step owner off
+    s.players[0]!.bombsUnderPlayer = [];
+    s.players[0]!.x = 1;
+    s.players[0]!.y = 3;
+
+    const rTick = bomberman.reduce(s, 'p1', { type: 'tick' });
+    expect(rTick.ok).toBe(true);
+    if (rTick.ok) {
+      const blastsAt21 = rTick.state.blasts.filter((b) => b.x === 2 && b.y === 1);
+      // Must be deduplicated: exactly 1 blast cell at (2, 1)
+      expect(blastsAt21.length).toBe(1);
+      // Must have preserved the longer duration (6 ticks decremented to 6 or 5)
+      expect(blastsAt21[0]!.ticksRemaining).toBeGreaterThanOrEqual(5);
+    }
+  });
+});

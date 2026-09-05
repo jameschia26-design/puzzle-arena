@@ -286,7 +286,7 @@ export function processDetonations(
     // Add center cell
     const centerIdx = cellIndex(bomb.x, bomb.y);
     if (!blastCellMap.has(centerIdx)) {
-      const cell: BlastCell = { x: bomb.x, y: bomb.y, ticksRemaining: 3, ownerId: bomb.ownerId };
+      const cell: BlastCell = { x: bomb.x, y: bomb.y, ticksRemaining: 6, ownerId: bomb.ownerId };
       blastCellMap.set(centerIdx, cell);
       blastCells.push(cell);
     }
@@ -310,7 +310,7 @@ export function processDetonations(
 
         // Add blast cell
         if (!blastCellMap.has(idx)) {
-          const cell: BlastCell = { x: nx, y: ny, ticksRemaining: 3, ownerId: bomb.ownerId };
+          const cell: BlastCell = { x: nx, y: ny, ticksRemaining: 6, ownerId: bomb.ownerId };
           blastCellMap.set(idx, cell);
           blastCells.push(cell);
         }
@@ -351,8 +351,16 @@ export function processDetonations(
     }
   }
 
-  // Merge blast cells into state
-  s.blasts.push(...blastCells);
+  // Merge blast cells into state with deduplication
+  for (const cell of blastCells) {
+    const existing = s.blasts.find((b) => b.x === cell.x && b.y === cell.y);
+    if (existing) {
+      existing.ticksRemaining = Math.max(existing.ticksRemaining, cell.ticksRemaining);
+      existing.ownerId = cell.ownerId;
+    } else {
+      s.blasts.push(cell);
+    }
+  }
 
   // Check player eliminations against ALL active blast cells (both existing and new)
   const eliminatedPlayerIds: string[] = [];

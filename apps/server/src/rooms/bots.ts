@@ -69,12 +69,21 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
-function thinkDelay(rng: Rng, gameId?: string): number {
+function thinkDelay(rng: Rng, gameId?: string, difficulty?: BotDifficulty): number {
   if (env.botThinkMs !== null) return env.botThinkMs;
   if (gameId === 'bomberman') {
     // Bomberman is a real-time arcade grid combat game with 60ms ticks.
-    // 120-220ms think delay delivers responsive human-reflex movement (~5-8 actions/sec).
-    return 120 + rng.int(100);
+    // Scale think delay fairly to match natural human reaction time:
+    // Easy: 500-700ms (beginner human pace)
+    // Normal: 360-480ms (fair match for typical human reaction)
+    // Hard: 260-350ms (brisk competitive reflexes)
+    if (difficulty === 'easy') {
+      return 500 + rng.int(200);
+    }
+    if (difficulty === 'hard') {
+      return 260 + rng.int(90);
+    }
+    return 360 + rng.int(120);
   }
   return 500 + rng.int(1200);
 }
@@ -175,21 +184,22 @@ export function scheduleBots(room: LiveRoom): void {
 
 function scheduleConcurrentBots(room: LiveRoom): void {
   if (room.status !== 'running') return;
-  if (!room.players.some((p) => p.isBot && !p.left)) return;
-  // scheduleBots() runs after every accepted action, including the client's
-  // own frequent `tick` pings (e.g. every 60ms for Bomberman) — those fire far
-  // more often than a bot's 500-1700ms think delay. Clearing and re-arming the
-  // timer on each call (the old behavior) meant it was reset before it could
-  // ever elapse, so bots never acted. Once a timer is armed, let it run.
-  if (timers.has(room.id)) return;
+  const bots = room.players.filter((p) => p.isBot && !p.left);
+  if (bots.length === 0) return;
+  const execKey = `exec_${room.id}`;
+  if (timers.has(room.id) || timers.has(execKey)) return;
+
   const rng = rngFor(room);
-  const delay = thinkDelay(rng, room.gameId);
+  const primaryDifficulty = bots[0]?.botDifficulty ?? 'normal';
+  const delay = thinkDelay(rng, room.gameId, primaryDifficulty);
   const timer = setTimeout(() => {
     timers.delete(room.id);
-    if (room.status !== 'running') return;
-    const bots = room.players.filter((p) => p.isBot && !p.left);
-    let roomTicked = false;
-    for (const bot of bots) {
+    timers.set(execKey, null as unknown as NodeJS.Timeout);
+    try {
+      if (room.status !== 'running') return;
+      const activeBots = room.players.filter((p) => p.isBot && !p.left);
+      let roomTicked = false;
+      for (const bot of activeBots) {
       const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView | SpaceInvadersBotView | BombermanBotView;
       const difficulty: BotDifficulty = bot.botDifficulty ?? 'normal';
       // concurrent games expose `you` with gameOver; narrow via typed view, not inline shape cast
@@ -254,6 +264,9 @@ function scheduleConcurrentBots(room: LiveRoom): void {
     }
 
     scheduleConcurrentBots(room);
+    } finally {
+      timers.delete(execKey);
+    }
   }, delay);
   timers.set(room.id, timer);
 }
@@ -390,10 +403,9 @@ function wrongValueFor(room: LiveRoom, correct: number, rng: Rng): number {
 }
 
 export function stopBots(roomId: string): void {
-  const t = timers.get(roomId);
-  if (t) clearTimeout(t);
+  clearTimeout(timers.get(roomId));
   timers.delete(roomId);
-  streams.delete(roomId);
+  timers.delete(`exec_${roomId}`);
   stopPuzzleBots(roomId);
 }
 

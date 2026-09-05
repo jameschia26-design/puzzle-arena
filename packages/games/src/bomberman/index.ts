@@ -125,9 +125,11 @@ function reduce(
         return { ok: false, error: 'Blocked' };
       }
 
-      // If player has speed powerup (> 0), try step 2 in the same direction
-      if (player.speed > 0) {
-        executeMoveStep(s, player, dir);
+      // If player moves into active fire, eliminate immediately
+      if (s.graceTicksRemaining === 0 && s.blasts.some((b) => b.x === player.x && b.y === player.y)) {
+        player.alive = false;
+        player.gameOver = true;
+        logs.push(makeLog('ELIMINATED', player.id));
       }
       break;
     }
@@ -195,6 +197,22 @@ function reduce(
         const { eliminatedPlayerIds } = processDetonations(s, readyBombs);
         for (const pid of eliminatedPlayerIds) {
           logs.push(makeLog('ELIMINATED', pid));
+        }
+      }
+      // 5b. Check player damage from all active blasts on every tick
+      if (s.graceTicksRemaining === 0 && s.blasts.length > 0) {
+        for (const p of s.players) {
+          if (!p.alive) continue;
+          const hit = s.blasts.find((b) => b.x === p.x && b.y === p.y);
+          if (hit) {
+            p.alive = false;
+            p.gameOver = true;
+            logs.push(makeLog('ELIMINATED', p.id));
+            if (hit.ownerId && hit.ownerId !== p.id) {
+              const killer = s.players.find((pl) => pl.id === hit.ownerId);
+              if (killer) killer.kills += 1;
+            }
+          }
         }
       }
 
