@@ -11,6 +11,7 @@ import {
   type BotDifficulty,
   type GameId,
   type PlayerView,
+  type RoomSnapshot,
 } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -110,32 +111,40 @@ export default function RoomPage(): React.ReactElement {
   const [mobileTab, setMobileTab] = React.useState<'board' | 'leaderboard' | 'chat'>('board');
   const [inGameMode, setInGameMode] = React.useState(true);
 
+  const joiningRef = React.useRef(false);
   const join = React.useCallback(
     async (displayName: string, chosenAvatar: string | null) => {
-      await ensureGuest();
-      getSocket();
-      const res = await emit<{ error?: string; snapshot?: any }>(EV.roomJoin, {
-        code: code.toUpperCase(),
-        displayName,
-        ...(chosenAvatar ? { avatar: chosenAvatar } : {}),
-      });
-      if (res.error) {
-        // A finished or abandoned room is a dead end for room:join — send the
-        // player to the results page instead of leaving them stuck on a bare
-        // error with no way back.
-        if (res.error === 'That room has finished') {
-          navigate(`/r/${code.toUpperCase()}/results`, { replace: true });
+      if (joiningRef.current) return;
+      joiningRef.current = true;
+      setJoinError(null);
+      try {
+        await ensureGuest();
+        getSocket();
+        const res = await emit<{ error?: string; snapshot?: RoomSnapshot }>(EV.roomJoin, {
+          code: code.toUpperCase(),
+          displayName,
+          ...(chosenAvatar ? { avatar: chosenAvatar } : {}),
+        });
+        if (res.error) {
+          // A finished or abandoned room is a dead end for room:join — send the
+          // player to the results page instead of leaving them stuck on a bare
+          // error with no way back.
+          if (res.error === 'That room has finished') {
+            navigate(`/r/${code.toUpperCase()}/results`, { replace: true });
+            return;
+          }
+          setJoinError(res.error);
           return;
         }
-        setJoinError(res.error);
-        return;
+        if (res.snapshot) store.applySnapshot(res.snapshot);
+        setJoined(true);
+        localStorage.setItem('pa:name', displayName);
+        if (chosenAvatar) localStorage.setItem('pa:avatar', chosenAvatar);
+      } finally {
+        joiningRef.current = false;
       }
-      if (res.snapshot) store.applySnapshot(res.snapshot);
-      setJoined(true);
-      localStorage.setItem('pa:name', displayName);
-      if (chosenAvatar) localStorage.setItem('pa:avatar', chosenAvatar);
     },
-    [code, store],
+    [code, store, navigate],
   );
 
   // Auto-rejoin when we already have a name (covers reconnects and refreshes).
@@ -247,8 +256,20 @@ export default function RoomPage(): React.ReactElement {
 
   if (!room) {
     return (
-      <main className="min-h-screen grid place-items-center">
-        <p className="font-display text-[12px] text-pa-ink-dim">Loading room…</p>
+      <main className="min-h-screen grid place-items-center p-6">
+        <div className="flex flex-col items-center gap-3">
+          <p className="font-display text-[12px] text-pa-ink-dim animate-pulse">Loading room…</p>
+          {joinError && (
+            <div className="flex flex-col items-center gap-2 mt-2">
+              <p role="alert" className="text-pa-danger text-[13px] text-center">
+                {joinError}
+              </p>
+              <PixelButton variant="secondary" size="sm" onClick={() => navigate('/')}>
+                Back to home
+              </PixelButton>
+            </div>
+          )}
+        </div>
       </main>
     );
   }

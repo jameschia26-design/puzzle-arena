@@ -24,7 +24,18 @@ export function getSocket(): Socket {
 
 export async function ensureGuest(): Promise<void> {
   // Mints the signed pa_guest cookie the socket handshake needs.
-  await fetch('/api/guest', { method: 'POST' }).catch(() => undefined);
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6_000);
+    await fetch('/api/guest', {
+      method: 'POST',
+      signal: controller.signal,
+      credentials: 'same-origin',
+    });
+    clearTimeout(timer);
+  } catch {
+    // If request fails or times out, proceed to socket (cookie may already exist or admin session active)
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -195,37 +206,57 @@ function wire(s: Socket): void {
   });
 }
 
-/** Promise wrapper around socket.io acks. */
-export function emit<T = any>(event: string, payload?: unknown): Promise<T> {
-  return new Promise((resolve) => {
-    const s = getSocket();
-    // room:start does puzzle generation and may call an AI provider, so this
-    // has to outlast the provider timeout rather than racing it.
-    const timer = setTimeout(() => resolve({ error: 'Timed out' } as T), 45_000);
-    s.emit(event, payload ?? {}, (response: T) => {
-      clearTimeout(timer);
-      resolve(response);
-    });
+/** Promise wrapper around socket.io acks with per-event timeout protection. */
+export function emit<T = unknown>(event: string, payload?: unknown, timeoutMs?: number): Promise<T> {
+  const { promise, resolve } = Promise.withResolvers<T>();
+  const s = getSocket();
+  // room:start does puzzle generation and may call an AI provider (up to 45s).
+  // Standard game actions and joins time out in 10s to prevent hanging indefinitely.
+  const maxWait = timeoutMs ?? (event === EV.roomStart ? 45_000 : 10_000);
+  const timer = setTimeout(() => {
+    resolve({ error: 'Request timed out — please check connection' } as unknown as T);
+  }, maxWait);
+
+  s.emit(event, payload ?? {}, (response: unknown) => {
+    clearTimeout(timer);
+    resolve(response as T);
   });
+  return promise;
 }
 
 /* ------------------------------------------------------------------ */
 /* REST helpers                                                        */
 /* ------------------------------------------------------------------ */
 
-export async function api<T = any>(
+export async function api<T = unknown>(
   path: string,
   init: RequestInit = {},
+  timeoutMs = 12_000,
 ): Promise<{ status: number; body: T }> {
   const headers = new Headers(init.headers);
   if (init.body !== undefined) headers.set('content-type', 'application/json');
-  const res = await fetch(path, { ...init, headers, credentials: 'same-origin' });
-  const text = await res.text();
-  let body: unknown = null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = init.signal ?? controller.signal;
+
   try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text;
+    const res = await fetch(path, { ...init, headers, credentials: 'same-origin', signal });
+    const text = await res.text();
+    let body: unknown = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = text;
+    }
+    return { status: res.status, body: body as T };
+  } catch (err: unknown) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    return {
+      status: isAbort ? 408 : 503,
+      body: { error: isAbort ? 'Request timed out' : 'Network error' } as unknown as T,
+    };
+  } finally {
+    clearTimeout(timer);
   }
-  return { status: res.status, body: body as T };
 }

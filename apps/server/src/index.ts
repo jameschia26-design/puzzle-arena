@@ -34,6 +34,14 @@ export async function buildServer() {
   await app.register(cookie, { secret: env.cookieSecret });
   await app.register(rateLimit, { global: false });
 
+  // Delegate /socket.io requests to Engine.IO on the underlying HTTP server
+  app.addHook('onRequest', (req, _reply, done) => {
+    if (req.raw.url?.startsWith('/socket.io')) {
+      return;
+    }
+    done();
+  });
+
   // 20 req/min on the routes that are worth abusing.
   const limited = { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } };
 

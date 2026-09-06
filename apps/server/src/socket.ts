@@ -23,17 +23,18 @@ const roomJoinLocks = new Map<string, Promise<void>>();
 
 async function withRoomJoinLock<T>(roomId: string, fn: () => Promise<T>): Promise<T> {
   const current = roomJoinLocks.get(roomId) ?? Promise.resolve();
-  let release: () => void;
+  let release!: () => void;
   const next = new Promise<void>((resolve) => {
     release = resolve;
   });
-  roomJoinLocks.set(roomId, current.then(() => next, () => next));
+  const chained = current.then(() => next, () => next);
+  roomJoinLocks.set(roomId, chained);
   await current.catch(() => {});
   try {
     return await fn();
   } finally {
-    release!();
-    if (roomJoinLocks.get(roomId) === next) {
+    release();
+    if (roomJoinLocks.get(roomId) === chained) {
       roomJoinLocks.delete(roomId);
     }
   }
@@ -112,6 +113,17 @@ export function attachSocket(app: FastifyInstance): IOServer {
             (guestId ? room.playerByGuest(guestId) : undefined) ??
             (isHostUser ? room.players.find((p) => p.isHost && !p.left) : undefined);
 
+          // If cookie/guestId changed on reload or reconnection during an active game,
+          // reclaim the player's existing disconnected seat by displayName match.
+          if (!player && room.status !== 'lobby') {
+            const match = room.players.find(
+              (p) => !p.connected && !p.left && !p.isBot && p.displayName.trim().toLowerCase() === parsed.data.displayName.trim().toLowerCase(),
+            );
+            if (match) {
+              player = match;
+              if (guestId) player.guestId = guestId;
+            }
+          }
           if (!player) {
             if (room.status !== 'lobby') {
               joinError = 'That game has already started';

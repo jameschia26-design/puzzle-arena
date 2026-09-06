@@ -250,7 +250,7 @@ export function registerRoomRoutes(app: FastifyInstance): void {
   });
 
   /* -------- guest identity -------- */
-  app.post('/api/guest', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/api/guest', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
     const guestId = ensureGuest(req, reply);
     return reply.send({ guestId });
   });
