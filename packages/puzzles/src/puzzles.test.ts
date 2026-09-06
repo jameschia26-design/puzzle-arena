@@ -5,6 +5,7 @@ import * as killer from './killer-sudoku.js';
 import * as nonogram from './nonogram.js';
 import * as wordSearch from './word-search.js';
 import * as minesweeper from './minesweeper.js';
+import * as mastermind from './mastermind.js';
 import { fallbackWordsFor } from './word-lists.js';
 import {
   CELLS,
@@ -427,5 +428,251 @@ describe('solver', () => {
     const blanks = puzzle.givens.filter((v) => v === 0).length;
     expect(path.length).toBe(blanks);
     expect(new Set(path).size).toBe(path.length);
+  });
+});
+
+/* ================================================================== */
+/* Mastermind — clues, evaluation, state, grading, bots                */
+/* ================================================================== */
+
+describe('mastermind evaluation', () => {
+  it('evaluates all-exact matches correctly', () => {
+    const secret = [1, 2, 3, 4];
+    const guess = [1, 2, 3, 4];
+    const res = mastermind.evaluateGuess(guess, secret);
+    expect(res).toEqual({ exact: 4, color: 0 });
+    expect(res.exact + res.color).toBeLessThanOrEqual(secret.length);
+    expect(guess).toEqual([1, 2, 3, 4]);
+    expect(secret).toEqual([1, 2, 3, 4]);
+  });
+
+  it('evaluates all-color-only matches correctly (transposed permutations)', () => {
+    const secret = [0, 1, 2, 3];
+    const guess = [3, 2, 1, 0];
+    const res = mastermind.evaluateGuess(guess, secret);
+    expect(res).toEqual({ exact: 0, color: 4 });
+    expect(res.exact + res.color).toBeLessThanOrEqual(secret.length);
+  });
+
+  it('handles duplicate-overlap cases without exceeding slots or leaking indices', () => {
+    // Secret has two 0s, guess has three 0s and one 1
+    const secret = [0, 0, 1, 2];
+    const guess = [0, 1, 0, 0];
+    // Index 0 is exact (0 === 0).
+    // Unmatched secret: [0 at idx 1, 1 at idx 2, 2 at idx 3] -> counts: 0:1, 1:1, 2:1.
+    // Unmatched guess: [1 at idx 1, 0 at idx 2, 0 at idx 3] -> counts: 1:1, 0:2.
+    // Color matches: 0 -> min(1, 2) = 1; 1 -> min(1, 1) = 1; 2 -> min(1, 0) = 0.
+    // exact: 1, color: 2.
+    const res = mastermind.evaluateGuess(guess, secret);
+    expect(res).toEqual({ exact: 1, color: 2 });
+    expect(res.exact + res.color).toBeLessThanOrEqual(secret.length);
+
+    // Secret: [1, 1, 2, 2], Guess: [2, 2, 1, 1] -> 0 exact, 4 color
+    expect(mastermind.evaluateGuess([2, 2, 1, 1], [1, 1, 2, 2])).toEqual({ exact: 0, color: 4 });
+
+    // Secret: [1, 2, 3, 4], Guess: [5, 5, 5, 5] -> 0 exact, 0 color
+    expect(mastermind.evaluateGuess([5, 5, 5, 5], [1, 2, 3, 4])).toEqual({ exact: 0, color: 0 });
+
+    // Secret: [1, 1, 1, 2], Guess: [1, 1, 2, 1] -> 2 exact (indices 0, 1), 2 color (indices 2, 3)
+    expect(mastermind.evaluateGuess([1, 1, 2, 1], [1, 1, 1, 2])).toEqual({ exact: 2, color: 2 });
+  });
+});
+
+describe('mastermind generation and determinism', () => {
+  it('produces the same puzzle and secret code for the same seed and options', () => {
+    const a = mastermind.generate({ seed: 12345, colors: 8, slots: 5, maxTries: 12 });
+    const b = mastermind.generate({ seed: 12345, colors: 8, slots: 5, maxTries: 12 });
+
+    expect(a.puzzle).toEqual(b.puzzle);
+    expect(a.solution.code).toEqual(b.solution.code);
+    expect(a.meta.seed).toBe(b.meta.seed);
+    expect(a.meta.actualDifficulty).toBe('medium');
+
+    // Public puzzle must never contain the secret
+    expect('code' in a.puzzle).toBe(false);
+    expect('solution' in a.puzzle).toBe(false);
+  });
+
+  it('rejects invalid configuration ranges on generate', () => {
+    expect(() => mastermind.generate({ colors: 6 })).toThrow();
+    expect(() => mastermind.generate({ colors: 13 })).toThrow();
+    expect(() => mastermind.generate({ slots: 3 })).toThrow();
+    expect(() => mastermind.generate({ slots: 9 })).toThrow();
+    expect(() => mastermind.generate({ maxTries: 5 })).toThrow();
+    expect(() => mastermind.generate({ maxTries: 31 })).toThrow();
+  });
+});
+
+describe('mastermind state transitions and lifecycle', () => {
+  const puzzle: mastermind.MastermindPuzzle = { colors: 8, slots: 4, maxTries: 4 };
+  const solution: mastermind.MastermindSolution = { code: [0, 1, 2, 3] };
+
+  it('accepts repeated colors and repeated whole guesses', () => {
+    let state: mastermind.MastermindPlayerState = { guesses: [], solved: false, exhausted: false };
+
+    // Guess 1: repeated colors
+    const s1 = mastermind.applyGuess(puzzle, solution, state, [0, 0, 0, 0]);
+    expect(s1).not.toBeNull();
+    expect(s1!.guesses.length).toBe(1);
+    expect(s1!.guesses[0]!.exact).toBe(1);
+    expect(s1!.guesses[0]!.color).toBe(0);
+
+    // Guess 2: duplicate whole guess (legal)
+    const s2 = mastermind.applyGuess(puzzle, solution, s1!, [0, 0, 0, 0]);
+    expect(s2).not.toBeNull();
+    expect(s2!.guesses.length).toBe(2);
+  });
+
+  it('rejects malformed guesses without mutating state', () => {
+    const state: mastermind.MastermindPlayerState = { guesses: [], solved: false, exhausted: false };
+
+    expect(mastermind.applyGuess(puzzle, solution, state, [0, 1, 2])).toBeNull(); // wrong length
+    expect(mastermind.applyGuess(puzzle, solution, state, [0, 1, 2, 3, 4])).toBeNull(); // wrong length
+    expect(mastermind.applyGuess(puzzle, solution, state, [0, 1, 2, 8])).toBeNull(); // color out of range
+    expect(mastermind.applyGuess(puzzle, solution, state, [0, 1, 2, -1])).toBeNull(); // negative color
+    expect(mastermind.applyGuess(puzzle, solution, state, [0, 1, 2, 1.5])).toBeNull(); // non-integer
+    expect(state.guesses.length).toBe(0);
+  });
+
+  it('handles solve and terminal transitions', () => {
+    let state: mastermind.MastermindPlayerState = { guesses: [], solved: false, exhausted: false };
+    const s1 = mastermind.applyGuess(puzzle, solution, state, [0, 1, 2, 3]);
+    expect(s1).not.toBeNull();
+    expect(s1!.solved).toBe(true);
+    expect(s1!.exhausted).toBe(false);
+
+    // Post-terminal rejection
+    expect(mastermind.applyGuess(puzzle, solution, s1!, [0, 1, 2, 3])).toBeNull();
+  });
+
+  it('handles final-attempt exhaustion and post-terminal rejection', () => {
+    let state: mastermind.MastermindPlayerState = { guesses: [], solved: false, exhausted: false };
+    // Max tries is 4
+    state = mastermind.applyGuess(puzzle, solution, state, [4, 4, 4, 4])!;
+    state = mastermind.applyGuess(puzzle, solution, state, [4, 4, 4, 4])!;
+    state = mastermind.applyGuess(puzzle, solution, state, [4, 4, 4, 4])!;
+    expect(state.solved).toBe(false);
+    expect(state.exhausted).toBe(false);
+
+    // 4th and final attempt
+    state = mastermind.applyGuess(puzzle, solution, state, [4, 4, 4, 4])!;
+    expect(state.solved).toBe(false);
+    expect(state.exhausted).toBe(true);
+
+    // Next attempt must be rejected
+    expect(mastermind.applyGuess(puzzle, solution, state, [0, 1, 2, 3])).toBeNull();
+  });
+});
+
+describe('mastermind grading and scoring invariants', () => {
+  const puz: mastermind.MastermindPuzzle = { colors: 8, slots: 4, maxTries: 30 };
+
+  it('exhausted is terminal but not complete', () => {
+    const state: mastermind.MastermindPlayerState = {
+      guesses: [
+        { code: [4, 5, 6, 7], exact: 0, color: 0 },
+        { code: [0, 5, 6, 7], exact: 1, color: 0 },
+      ],
+      solved: false,
+      exhausted: true,
+    };
+    const grade = mastermind.grade(state, puz);
+    expect(grade.complete).toBe(false);
+    expect(grade.terminal).toBe(true);
+    expect(grade.progress).toBe(1 / 4);
+  });
+
+  it('a 3-attempt solve scores above a 5-attempt solve', () => {
+    const solve3: mastermind.MastermindPlayerState = {
+      guesses: [
+        { code: [0, 0, 0, 0], exact: 1, color: 0 },
+        { code: [1, 1, 1, 1], exact: 1, color: 0 },
+        { code: [0, 1, 2, 3], exact: 4, color: 0 },
+      ],
+      solved: true,
+      exhausted: false,
+    };
+    const solve5: mastermind.MastermindPlayerState = {
+      guesses: [
+        { code: [0, 0, 0, 0], exact: 1, color: 0 },
+        { code: [1, 1, 1, 1], exact: 1, color: 0 },
+        { code: [2, 2, 2, 2], exact: 1, color: 0 },
+        { code: [3, 3, 3, 3], exact: 1, color: 0 },
+        { code: [0, 1, 2, 3], exact: 4, color: 0 },
+      ],
+      solved: true,
+      exhausted: false,
+    };
+
+    const grade3 = mastermind.grade(solve3, puz);
+    const grade5 = mastermind.grade(solve5, puz);
+
+    expect(grade3.assetValue).toBeGreaterThan(grade5.assetValue);
+    expect(grade3.assetValue).toBe(10000 - 2 * 300); // 9400
+    expect(grade5.assetValue).toBe(10000 - 4 * 300); // 8800
+  });
+
+  it('a 30-attempt solve scores above the best unsolved score', () => {
+    const solve30Guesses = Array.from({ length: 29 }, () => ({
+      code: [0, 0, 0, 0],
+      exact: 1,
+      color: 0,
+    }));
+    solve30Guesses.push({ code: [0, 1, 2, 3], exact: 4, color: 0 });
+
+    const solve30: mastermind.MastermindPlayerState = {
+      guesses: solve30Guesses,
+      solved: true,
+      exhausted: false,
+    };
+    const grade30 = mastermind.grade(solve30, puz);
+    expect(grade30.assetValue).toBe(1300); // 10000 - 29*300 = 1300
+
+    // Best possible unsolved score: 3 of 4 exact
+    const bestUnsolved: mastermind.MastermindPlayerState = {
+      guesses: [{ code: [0, 1, 2, 7], exact: 3, color: 0 }],
+      solved: false,
+      exhausted: true,
+    };
+    const gradeUnsolved = mastermind.grade(bestUnsolved, puz);
+    expect(gradeUnsolved.assetValue).toBe(Math.round((3 / 4) * 200)); // 150
+
+    expect(grade30.assetValue).toBeGreaterThan(gradeUnsolved.assetValue);
+  });
+});
+
+describe('mastermind bot generation at maximum colors and slots', () => {
+  it('produces deterministic bounded legal sequences ending in the secret', () => {
+    const puz: mastermind.MastermindPuzzle = { colors: 12, slots: 8, maxTries: 30 };
+    const solution: mastermind.MastermindSolution = { code: [0, 1, 2, 3, 4, 5, 6, 7] };
+
+    for (const diff of ['easy', 'normal', 'hard'] as const) {
+      const seqA = mastermind.generateBotGuesses(puz, solution, diff, 777);
+      const seqB = mastermind.generateBotGuesses(puz, solution, diff, 777);
+
+      // Deterministic
+      expect(seqA).toEqual(seqB);
+
+      // Bounded within maxTries
+      expect(seqA.length).toBeLessThanOrEqual(puz.maxTries);
+      expect(seqA.length).toBeGreaterThanOrEqual(1);
+
+      // Every guess is legal
+      for (let i = 0; i < seqA.length; i++) {
+        const guess = seqA[i]!;
+        expect(guess.length).toBe(puz.slots);
+        for (const col of guess) {
+          expect(col).toBeGreaterThanOrEqual(0);
+          expect(col).toBeLessThan(puz.colors);
+        }
+        // Intermediate guesses must NOT equal the secret
+        if (i < seqA.length - 1) {
+          expect(guess).not.toEqual(solution.code);
+        }
+      }
+
+      // Final guess must be the exact secret
+      expect(seqA[seqA.length - 1]).toEqual(solution.code);
+    }
   });
 });

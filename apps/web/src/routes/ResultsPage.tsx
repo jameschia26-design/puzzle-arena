@@ -55,8 +55,19 @@ export default function ResultsPage(): React.ReactElement {
 }
 
 /** Podium rises 3rd, then 2nd, then 1st; the table reveals row by row. */
+function getMastermindDetail(detail: unknown): { tries: number; maxTries: number } | null {
+  if (detail && typeof detail === 'object' && 'mastermind' in detail) {
+    const mm = (detail as { mastermind: unknown }).mastermind;
+    if (mm && typeof mm === 'object' && 'tries' in mm && 'maxTries' in mm) {
+      return mm as { tries: number; maxTries: number };
+    }
+  }
+  return null;
+}
+
 export function ResultsTable({ results }: { results: ResultRow[] }): React.ReactElement {
   const reduced = useReducedMotion();
+  const isMastermind = results.some((r) => getMastermindDetail(r.detail) !== null);
   const podium = [...results].slice(0, 3);
   const order = [2, 1, 0]; // 3rd, 2nd, 1st
 
@@ -142,10 +153,15 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
                 <dt className="text-pa-ink-dim">Accuracy</dt>
                 <dd>{Math.round(row.accuracy * 100)}%</dd>
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-pa-ink-dim">Speed</dt>
-                <dd>{Math.round(row.speed * 100)}%</dd>
-              </div>
+              {(() => {
+                const mm = getMastermindDetail(row.detail);
+                return (
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-pa-ink-dim">{mm ? 'Attempts' : 'Speed'}</dt>
+                    <dd>{mm ? `${mm.tries} / ${mm.maxTries}` : `${Math.round(row.speed * 100)}%`}</dd>
+                  </div>
+                );
+              })()}
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-pa-ink-dim">Penalties</dt>
                 <dd>{row.penalties}</dd>
@@ -174,7 +190,7 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
               <th className="text-right py-2 font-normal">Score</th>
               <th className="text-right py-2 font-normal">Progress</th>
               <th className="text-right py-2 font-normal">Accuracy</th>
-              <th className="text-right py-2 font-normal">Speed</th>
+              <th className="text-right py-2 font-normal">{isMastermind ? 'Attempts' : 'Speed'}</th>
               <th className="text-right py-2 font-normal">Pen.</th>
               <th className="text-right py-2 font-normal">Finish</th>
             </tr>
@@ -207,7 +223,12 @@ export function ResultsTable({ results }: { results: ResultRow[] }): React.React
                 <td className="py-2 text-right font-display text-[10px]">{row.score}</td>
                 <td className="py-2 text-right">{Math.round(row.progress * 100)}%</td>
                 <td className="py-2 text-right">{Math.round(row.accuracy * 100)}%</td>
-                <td className="py-2 text-right">{Math.round(row.speed * 100)}%</td>
+                <td className="py-2 text-right">
+                  {(() => {
+                    const mm = getMastermindDetail(row.detail);
+                    return mm ? `${mm.tries} / ${mm.maxTries}` : `${Math.round(row.speed * 100)}%`;
+                  })()}
+                </td>
                 <td className="py-2 text-right">{row.penalties}</td>
                 <td className="py-2 text-right">
                   {row.completedAtMs === null

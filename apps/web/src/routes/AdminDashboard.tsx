@@ -69,6 +69,9 @@ export default function AdminDashboard(): React.ReactElement {
   const [clockMinutes, setClockMinutes] = React.useState<number | string>(10);
   const [incrementSec, setIncrementSec] = React.useState<number | string>(0);
   const [allowTakeback, setAllowTakeback] = React.useState(true);
+  const [mmSlots, setMmSlots] = React.useState('4');
+  const [mmColors, setMmColors] = React.useState('8');
+  const [mmAttempts, setMmAttempts] = React.useState<number | string>(10);
   const [rooms, setRooms] = React.useState<RoomRow[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -105,9 +108,15 @@ export default function AdminDashboard(): React.ReactElement {
     setBusy(true);
     setError(null);
     const config: Record<string, unknown> = {};
-    if (isPuzzle) {
+    if (isPuzzle && gameId !== 'mastermind') {
       config['difficulty'] = difficulty;
       config['instantFeedback'] = instantFeedback;
+    }
+    if (gameId === 'mastermind') {
+      config['slots'] = Number(mmSlots);
+      config['colors'] = Number(mmColors);
+      const attemptsNum = Math.min(30, Math.max(6, Math.round(Number(mmAttempts)) || 10));
+      config['maxTries'] = attemptsNum;
     }
     if (gameId === 'nonogram') config['size'] = Number(size);
     if (gameId === 'word-search') {
@@ -197,7 +206,7 @@ export default function AdminDashboard(): React.ReactElement {
             }}
           />
 
-          {isPuzzle && (
+{isPuzzle && gameId !== 'mastermind' && (
             <PixelSelect
               label="Difficulty"
               value={difficulty}
@@ -229,6 +238,36 @@ export default function AdminDashboard(): React.ReactElement {
               onValueChange={setTheme}
               options={WORD_SEARCH_THEMES.map((t) => ({ value: t, label: t }))}
             />
+          )}
+          {gameId === 'mastermind' && (
+            <>
+              <PixelSelect
+                label="Code length (slots)"
+                value={mmSlots}
+                onValueChange={setMmSlots}
+                options={[4, 5, 6, 7, 8].map((n) => ({ value: String(n), label: `${n} slots` }))}
+              />
+              <PixelSelect
+                label="Palette size (colors)"
+                value={mmColors}
+                onValueChange={setMmColors}
+                options={[7, 8, 9, 10, 11, 12].map((n) => ({ value: String(n), label: `${n} colors` }))}
+              />
+              <PixelInput
+                label="Max attempts"
+                type="number"
+                min={6}
+                max={30}
+                value={mmAttempts}
+                onChange={(e) => setMmAttempts(e.target.value)}
+                onBlur={() => {
+                  const n = Number(mmAttempts);
+                  if (!n || n < 6) setMmAttempts(6);
+                  else if (n > 30) setMmAttempts(30);
+                  else setMmAttempts(Math.round(n));
+                }}
+              />
+            </>
           )}
           {(gameId === 'chess' || gameId === 'xiangqi') && (
             <>
@@ -286,7 +325,7 @@ export default function AdminDashboard(): React.ReactElement {
           {meta.blurb}
         </p>
 
-        {isPuzzle && (
+{isPuzzle && gameId !== 'mastermind' && (
           <label className="mt-4 flex items-center gap-3 cursor-pointer">
             <input
               type="checkbox"

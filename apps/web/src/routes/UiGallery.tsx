@@ -16,6 +16,7 @@ import {
 import { CodeInput, Countdown, PlayerChip, SeatAvatar } from '../ui/game-bits.js';
 import { CrtToggle } from '../ui/crt.js';
 import { SEAT_COLORS } from '../ui/seat.js';
+import { MastermindBoard, MastermindSecretReveal } from '../games/MastermindBoard.js';
 
 /**
  * Every primitive in every variant and state on one page — the visual proof
@@ -224,6 +225,18 @@ export default function UiGallery(): React.ReactElement {
           </div>
         </div>
       </Section>
+      <Section title="Mastermind Pegboard & Reveal">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="flex flex-col gap-3">
+            <h3 className="font-display text-[12px] text-pa-ink-dim">Interactive Board (4 slots, 8 colors)</h3>
+            <MastermindDemo />
+          </div>
+          <div className="flex flex-col gap-3">
+            <h3 className="font-display text-[12px] text-pa-ink-dim">Secret Code Reveal (6 slots, 10 colors)</h3>
+            <MastermindSecretReveal code={[0, 2, 4, 6, 8, 9]} colors={10} />
+          </div>
+        </div>
+      </Section>
     </main>
   );
 }
@@ -240,5 +253,40 @@ function Section({
       <h2 className="font-display text-[14px] border-b-2 border-pa-border pb-2">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function MastermindDemo(): React.ReactElement {
+  const [board, setBoard] = React.useState({
+    guesses: [
+      { code: [0, 1, 2, 3], exact: 1, color: 2 },
+      { code: [1, 2, 0, 4], exact: 2, color: 1 },
+    ],
+    solved: false,
+    exhausted: false,
+  });
+
+  return (
+    <MastermindBoard
+      puzzle={{ slots: 4, colors: 8, maxTries: 10 }}
+      board={board}
+      onSubmitGuess={async (code) => {
+        const secret = [2, 1, 0, 3];
+        let exact = 0;
+        for (let i = 0; i < 4; i++) {
+          if (code[i] === secret[i]) exact++;
+        }
+        const color = Math.min(4 - exact, 1);
+        const solved = exact === 4;
+        const newGuess = { code, exact, color };
+        setBoard((b) => ({
+          ...b,
+          guesses: [...b.guesses, newGuess],
+          solved,
+          exhausted: b.guesses.length + 1 >= 10 && !solved,
+        }));
+        return { code, exact, color, tries: board.guesses.length + 1, solved, exhausted: false };
+      }}
+    />
   );
 }

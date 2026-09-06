@@ -399,6 +399,15 @@ export interface RoomSnapshot {
   moveDeadline?: number | null;
 }
 
+export interface MastermindGuessAck {
+  code: number[];
+  exact: number;
+  color: number;
+  tries: number;
+  solved: boolean;
+  exhausted: boolean;
+}
+
 export interface PuzzleCommitAck {
   accepted: boolean;
   /** Only present when the host enabled instantFeedback. */
@@ -410,6 +419,7 @@ export interface PuzzleCommitAck {
    *  Search always reveals which words it finds, regardless of the host's
    *  instantFeedback setting, since that is the whole point of the game. */
   foundWord?: string | null;
+  mastermindGuess?: MastermindGuessAck;
 }
 
 export interface GameActionAck {

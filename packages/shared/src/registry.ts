@@ -6,6 +6,7 @@ export const GAME_IDS = [
   'nonogram',
   'word-search',
   'minesweeper',
+  'mastermind',
   'property-tycoon',
   'manor-mystery',
   'scrabble',
@@ -75,6 +76,12 @@ export const wordSearchConfigSchema = z.object({
 export const minesweeperConfigSchema = z.object({
   ...basePuzzleConfig,
 });
+export const mastermindConfigSchema = z.object({
+  colors: z.number().int().min(7).max(12).default(8),
+  slots: z.number().int().min(4).max(8).default(4),
+  maxTries: z.number().int().min(6).max(30).default(10),
+});
+export type MastermindConfig = z.infer<typeof mastermindConfigSchema>;
 
 export const reversiConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(15).max(300).default(60),
@@ -225,6 +232,17 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: minesweeperConfigSchema,
     blurb: 'Clear the minefield without detonating a single bomb. Flag hidden mines and chord numbers.',
+  },
+  mastermind: {
+    id: 'mastermind',
+    title: 'Mastermind',
+    kind: 'puzzle',
+    minPlayers: 1,
+    maxPlayers: 200,
+    defaultTimeLimitSec: 300,
+    supportsBots: true,
+    configSchema: mastermindConfigSchema,
+    blurb: 'Crack the hidden color code using exact and color clue pegs.',
   },
   'property-tycoon': {
     id: 'property-tycoon',

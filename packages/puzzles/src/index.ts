@@ -6,6 +6,7 @@ export * as killerSudoku from './killer-sudoku.js';
 export * as nonogram from './nonogram.js';
 export * as wordSearch from './word-search.js';
 export * as minesweeper from './minesweeper.js';
+export * as mastermind from './mastermind.js';
 
 export type { GradeResult, PuzzleMeta } from './sudoku.js';
 export type { SudokuPuzzle, SudokuSolution } from './sudoku.js';
@@ -23,3 +24,10 @@ export type {
   MinesweeperPlayerState,
   MinesweeperConfig,
 } from './minesweeper.js';
+export type {
+  MastermindPuzzle,
+  MastermindSolution,
+  MastermindGuess,
+  MastermindPlayerState,
+  MastermindGrade,
+} from './mastermind.js';

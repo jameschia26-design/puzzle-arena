@@ -11,13 +11,13 @@ export interface ScoreInput {
   completedAtMs: number | null; // ms from room start; null unless completed
   penalties: number; // hints, illegal-move strikes, turn timeouts
   /**
-   * Board-game-only escape hatch. Property Tycoon's result is total asset
-   * value (cash + property + buildings), not a progress/accuracy/speed
-   * blend, so it does not go through `computeScore` at all — see
-   * `packages/games/src/property-tycoon/rules.ts` (`assetValue`) and
-   * `runtime.ts#finish()`, which uses this field directly as the leaderboard
-   * score instead of calling `computeScore`. Absent (undefined) for every
-   * other game; `computeScore` itself never reads it.
+   * Game-defined final-score bypass. Certain games (e.g. Property Tycoon's
+   * total asset value, Scrabble's point total, or Mastermind's attempt-based
+   * score) determine their final standing directly rather than through the
+   * default progress/accuracy/speed blend. When present, runtime.ts#finish()
+   * uses this value directly as the leaderboard score instead of calling
+   * computeScore. Absent (undefined) for games using standard scoring;
+   * computeScore itself never reads it.
    */
   assetValue?: number;
 }

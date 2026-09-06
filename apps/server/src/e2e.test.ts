@@ -1044,3 +1044,144 @@ describe('event log', () => {
     hostSocket.close();
   }, 60_000);
 });
+
+describe('a mastermind room end to end', () => {
+  it('plays from lobby to results with fewest guesses winning and private state isolated', async () => {
+    // --- host creates the room with 6 slots, 10 colors, 15 attempts ---
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({
+        gameId: 'mastermind',
+        config: { slots: 6, colors: 10, maxTries: 15 },
+        timeLimitSec: 300,
+      }),
+    });
+    expect(created.status).toBe(200);
+    const { id: roomId, code } = created.body;
+
+    // --- two identities: the admin host, and a guest ---
+    const guestRes = await api('/api/guest', { method: 'POST' });
+    const guestCookie = cookieValues(guestRes.setCookie);
+
+    const hostSocket = connect(adminCookie);
+    const guestSocket = connect(guestCookie);
+    await Promise.all([connected(hostSocket), connected(guestSocket)]);
+
+    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    expect(hostJoin.error).toBeUndefined();
+    const guestJoin = await emit(guestSocket, EV.roomJoin, { code, displayName: 'Guest' });
+    expect(guestJoin.error).toBeUndefined();
+
+    const hostId = hostJoin.snapshot.you.playerId as string;
+    const guestId = guestJoin.snapshot.you.playerId as string;
+
+    // --- host starts ---
+    const started = waitFor(guestSocket, EV.roomStarted);
+    const startAck = await emit(hostSocket, EV.roomStart);
+    expect(startAck.error).toBeUndefined();
+    await started;
+    await awaitStart(roomId);
+
+    const room = getRoom(roomId);
+    expect(room).toBeDefined();
+    const sol = room!.puzzle!.solution as { code: number[] };
+    const secretCode = sol.code;
+    expect(secretCode.length).toBe(6);
+
+    // --- ANTI-CHEAT: both clients receive solution: null, no public puzzle field contains code ---
+    const hostSnap = room!.snapshotFor(hostId) as RoomSnapshot;
+    const guestSnap = room!.snapshotFor(guestId) as RoomSnapshot;
+    expect((hostSnap.state as any).solution).toBeNull();
+    expect((guestSnap.state as any).solution).toBeNull();
+    expect('code' in (hostSnap.state as any).puzzle).toBe(false);
+    expect(JSON.stringify(hostSnap)).not.toContain(secretCode.join(','));
+    expect(JSON.stringify(guestSnap)).not.toContain(secretCode.join(','));
+
+    // --- guest submits five wrong guesses, then solves on 6th guess ---
+    const wrongGuess = secretCode.map((c) => (c + 1) % 10).join(',');
+    for (let i = 0; i < 5; i++) {
+      const ack = await emit(guestSocket, EV.puzzleCommit, {
+        path: 'guess',
+        value: wrongGuess,
+      });
+      expect(ack.accepted).toBe(true);
+      expect(ack.mastermindGuess).toBeDefined();
+      expect(ack.mastermindGuess.tries).toBe(i + 1);
+      expect(ack.mastermindGuess.solved).toBe(false);
+      expect(ack.mastermindGuess.exhausted).toBe(false);
+    }
+
+    const guestSolveAck = await emit(guestSocket, EV.puzzleCommit, {
+      path: 'guess',
+      value: secretCode.join(','),
+    });
+    expect(guestSolveAck.accepted).toBe(true);
+    expect(guestSolveAck.mastermindGuess.tries).toBe(6);
+    expect(guestSolveAck.mastermindGuess.solved).toBe(true);
+
+    // --- ANTI-CHEAT: one player's private history is absent from the other player's snapshot ---
+    const hostMidSnap = room!.snapshotFor(hostId) as RoomSnapshot;
+    const guestMidSnap = room!.snapshotFor(guestId) as RoomSnapshot;
+    expect((hostMidSnap.state as any).board.guesses.length).toBe(0);
+    expect((guestMidSnap.state as any).board.guesses.length).toBe(6);
+
+    // Room must still be running because host is not terminal yet
+    expect(room!.status).toBe('running');
+
+    // Small delay so guest's finish timestamp is earlier than host's
+    await new Promise((r) => setTimeout(r, 100));
+
+    // --- host solves in four guesses later ---
+    for (let i = 0; i < 3; i++) {
+      const ack = await emit(hostSocket, EV.puzzleCommit, {
+        path: 'guess',
+        value: wrongGuess,
+      });
+      expect(ack.accepted).toBe(true);
+      expect(ack.mastermindGuess.tries).toBe(i + 1);
+      expect(ack.mastermindGuess.solved).toBe(false);
+    }
+
+    const hostSolveAck = await emit(hostSocket, EV.puzzleCommit, {
+      path: 'guess',
+      value: secretCode.join(','),
+    });
+    expect(hostSolveAck.accepted).toBe(true);
+    expect(hostSolveAck.mastermindGuess.tries).toBe(4);
+    expect(hostSolveAck.mastermindGuess.solved).toBe(true);
+
+    // --- Room ends only after both are terminal ---
+    expect(room!.status).toBe('finished');
+
+    // --- Host ranks first with exact engine-defined scores (guess count overrides speed) ---
+    const results = room!.results!;
+    expect(results.length).toBe(2);
+    const hostRow = results.find((r) => r.playerId === hostId)!;
+    const guestRow = results.find((r) => r.playerId === guestId)!;
+    expect(hostRow.rank).toBe(1);
+    expect(hostRow.score).toBe(9100); // 10000 - 3 * 300
+    expect(guestRow.rank).toBe(2);
+    expect(guestRow.score).toBe(8500); // 10000 - 5 * 300
+    expect(hostRow.score).toBeGreaterThan(guestRow.score);
+
+    // --- finished snapshots reveal solution.code ---
+    const hostEndSnap = room!.snapshotFor(hostId) as RoomSnapshot;
+    const guestEndSnap = room!.snapshotFor(guestId) as RoomSnapshot;
+    expect((hostEndSnap.state as any).solution.code).toEqual(secretCode);
+    expect((guestEndSnap.state as any).solution.code).toEqual(secretCode);
+
+    // --- both persisted result rows expose correct attempt detail ---
+    const persisted = await api(`/api/rooms/${roomId}/results`);
+    expect(persisted.status).toBe(200);
+    const pResults = persisted.body.results as any[];
+    expect(pResults.length).toBe(2);
+    const pHost = pResults.find((r) => r.playerId === hostId);
+    const pGuest = pResults.find((r) => r.playerId === guestId);
+    expect(pHost.detail).toEqual({ mastermind: { tries: 4, maxTries: 15 } });
+    expect(pGuest.detail).toEqual({ mastermind: { tries: 6, maxTries: 15 } });
+
+    hostSocket.close();
+    guestSocket.close();
+  }, 120_000);
+});

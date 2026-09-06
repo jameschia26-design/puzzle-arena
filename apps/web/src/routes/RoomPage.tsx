@@ -12,6 +12,8 @@ import {
   type GameId,
   type PlayerView,
   type RoomSnapshot,
+  type PuzzleCommitAck,
+  type MastermindGuessAck,
 } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -39,6 +41,7 @@ import { CongkakBoard } from '../games/CongkakBoard.js';
 import { CheckersBoard } from '../games/CheckersBoard.js';
 import { BigTwoBoard } from '../games/BigTwoBoard.js';
 import { MinesweeperBoard } from '../games/MinesweeperBoard.js';
+import { MastermindBoard, MastermindSecretReveal } from '../games/MastermindBoard.js';
 import { ReversiBoard } from '../games/ReversiBoard.js';
 import { Connect4Board } from '../games/Connect4Board.js';
 import ChessBoard from '../games/ChessBoard.js';
@@ -173,7 +176,7 @@ export default function RoomPage(): React.ReactElement {
       if (store.paused) bgm.stop();
       else if (gameId === 'animal-chess') bgm.play('animalchess');
       else if (gameId === 'property-tycoon') bgm.play('property');
-      else if (gameId === 'manor-mystery') bgm.play('mystery');
+      else if (gameId === 'manor-mystery' || gameId === 'mastermind') bgm.play('mystery');
       else if (gameId === 'reversi' || gameId === 'connect4' || gameId === 'minesweeper') bgm.play('arcade');
       else if (gameId === 'sudoku' || gameId === 'killer-sudoku' || gameId === 'nonogram') bgm.play('zen');
       else if (gameId === 'congkak') bgm.play('congkak');
@@ -367,7 +370,7 @@ export default function RoomPage(): React.ReactElement {
           {isFullscreenEligible && !inGameMode && (
             <PixelButton
               size="sm"
-              variant="cyan"
+              variant="primary"
               onClick={() => setInGameMode(true)}
               className="font-display text-[10px]"
             >
@@ -796,11 +799,11 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
     path: string,
     value: number | string | null,
     optimistic?: (prev: any) => any,
-  ): Promise<void> => {
+  ): Promise<PuzzleCommitAck | null> => {
     const rollback = board;
     if (optimistic) setBoard(optimistic(board));
 
-    const res = await emit<{ accepted: boolean; correct?: boolean; error?: string }>(
+    const res = await emit<PuzzleCommitAck>(
       EV.puzzleCommit,
       { path, value },
     );
@@ -808,9 +811,10 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
     if (!res.accepted) {
       setBoard(rollback);
       if (res.error && res.error !== 'Illegal move') toast(res.error);
-      return;
+      return res;
     }
     if (res.correct === false) toast('That is not correct');
+    return res;
   };
 
   /** Grid games: write one cell. */
@@ -1008,6 +1012,51 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
               });
               toast(`Safe cell revealed at row ${(r ?? 0) + 1}, column ${(c ?? 0) + 1}`);
             }
+          }}
+        />
+      </div>
+    );
+  }
+  if (gameId === 'mastermind') {
+    const mmPuzzle = state.puzzle as { colors: number; slots: number; maxTries: number };
+    const mmBoard = (board ?? state.initialState ?? {
+      guesses: [],
+      solved: false,
+      exhausted: false,
+    }) as {
+      guesses: Array<{ code: number[]; exact: number; color: number }>;
+      solved: boolean;
+      exhausted: boolean;
+    };
+    return (
+      <div className="flex flex-col gap-3 items-start w-full max-w-xl">
+        <MastermindBoard
+          puzzle={mmPuzzle}
+          board={mmBoard}
+          paused={store.paused}
+          disabled={store.room?.status !== 'running'}
+          onSubmitGuess={async (code: number[]): Promise<MastermindGuessAck | null> => {
+            const res = await commit('guess', code.join(','));
+            if (res?.accepted && res.mastermindGuess) {
+              const mg = res.mastermindGuess;
+              setBoard((prev: any) => {
+                const current = (prev && typeof prev === 'object'
+                  ? prev
+                  : { guesses: [], solved: false, exhausted: false });
+                const currentGuesses = Array.isArray(current.guesses) ? current.guesses : [];
+                return {
+                  ...current,
+                  guesses: [
+                    ...currentGuesses,
+                    { code: mg.code, exact: mg.exact, color: mg.color },
+                  ],
+                  solved: mg.solved,
+                  exhausted: mg.exhausted,
+                };
+              });
+              return res.mastermindGuess;
+            }
+            return null;
           }}
         />
       </div>
@@ -1266,6 +1315,16 @@ function PuzzleReveal({ gameId }: { gameId: GameId }): React.ReactElement | null
           disabled
           solution={state.solution}
         />
+      </div>
+    );
+  }
+  if (gameId === 'mastermind') {
+    const code = (state.solution?.code ?? []) as number[];
+    const colors = (state.puzzle?.colors as number | undefined) ?? 8;
+    return (
+      <div className="mt-6">
+        <h3 className="font-display text-[12px] mb-3">Secret Code</h3>
+        <MastermindSecretReveal code={code} colors={colors} />
       </div>
     );
   }

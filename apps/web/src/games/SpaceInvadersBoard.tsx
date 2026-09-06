@@ -588,7 +588,7 @@ export function renderPlayfieldCanvas(
       ctx.fillStyle = 'rgba(224, 64, 251, 0.28)';
       ctx.fillRect(bx - 1, by - 1, 12, 12);
 
-      drawIndexedSprite(ctx, SPRITE_BOMB_16BIT[bombFrame], PALETTE_BOMB, bx, by, 2);
+      drawIndexedSprite(ctx, SPRITE_BOMB_16BIT[bombFrame] ?? SPRITE_BOMB_16BIT[0]!, PALETTE_BOMB, bx, by, 2);
     }
   }
 

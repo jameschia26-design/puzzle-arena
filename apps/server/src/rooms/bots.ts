@@ -30,6 +30,7 @@ import {
   type SpaceInvadersBotView,
   type BombermanBotView,
 } from '@puzzle-arena/games';
+import { mastermind } from '@puzzle-arena/puzzles';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
 import { env } from '../env.js';
 import { logger } from '../logger.js';
@@ -289,6 +290,56 @@ export function schedulePuzzleBots(room: LiveRoom): void {
   stopPuzzleBots(room.id);
 
   const handles: NodeJS.Timeout[] = [];
+  if (room.gameId === 'mastermind') {
+    const puz = room.puzzle.puzzle as mastermind.MastermindPuzzle;
+    const sol = room.puzzle.solution as mastermind.MastermindSolution;
+    const MM_PACE: Record<BotDifficulty, number> = { easy: 0.8, normal: 0.6, hard: 0.4 };
+
+    for (const bot of room.players.filter((p) => p.isBot && !p.left)) {
+      const difficulty: BotDifficulty = bot.botDifficulty ?? 'normal';
+      const botSeed = hash(room.id + bot.id);
+      const guesses = mastermind.generateBotGuesses(puz, sol, difficulty, botSeed);
+      if (guesses.length === 0) continue;
+
+      const targetMs = room.timeLimitMs * MM_PACE[difficulty];
+      const interval = Math.max(120, Math.floor(targetMs / guesses.length));
+
+      // Resume from existing guess count so recovery never replays consumed attempts
+      const botState = bot.state as mastermind.MastermindPlayerState | undefined;
+      let idx = Array.isArray(botState?.guesses) ? botState.guesses.length : 0;
+
+      const tick = setInterval(() => {
+        if (room.status !== 'running') {
+          clearInterval(tick);
+          return;
+        }
+        if (room.paused) {
+          // Skip ticks without advancing while paused
+          return;
+        }
+        if (idx >= guesses.length) {
+          clearInterval(tick);
+          return;
+        }
+
+        const code = guesses[idx++];
+        if (!code) {
+          clearInterval(tick);
+          return;
+        }
+
+        const ack = room.commit(bot.id, 'guess', code.join(','));
+        if (!ack.accepted || ack.mastermindGuess?.solved || ack.mastermindGuess?.exhausted) {
+          clearInterval(tick);
+        }
+      }, interval);
+
+      handles.push(tick);
+    }
+
+    puzzleTimers.set(room.id, handles);
+    return;
+  }
   const order = room.puzzle.solveOrder;
   if (order.length === 0) return;
 

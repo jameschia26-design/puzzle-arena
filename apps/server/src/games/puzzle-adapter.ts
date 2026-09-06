@@ -1,5 +1,6 @@
 import {
   killerSudoku,
+  mastermind,
   minesweeper,
   nonogram,
   sudoku,
@@ -9,7 +10,7 @@ import {
   getWordsForTheme,
   type Grid,
 } from '@puzzle-arena/puzzles';
-import type { Difficulty, GameId, Rng } from '@puzzle-arena/shared';
+import type { Difficulty, GameId, MastermindGuessAck, Rng } from '@puzzle-arena/shared';
 
 /**
  * One uniform interface over the four puzzle games, so the room runtime never
@@ -23,8 +24,10 @@ export interface PuzzleGrade {
   progress: number;
   accuracy: number;
   complete: boolean;
+  terminal: boolean;
   /** What the leaderboard shows while instant feedback is off. */
   filledFraction: number;
+  assetValue?: number;
 }
 
 export interface GeneratedPuzzle {
@@ -119,6 +122,24 @@ export async function generatePuzzle(
         solveOrder: minesweeper.solveOrder(puzzle, solution),
       };
     }
+    case 'mastermind': {
+      const colors = (config['colors'] as number) ?? 8;
+      const slots = (config['slots'] as number) ?? 4;
+      const maxTries = (config['maxTries'] as number) ?? 10;
+      const { puzzle, solution, meta } = mastermind.generate({
+        seed,
+        colors,
+        slots,
+        maxTries,
+      });
+      return {
+        puzzle,
+        solution,
+        meta,
+        initialState: { guesses: [], solved: false, exhausted: false },
+        solveOrder: [],
+      };
+    }
     default:
       throw new Error(`${gameId} is not a puzzle`);
   }
@@ -144,6 +165,8 @@ export function initialPuzzleState(gameId: GameId, puzzle: unknown): unknown {
         moves: 0,
       };
     }
+    case 'mastermind':
+      return { guesses: [], solved: false, exhausted: false };
     default:
       return null;
   }
@@ -170,6 +193,7 @@ export function gradePuzzle(
         progress: g.cellsTotal > 0 ? g.cellsCorrect / g.cellsTotal : 0,
         accuracy: g.cellsFilled > 0 ? g.cellsCorrect / g.cellsFilled : 1,
         complete: g.complete,
+        terminal: g.complete,
         filledFraction: g.cellsTotal > 0 ? g.cellsFilled / g.cellsTotal : 0,
       };
     }
@@ -179,6 +203,7 @@ export function gradePuzzle(
         progress: g.cellsTotal > 0 ? g.cellsCorrect / g.cellsTotal : 0,
         accuracy: g.cellsFilled > 0 ? g.cellsCorrect / g.cellsFilled : 1,
         complete: g.complete,
+        terminal: g.complete,
         filledFraction: g.cellsTotal > 0 ? Math.min(1, g.cellsFilled / g.cellsTotal) : 0,
       };
     }
@@ -188,6 +213,7 @@ export function gradePuzzle(
         progress: g.wordsTotal > 0 ? g.wordsFound / g.wordsTotal : 0,
         accuracy: g.wordsFound / Math.max(1, g.selectionsSubmitted),
         complete: g.complete,
+        terminal: g.complete,
         filledFraction: g.wordsTotal > 0 ? g.wordsFound / g.wordsTotal : 0,
       };
     }
@@ -197,7 +223,19 @@ export function gradePuzzle(
         progress: g.cellsTotal > 0 ? g.cellsCorrect / g.cellsTotal : 0,
         accuracy: g.cellsFilled > 0 ? g.cellsCorrect / g.cellsFilled : 1,
         complete: g.complete,
+        terminal: g.complete,
         filledFraction: g.cellsTotal > 0 ? Math.min(1, g.cellsFilled / g.cellsTotal) : 0,
+      };
+    }
+    case 'mastermind': {
+      const g = mastermind.grade(playerState, puzzle as mastermind.MastermindPuzzle);
+      return {
+        progress: g.progress,
+        accuracy: g.accuracy,
+        complete: g.complete,
+        terminal: g.terminal,
+        filledFraction: g.filledFraction,
+        assetValue: g.assetValue,
       };
     }
     default:
@@ -235,17 +273,24 @@ export function puzzleHint(
   }
 }
 
+export interface AppliedPuzzleCommit {
+  state: unknown;
+  foundWord?: string | null;
+  mastermindGuess?: MastermindGuessAck;
+}
+
 /**
  * Apply one committed move to a player's puzzle state, returning the new state
- * or null when the move is illegal. Never consults the solution.
+ * and game-specific feedback, or null when the move is illegal.
  */
 export function applyCommit(
   gameId: GameId,
   playerState: unknown,
   puzzle: unknown,
+  solution: unknown,
   path: string,
   value: number | string | null,
-): unknown | null {
+): AppliedPuzzleCommit | null {
   switch (gameId) {
     case 'sudoku':
     case 'killer-sudoku': {
@@ -259,7 +304,7 @@ export function applyCommit(
       const v = value === null ? 0 : Number(value);
       if (!Number.isInteger(v) || v < 0 || v > 9) return null;
       board[idx] = v;
-      return board;
+      return { state: board };
     }
     case 'nonogram': {
       const size = (puzzle as { size: number }).size;
@@ -270,15 +315,35 @@ export function applyCommit(
       const v = value === null ? 0 : Number(value);
       if (![0, 1, 2].includes(v)) return null;
       marks[r * size + c] = v;
-      return marks;
+      return { state: marks };
     }
     case 'word-search': {
-      // path is "y1,x1,y2,x2"; the runtime validates it against the solution.
+      const [y1, x1, y2, x2] = path.split(',').map(Number);
+      if ([y1, x1, y2, x2].some((n) => n === undefined || Number.isNaN(n))) {
+        return null;
+      }
       const st = (playerState ?? { found: [], selections: 0 }) as {
         found: string[];
         selections: number;
       };
-      return { found: [...st.found], selections: st.selections + 1 };
+      const word = wordSearch.checkSelection(
+        puzzle as never,
+        solution as never,
+        x1 as number,
+        y1 as number,
+        x2 as number,
+        y2 as number,
+      );
+      const found = [...st.found];
+      let foundWord: string | null = null;
+      if (word && !found.includes(word)) {
+        found.push(word);
+        foundWord = word;
+      }
+      return {
+        state: { found, selections: st.selections + 1 },
+        foundWord,
+      };
     }
     case 'minesweeper': {
       const puz = puzzle as { rows: number; cols: number };
@@ -301,10 +366,12 @@ export function applyCommit(
       if (typeof value === 'string' && value.startsWith('detonated')) {
         const [r, c] = path.split(',').map(Number);
         return {
-          ...st,
-          detonated: true,
-          detonatedCell: { row: r ?? 0, col: c ?? 0 },
-          moves: st.moves + 1,
+          state: {
+            ...st,
+            detonated: true,
+            detonatedCell: { row: r ?? 0, col: c ?? 0 },
+            moves: st.moves + 1,
+          },
         };
       }
 
@@ -313,7 +380,9 @@ export function applyCommit(
         for (const idx of indices) {
           if (idx >= 0 && idx < nextRevealed.length) nextRevealed[idx] = true;
         }
-        return { ...st, revealed: nextRevealed, moves: st.moves + 1 };
+        return {
+          state: { ...st, revealed: nextRevealed, moves: st.moves + 1 },
+        };
       }
 
       const [r, c] = path.split(',').map(Number);
@@ -324,9 +393,50 @@ export function applyCommit(
         }
       }
       return {
-        ...st,
-        revealed: nextRevealed,
-        moves: st.moves + 1,
+        state: {
+          ...st,
+          revealed: nextRevealed,
+          moves: st.moves + 1,
+        },
+      };
+    }
+    case 'mastermind': {
+      if (path !== 'guess' || typeof value !== 'string') return null;
+      const puz = puzzle as mastermind.MastermindPuzzle;
+      const sol = solution as mastermind.MastermindSolution;
+      const st = (playerState ?? {
+        guesses: [],
+        solved: false,
+        exhausted: false,
+      }) as mastermind.MastermindPlayerState;
+
+      const tokens = value.split(',');
+      if (tokens.length !== puz.slots) return null;
+
+      const code: number[] = [];
+      for (const token of tokens) {
+        if (!/^(0|[1-9]\d*)$/.test(token)) return null;
+        const n = Number(token);
+        if (n < 0 || n >= puz.colors) return null;
+        code.push(n);
+      }
+
+      const nextState = mastermind.applyGuess(puz, sol, st, code);
+      if (!nextState) return null;
+
+      const newlyAdded = nextState.guesses[nextState.guesses.length - 1]!;
+      const mastermindGuess: MastermindGuessAck = {
+        code: newlyAdded.code,
+        exact: newlyAdded.exact,
+        color: newlyAdded.color,
+        tries: nextState.guesses.length,
+        solved: nextState.solved,
+        exhausted: nextState.exhausted,
+      };
+
+      return {
+        state: nextState,
+        mastermindGuess,
       };
     }
     default:

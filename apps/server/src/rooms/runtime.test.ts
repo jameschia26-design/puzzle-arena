@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LiveRoom, type LivePlayer, rehydrateChessClocks } from './runtime.js';
-import { scheduleBots, stopBots } from './bots.js';
+import { scheduleBots, schedulePuzzleBots, stopBots } from './bots.js';
+import { mastermind } from '@puzzle-arena/puzzles';
 import { nextFreeSeat } from '../routes/rooms.js';
 import { roomPlayers } from '../db/schema.js';
 import { getTableConfig } from 'drizzle-orm/pg-core';
@@ -807,5 +808,179 @@ describe('seat reuse after kick/leave (Fix D)', () => {
     expect(seatIdx).toBeDefined();
     expect(seatIdx!.config.unique).toBe(true);
     expect(seatIdx!.config.where).toBeDefined();
+  });
+});
+
+/* ================================================================== */
+/* Mastermind runtime, replay, lifecycle, and bot scheduling         */
+/* ================================================================== */
+
+describe('mastermind runtime and replay', () => {
+  it('validates canonical string commits, agrees with private state, and replays identically', async () => {
+    const puzzle = await generatePuzzle('mastermind', 42, { colors: 8, slots: 4, maxTries: 6 });
+    const room = new LiveRoom({
+      id: 'mm-room-1',
+      code: 'MMROOM',
+      gameId: 'mastermind',
+      config: { colors: 8, slots: 4, maxTries: 6 },
+      status: 'running',
+      startedAt: new Date(Date.now() - 1000),
+      endsAt: null,
+    });
+    room.puzzle = puzzle;
+    room.players = [makePlayer('p1', { seat: 0 })];
+    const p1 = room.players[0]!;
+    p1.state = structuredClone(puzzle.initialState);
+
+    // Rejections of malformed inputs
+    expect(room.commit('p1', 'wrong_path', '0,1,2,3').accepted).toBe(false);
+    expect(room.commit('p1', 'guess', null).accepted).toBe(false);
+    expect(room.commit('p1', 'guess', 1234).accepted).toBe(false);
+    expect(room.commit('p1', 'guess', '0,1,2').accepted).toBe(false); // wrong length
+    expect(room.commit('p1', 'guess', '0,1,2,3,4').accepted).toBe(false); // wrong length
+    expect(room.commit('p1', 'guess', '0, 1, 2, 3').accepted).toBe(false); // whitespace
+    expect(room.commit('p1', 'guess', '01,2,3,4').accepted).toBe(false); // leading zeroes
+    expect(room.commit('p1', 'guess', '0,1,2,8').accepted).toBe(false); // color >= 8
+    expect(room.commit('p1', 'guess', '0,1,2,-1').accepted).toBe(false); // negative
+    expect(room.commit('p1', 'guess', '0,1,2,1.5').accepted).toBe(false); // non-integer
+
+    // Canonical commit
+    const ack = room.commit('p1', 'guess', '0,1,2,3');
+    expect(ack.accepted).toBe(true);
+    expect(ack.mastermindGuess).toBeDefined();
+    expect(ack.mastermindGuess!.code).toEqual([0, 1, 2, 3]);
+    expect(ack.mastermindGuess!.tries).toBe(1);
+    expect(ack.correct).toBeUndefined(); // Mastermind omits generic correct ack
+
+    const p1State = p1.state as mastermind.MastermindPlayerState;
+    expect(p1State.guesses.length).toBe(1);
+    const recoveredRoom = new LiveRoom({
+      id: 'mm-room-1',
+      code: 'MMROOM',
+      gameId: 'mastermind',
+      config: { colors: 8, slots: 4, maxTries: 6 },
+      timeLimitSec: 300,
+      status: 'running',
+      startedAt: new Date(Date.now() - 1000),
+      endsAt: null,
+    });
+    recoveredRoom.puzzle = puzzle;
+    recoveredRoom.players = [makePlayer('p1', { seat: 0 })];
+    const recP1 = recoveredRoom.players[0]!;
+    recP1.state = structuredClone(puzzle.initialState);
+
+    recoveredRoom.replayCommit('p1', { path: 'guess', value: '0,1,2,3' });
+    expect(recP1.state).toEqual(p1.state);
+
+    const gradeLive = gradePuzzle('mastermind', p1.state, puzzle.puzzle, puzzle.solution);
+    const gradeRec = gradePuzzle('mastermind', recP1.state, puzzle.puzzle, puzzle.solution);
+    expect(gradeLive).toEqual(gradeRec);
+  });
+
+  it('handles exhausted vs solved lifecycle and ends only when all are terminal', async () => {
+    const puzzle = await generatePuzzle('mastermind', 77, { colors: 8, slots: 4, maxTries: 6 });
+    const sol = puzzle.solution as mastermind.MastermindSolution;
+
+    const room = new LiveRoom({
+      id: 'mm-room-2',
+      code: 'MMRM2',
+      gameId: 'mastermind',
+      config: { colors: 8, slots: 4, maxTries: 6 },
+      timeLimitSec: 300,
+      status: 'running',
+      startedAt: new Date(Date.now() - 1000),
+      endsAt: null,
+    });
+    room.puzzle = puzzle;
+    room.players = [makePlayer('p1', { seat: 0 }), makePlayer('p2', { seat: 1 })];
+    const p1 = room.players[0]!;
+    const p2 = room.players[1]!;
+    p1.state = structuredClone(puzzle.initialState);
+    p2.state = structuredClone(puzzle.initialState);
+    const wrongGuess = sol.code.map((c) => (c + 1) % 8).join(',');
+    for (let i = 0; i < 5; i++) {
+      const ack = room.commit('p1', 'guess', wrongGuess);
+      expect(ack.accepted).toBe(true);
+      expect(ack.mastermindGuess!.exhausted).toBe(false);
+    }
+
+    // 6th and final attempt exhausts p1
+    const ackFinal = room.commit('p1', 'guess', wrongGuess);
+    expect(ackFinal.accepted).toBe(true);
+    expect(ackFinal.mastermindGuess!.exhausted).toBe(true);
+    expect(ackFinal.mastermindGuess!.solved).toBe(false);
+    expect(p1.completed).toBe(false);
+    expect(p1.completedAtMs).toBeNull();
+
+    // p1 attempts a 7th guess -> rejected without penalty
+    const initialPenalties = p1.penalties;
+    const ackOver = room.commit('p1', 'guess', wrongGuess);
+    expect(ackOver.accepted).toBe(false);
+    expect(ackOver.error).toBe('You have exhausted your attempts');
+    expect(p1.penalties).toBe(initialPenalties);
+
+    // Room is STILL running because p2 has not reached terminal state
+    expect(room.status).toBe('running');
+
+    // p2 solves with the exact code
+    const correctGuess = sol.code.join(',');
+    const ackP2 = room.commit('p2', 'guess', correctGuess);
+    expect(ackP2.accepted).toBe(true);
+    expect(ackP2.mastermindGuess!.solved).toBe(true);
+    expect(p2.completed).toBe(true);
+    expect(p2.completedAtMs).not.toBeNull();
+
+    // Both p1 (exhausted) and p2 (solved) are terminal -> room finishes!
+    expect(room.status).toBe('finished');
+
+    // Scoring verification
+    const score1 = room.scoreInputFor(p1);
+    const score2 = room.scoreInputFor(p2);
+    expect(score1.completed).toBe(false);
+    expect(score2.completed).toBe(true);
+    expect(score2.assetValue).toBeGreaterThan(score1.assetValue!);
+  });
+
+  it('schedules puzzle bots, resumes from existing guess count, and stops on terminal state', async () => {
+    vi.useFakeTimers();
+    try {
+      const puzzle = await generatePuzzle('mastermind', 99, { colors: 8, slots: 4, maxTries: 10 });
+      const room = new LiveRoom({
+        id: 'mm-bot-room',
+        code: 'MMBOTS',
+        gameId: 'mastermind',
+        config: { colors: 8, slots: 4, maxTries: 10 },
+        timeLimitSec: 300,
+        status: 'running',
+        startedAt: new Date(Date.now() - 1000),
+        endsAt: null,
+      });
+      room.puzzle = puzzle;
+      const botPlayer = makePlayer('bot-1', { seat: 0, isBot: true, botDifficulty: 'hard' });
+
+      // Simulate recovery: bot already has 1 guess persisted
+      botPlayer.state = {
+        guesses: [{ code: [7, 7, 7, 7], exact: 0, color: 0 }],
+        solved: false,
+        exhausted: false,
+      };
+      room.players = [botPlayer];
+
+      schedulePuzzleBots(room);
+
+      // Advance time step-by-step
+      for (let step = 0; step < 15; step++) {
+        vi.advanceTimersByTime(25_000);
+      }
+
+      const st = botPlayer.state as mastermind.MastermindPlayerState;
+      expect(st.guesses.length).toBeGreaterThan(1);
+      expect(st.solved).toBe(true);
+      expect(botPlayer.completed).toBe(true);
+
+      stopBots(room.id);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

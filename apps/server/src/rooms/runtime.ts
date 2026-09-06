@@ -21,6 +21,7 @@ import {
   type RoomMeta,
   type RoomSnapshot,
   type ScoreInput,
+  type PuzzleCommitAck,
 } from '@puzzle-arena/shared';
 import {
   bigTwo,
@@ -50,7 +51,7 @@ import {
   xiangqi,
   xiangqiRules,
 } from '@puzzle-arena/games';
-import { wordSearch } from '@puzzle-arena/puzzles';
+import { mastermind } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
 import {
   roomEvents,
@@ -667,7 +668,7 @@ export class LiveRoom {
     playerId: string,
     path: string,
     value: number | string | null,
-  ): { accepted: boolean; correct?: boolean; progress: number; error?: string; foundWord?: string | null } {
+  ): PuzzleCommitAck {
     const player = this.player(playerId);
     if (!player || this.status !== 'running' || !this.puzzle) {
       return { accepted: false, progress: 0, error: 'Room is not running' };
@@ -686,47 +687,35 @@ export class LiveRoom {
     if (player.completed) {
       return { accepted: false, progress: 1, error: 'You have already finished' };
     }
-
-    let nextState: unknown | null;
-    /** Word Search only: the newly-found word from this selection, if any. */
-    let foundWord: string | null = null;
-
-    if (this.gameId === 'word-search') {
-      // path is "y1,x1,y2,x2" — a drag selection, validated against the solution
-      // server-side so the client never learns where the words are.
-      const [y1, x1, y2, x2] = path.split(',').map(Number);
-      if ([y1, x1, y2, x2].some((n) => n === undefined || Number.isNaN(n))) {
-        return { accepted: false, progress: 0, error: 'Bad selection' };
-      }
-      const st = (player.state ?? { found: [], selections: 0 }) as {
-        found: string[];
-        selections: number;
-      };
-      const word = wordSearch.checkSelection(
-        this.puzzle.puzzle as never,
-        this.puzzle.solution as never,
-        x1 as number,
-        y1 as number,
-        x2 as number,
-        y2 as number,
-      );
-      const found = [...st.found];
-      if (word && !found.includes(word)) {
-        found.push(word);
-        foundWord = word;
-      }
-      nextState = { found, selections: st.selections + 1 };
-    } else {
-      nextState = applyCommit(this.gameId, player.state, this.puzzle.puzzle, path, value);
+    const currentGrade = gradePuzzle(
+      this.gameId,
+      player.state,
+      this.puzzle.puzzle,
+      this.puzzle.solution,
+    );
+    if (currentGrade.terminal) {
+      const errorMsg = currentGrade.complete
+        ? 'You have already solved the puzzle'
+        : 'You have exhausted your attempts';
+      return { accepted: false, progress: currentGrade.progress, error: errorMsg };
     }
 
-    if (nextState === null) {
+    const applied = applyCommit(
+      this.gameId,
+      player.state,
+      this.puzzle.puzzle,
+      this.puzzle.solution,
+      path,
+      value,
+    );
+
+    if (applied === null) {
       // An illegal move costs a penalty, exactly like an illegal board action.
       player.penalties += 1;
       void this.appendEvent(playerId, { type: 'illegal_commit', path, value });
-      return { accepted: false, progress: 0, error: 'Illegal move' };
+      return { accepted: false, progress: currentGrade.progress, error: 'Illegal move' };
     }
-    player.state = nextState;
+    player.state = applied.state;
 
     const grade = gradePuzzle(this.gameId, player.state, this.puzzle.puzzle, this.puzzle.solution);
 
@@ -739,55 +728,41 @@ export class LiveRoom {
     void this.appendEvent(player.id, { type: 'commit', path, value });
     this.broadcastLeaderboard();
 
-    const ack: { accepted: boolean; correct?: boolean; progress: number; foundWord?: string | null } = {
+    const ack: PuzzleCommitAck = {
       accepted: true,
       progress: grade.progress,
     };
     // ANTI-CHEAT: correctness is only ever disclosed when the host enabled it.
-    if (this.instantFeedback) {
+    // For Mastermind, exact/color counts are its complete authoritative feedback,
+    // so generic ack.correct is omitted.
+    if (this.instantFeedback && this.gameId !== 'mastermind') {
       ack.correct = this.isCommitCorrect(path, value);
     }
     // Word Search always reveals which word (if any) a selection completed —
     // that is the game's core feedback loop, not a solution leak, since the
     // client never learns *where* the remaining words are.
-    if (this.gameId === 'word-search') ack.foundWord = foundWord;
-    if (grade.complete) this.checkAllDone();
+    if (this.gameId === 'word-search' && applied.foundWord !== undefined) {
+      ack.foundWord = applied.foundWord;
+    } else if (this.gameId === 'mastermind' && applied.mastermindGuess !== undefined) {
+      ack.mastermindGuess = applied.mastermindGuess;
+    }
+
+    if (grade.terminal) this.checkAllDone();
     return ack;
   }
   replayCommit(actorPlayerId: string, action: { path?: string; value?: unknown }): void {
     const p = this.player(actorPlayerId);
     if (!p || !this.puzzle) return;
-    if (this.gameId === 'word-search') {
-      const path = String(action.path ?? '');
-      const [y1, x1, y2, x2] = path.split(',').map(Number);
-      if (![y1, x1, y2, x2].some((n) => n === undefined || Number.isNaN(n))) {
-        const st = (p.state ?? { found: [], selections: 0 }) as {
-          found: string[];
-          selections: number;
-        };
-        const word = wordSearch.checkSelection(
-          this.puzzle.puzzle as never,
-          this.puzzle.solution as never,
-          x1 as number,
-          y1 as number,
-          x2 as number,
-          y2 as number,
-        );
-        const found = [...st.found];
-        if (word && !found.includes(word)) {
-          found.push(word);
-        }
-        p.state = { found, selections: st.selections + 1 };
-      }
-    } else {
-      const next = applyCommit(
-        this.gameId,
-        p.state,
-        this.puzzle.puzzle,
-        String(action.path),
-        (action.value ?? null) as number | string | null,
-      );
-      if (next !== null) p.state = next;
+    const applied = applyCommit(
+      this.gameId,
+      p.state,
+      this.puzzle.puzzle,
+      this.puzzle.solution,
+      String(action.path ?? ''),
+      (action.value ?? null) as number | string | null,
+    );
+    if (applied !== null) {
+      p.state = applied.state;
     }
   }
 
@@ -965,20 +940,30 @@ export class LiveRoom {
       return { progress: 0, accuracy: 0, completed: false, completedAtMs: null, penalties: 0 };
     }
     const grade = gradePuzzle(this.gameId, player.state, this.puzzle.puzzle, this.puzzle.solution);
-    return {
+    const input: ScoreInput = {
       progress: grade.progress,
       accuracy: grade.accuracy,
       completed: player.completed,
       completedAtMs: player.completedAtMs,
       penalties: player.penalties,
     };
+    if (grade.assetValue !== undefined) {
+      input.assetValue = grade.assetValue;
+    }
+    return input;
   }
 
   /** Every puzzle player finished -> end early. */
   private checkAllDone(): void {
-    if (this.kind !== 'puzzle') return;
+    if (this.kind !== 'puzzle' || !this.puzzle) return;
     const active = this.players.filter((p) => !p.left);
-    if (active.length > 0 && active.every((p) => p.completed)) void this.finish('completed');
+    if (active.length === 0) return;
+    const allTerminal = active.every((p) => {
+      if (p.completed) return true;
+      const g = gradePuzzle(this.gameId, p.state, this.puzzle!.puzzle, this.puzzle!.solution);
+      return g.terminal;
+    });
+    if (allTerminal) void this.finish('completed');
   }
 
   async finish(reason: 'time' | 'completed' | 'host'): Promise<void> {
@@ -1012,15 +997,28 @@ export class LiveRoom {
         // (total asset value for PT, raw point total for Scrabble). See the
         // comment on `assetValueBreakdown` in property-tycoon/rules.ts.
         const usesAssetValue =
-          (this.gameId === 'property-tycoon' || this.gameId === 'scrabble' || this.gameId === 'congkak' || this.gameId === 'tetris' || this.gameId === 'pacman' || this.gameId === 'space-invaders' || this.gameId === 'bomberman') &&
+          (this.gameId === 'property-tycoon' ||
+            this.gameId === 'scrabble' ||
+            this.gameId === 'congkak' ||
+            this.gameId === 'tetris' ||
+            this.gameId === 'pacman' ||
+            this.gameId === 'space-invaders' ||
+            this.gameId === 'bomberman' ||
+            this.gameId === 'mastermind') &&
           input.assetValue !== undefined;
         const score = usesAssetValue
           ? Math.round(input.assetValue as number)
           : computeScore(input, this.timeLimitMs);
-        const detail =
-          this.gameId === 'property-tycoon' && this.gameState
-            ? propertyTycoonRules.assetValueBreakdown(this.gameState as never, p.id)
-            : {};
+        let detail: unknown = {};
+        if (this.gameId === 'property-tycoon' && this.gameState) {
+          detail = propertyTycoonRules.assetValueBreakdown(this.gameState as never, p.id);
+        } else if (this.gameId === 'mastermind') {
+          const st = p.state as mastermind.MastermindPlayerState | undefined;
+          const puz = this.puzzle?.puzzle as mastermind.MastermindPuzzle | undefined;
+          const tries = Array.isArray(st?.guesses) ? st!.guesses.length : 0;
+          const maxTries = puz?.maxTries ?? 10;
+          detail = { mastermind: { tries, maxTries } };
+        }
         return {
           playerId: p.id,
           displayName: p.displayName,
@@ -1546,7 +1544,7 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
       }
 
       if (room.kind === 'puzzle' && room.puzzle) {
-        for (const p of room.players.filter((pl) => !pl.isBot)) {
+        for (const p of room.players) {
           const grade = gradePuzzle(room.gameId, p.state, room.puzzle.puzzle, room.puzzle.solution);
           if (grade.complete && !p.completed) {
             p.completed = true;
@@ -1560,6 +1558,19 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
             if (lastEventAt !== null) {
               p.completedAtMs = Math.max(0, lastEventAt.getTime() - (room.startedAt ?? Date.now()));
             }
+          }
+        }
+        if (room.gameId === 'mastermind') {
+          const active = room.players.filter((p) => !p.left);
+          if (
+            active.length > 0 &&
+            active.every((p) => {
+              const g = gradePuzzle(room.gameId, p.state, room.puzzle!.puzzle, room.puzzle!.solution);
+              return g.terminal;
+            })
+          ) {
+            await room.finish('completed');
+            continue;
           }
         }
       }
