@@ -151,7 +151,10 @@ function wire(s: Socket): void {
     useRoom.setState({ startsAt: payload.startsAt, endsAt: payload.endsAt });
   });
   s.on(EV.roomEnded, (payload: { results: ResultRow[] }) => {
-    useRoom.setState({ results: payload.results });
+    useRoom.setState((prev) => ({
+      results: payload.results,
+      room: prev.room ? { ...prev.room, status: 'finished' } : null,
+    }));
   });
   s.on(EV.roomPaused, () => {
     useRoom.setState((prev) => ({

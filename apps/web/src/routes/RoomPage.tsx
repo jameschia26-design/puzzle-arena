@@ -163,6 +163,12 @@ export default function RoomPage(): React.ReactElement {
   const isHost = you?.isHost ?? false;
   const isFullscreenEligible = (gameId === 'tetris' || gameId === 'pacman' || gameId === 'space-invaders' || gameId === 'bomberman') && room?.status === 'running';
   const isGameFullscreen = isFullscreenEligible && inGameMode;
+  // When the game ends (time is up, solved, or ended early), navigate to the results/game over screen
+  React.useEffect(() => {
+    if (room?.status === 'finished') {
+      navigate(`/r/${code.toUpperCase()}/results`);
+    }
+  }, [room?.status, code, navigate]);
 
   React.useEffect(() => {
     if (room?.status === 'running') {
@@ -378,7 +384,16 @@ export default function RoomPage(): React.ReactElement {
               Play View
             </PixelButton>
           )}
-          {running && store.endsAt && <Countdown endsAt={store.endsAt} className="text-[16px] md:text-[24px]" />}
+          {running && store.endsAt && (
+            <Countdown
+              endsAt={store.endsAt}
+              className="text-[16px] md:text-[24px]"
+              onExpire={() => {
+                void emit(EV.roomEndEarly);
+                navigate(`/r/${code.toUpperCase()}/results`);
+              }}
+            />
+          )}
           {isHost && running && (
             <PixelButton
               size="sm"
@@ -453,7 +468,14 @@ export default function RoomPage(): React.ReactElement {
                 <PixelButton
                   size="sm"
                   variant="danger"
-                  onClick={() => void emit(EV.roomEndEarly)}
+                  onClick={async () => {
+                    const res = await emit<{ ok?: boolean; error?: string }>(EV.roomEndEarly);
+                    if (res?.error) {
+                      toast.error(res.error);
+                    } else {
+                      navigate(`/r/${code.toUpperCase()}/results`);
+                    }
+                  }}
                 >
                   End room now
                 </PixelButton>
@@ -1276,7 +1298,7 @@ function HintButton({
 }
 
 /** The one moment the solution is ever sent to a client. */
-function PuzzleReveal({ gameId }: { gameId: GameId }): React.ReactElement | null {
+export function PuzzleReveal({ gameId }: { gameId: GameId }): React.ReactElement | null {
   const state = useRoom((s) => s.state) as any;
   if (!state?.solution) return null;
 

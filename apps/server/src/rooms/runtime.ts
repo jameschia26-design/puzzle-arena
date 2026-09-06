@@ -463,10 +463,14 @@ export class LiveRoom {
     this.broadcastSnapshot();
   }
 
-  private armEndTimer(): void {
+  armEndTimer(): void {
     if (this.endTimer) clearTimeout(this.endTimer);
     if (!this.endsAt || this.paused) return;
     const delay = Math.max(0, this.endsAt - Date.now());
+    if (delay === 0) {
+      void this.finish('time');
+      return;
+    }
     this.endTimer = setTimeout(() => {
       void this.finish('time');
     }, delay);
@@ -1606,9 +1610,9 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
         );
       }
 
+      room.armEndTimer();
       room.armTurnTimer();
       room.armArcadeTickWatchdog();
-      // Recovery has to restart the bot scheduler too. Without this a room
       // whose next actor is a bot comes back 'running' and then sits there
       // forever, because nothing is left to take the bot's turn.
       if (room.kind === 'board') scheduleBots(room);

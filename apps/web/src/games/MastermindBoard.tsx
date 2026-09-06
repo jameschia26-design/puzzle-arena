@@ -24,7 +24,7 @@ export const MASTERMIND_PALETTE: JewelColor[] = [
   {
     index: 0,
     name: 'Ruby Red',
-    hex: '#ef4444',
+    hex: '#e11d48',
     key: '1',
     darkGlyph: false,
     renderGlyph: ({ className, color }) => (
@@ -35,81 +35,9 @@ export const MASTERMIND_PALETTE: JewelColor[] = [
   },
   {
     index: 1,
-    name: 'Tangerine',
-    hex: '#f97316',
+    name: 'Cobalt Blue',
+    hex: '#2563eb',
     key: '2',
-    darkGlyph: false,
-    renderGlyph: ({ className, color }) => (
-      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <polygon points="12,6 18,17 6,17" />
-      </svg>
-    ),
-  },
-  {
-    index: 2,
-    name: 'Topaz',
-    hex: '#f59e0b',
-    key: '3',
-    darkGlyph: true,
-    renderGlyph: ({ className, color }) => (
-      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <rect x="7" y="7" width="10" height="10" />
-      </svg>
-    ),
-  },
-  {
-    index: 3,
-    name: 'Citrine',
-    hex: '#eab308',
-    key: '4',
-    darkGlyph: true,
-    renderGlyph: ({ className, color }) => (
-      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <polygon points="12,6 18,12 12,18 6,12" />
-      </svg>
-    ),
-  },
-  {
-    index: 4,
-    name: 'Emerald',
-    hex: '#10b981',
-    key: '5',
-    darkGlyph: false,
-    renderGlyph: ({ className, color }) => (
-      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <polygon points="12,6 17,9 17,15 12,18 7,15 7,9" />
-      </svg>
-    ),
-  },
-  {
-    index: 5,
-    name: 'Jade',
-    hex: '#14b8a6',
-    key: '6',
-    darkGlyph: false,
-    renderGlyph: ({ className, color }) => (
-      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <path d="M10 6h4v4h4v4h-4v4h-4v-4H6v-4h4z" />
-      </svg>
-    ),
-  },
-  {
-    index: 6,
-    name: 'Sapphire',
-    hex: '#06b6d4',
-    key: '7',
-    darkGlyph: false,
-    renderGlyph: ({ className, color }) => (
-      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <polygon points="12,5 14,9 19,10 15,14 16,19 12,16 8,19 9,14 5,10 10,9" />
-      </svg>
-    ),
-  },
-  {
-    index: 7,
-    name: 'Cobalt',
-    hex: '#3b82f6',
-    key: '8',
     darkGlyph: false,
     renderGlyph: ({ className, color }) => (
       <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
@@ -118,10 +46,58 @@ export const MASTERMIND_PALETTE: JewelColor[] = [
     ),
   },
   {
-    index: 8,
-    name: 'Amethyst',
+    index: 2,
+    name: 'Citrine Yellow',
+    hex: '#facc15',
+    key: '3',
+    darkGlyph: true,
+    renderGlyph: ({ className, color }) => (
+      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
+        <polygon points="12,6 18,12 12,18 6,12" />
+      </svg>
+    ),
+  },
+  {
+    index: 3,
+    name: 'Emerald Green',
+    hex: '#10b981',
+    key: '4',
+    darkGlyph: false,
+    renderGlyph: ({ className, color }) => (
+      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
+        <polygon points="12,6 17,9 17,15 12,18 7,15 7,9" />
+      </svg>
+    ),
+  },
+  {
+    index: 4,
+    name: 'Pearl White',
+    hex: '#f8fafc',
+    key: '5',
+    darkGlyph: true,
+    renderGlyph: ({ className, color }) => (
+      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
+        <circle cx="12" cy="12" r="3.5" />
+      </svg>
+    ),
+  },
+  {
+    index: 5,
+    name: 'Tangerine Orange',
+    hex: '#ff6b00',
+    key: '6',
+    darkGlyph: false,
+    renderGlyph: ({ className, color }) => (
+      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
+        <polygon points="12,6 18,17 6,17" />
+      </svg>
+    ),
+  },
+  {
+    index: 6,
+    name: 'Amethyst Purple',
     hex: '#8b5cf6',
-    key: '9',
+    key: '7',
     darkGlyph: false,
     renderGlyph: ({ className, color }) => (
       <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
@@ -131,10 +107,22 @@ export const MASTERMIND_PALETTE: JewelColor[] = [
     ),
   },
   {
-    index: 9,
-    name: 'Orchid',
+    index: 7,
+    name: 'Sapphire Cyan',
+    hex: '#00d8f6',
+    key: '8',
+    darkGlyph: true,
+    renderGlyph: ({ className, color }) => (
+      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
+        <polygon points="12,5 14,9 19,10 15,14 16,19 12,16 8,19 9,14 5,10 10,9" />
+      </svg>
+    ),
+  },
+  {
+    index: 8,
+    name: 'Orchid Magenta',
     hex: '#d946ef',
-    key: '0',
+    key: '9',
     darkGlyph: false,
     renderGlyph: ({ className, color }) => (
       <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
@@ -143,26 +131,38 @@ export const MASTERMIND_PALETTE: JewelColor[] = [
     ),
   },
   {
+    index: 9,
+    name: 'Jade Mint',
+    hex: '#2dd4bf',
+    key: '0',
+    darkGlyph: true,
+    renderGlyph: ({ className, color }) => (
+      <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
+        <path d="M10 6h4v4h4v4h-4v4h-4v-4H6v-4h4z" />
+      </svg>
+    ),
+  },
+  {
     index: 10,
-    name: 'Rose Quartz',
-    hex: '#f43f5e',
+    name: 'Topaz Amber',
+    hex: '#b45309',
     key: '-',
     darkGlyph: false,
     renderGlyph: ({ className, color }) => (
       <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <path d="M12 18s-5-3.5-5-7a3 3 0 0 1 5-2.2A3 3 0 0 1 17 11c0 3.5-5 7-5 7z" />
+        <rect x="7" y="7" width="10" height="10" />
       </svg>
     ),
   },
   {
     index: 11,
-    name: 'Pearl',
-    hex: '#f1f5f9',
+    name: 'Rose Quartz',
+    hex: '#fda4af',
     key: '=',
     darkGlyph: true,
     renderGlyph: ({ className, color }) => (
       <svg viewBox="0 0 24 24" className={className} fill={color} aria-hidden="true">
-        <circle cx="12" cy="12" r="3" />
+        <path d="M12 18s-5-3.5-5-7a3 3 0 0 1 5-2.2A3 3 0 0 1 17 11c0 3.5-5 7-5 7z" />
       </svg>
     ),
   },
@@ -182,7 +182,7 @@ export function MastermindPeg({
   className?: string;
 }): React.ReactElement {
   const jewel = MASTERMIND_PALETTE[colorIndex] ?? MASTERMIND_PALETTE[0]!;
-  const glyphColor = jewel.darkGlyph ? '#0f172a' : '#ffffff';
+  const glyphColor = jewel.darkGlyph ? '#090d16' : '#ffffff';
 
   return (
     <div
@@ -192,20 +192,20 @@ export function MastermindPeg({
     >
       <svg viewBox="0 0 36 36" width={size} height={size} className="drop-shadow-sm">
         <defs>
-          <radialGradient id={`peg-grad-${jewel.index}`} cx="35%" cy="35%" r="65%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.4" />
-            <stop offset="40%" stopColor={jewel.hex} />
-            <stop offset="100%" stopColor="#000000" stopOpacity="0.35" />
+          <radialGradient id={`peg-grad-${jewel.index}`} cx="35%" cy="32%" r="65%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity={jewel.darkGlyph ? 0.45 : 0.35} />
+            <stop offset="35%" stopColor={jewel.hex} />
+            <stop offset="100%" stopColor="#090d16" stopOpacity={jewel.darkGlyph ? 0.2 : 0.45} />
           </radialGradient>
         </defs>
-        {/* Outer socket shadow */}
-        <circle cx="18" cy="18" r="16" fill="url(#peg-rim)" />
-        {/* Main peg jewel */}
+        {/* Main peg jewel body */}
         <circle cx="18" cy="18" r="15" fill={`url(#peg-grad-${jewel.index})`} />
         {/* Crisp rim border */}
-        <circle cx="18" cy="18" r="15" fill="none" stroke="#000000" strokeOpacity="0.4" strokeWidth="1.2" />
+        <circle cx="18" cy="18" r="15" fill="none" stroke="#000000" strokeOpacity="0.45" strokeWidth="1.2" />
+        {/* Subtle inner gloss edge */}
+        <circle cx="18" cy="18" r="14.5" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8" />
         {/* Specular highlight */}
-        <ellipse cx="14" cy="12" rx="4" ry="2.5" fill="#ffffff" fillOpacity="0.45" />
+        <ellipse cx="13.5" cy="11.5" rx="4.5" ry="2.8" fill="#ffffff" fillOpacity={jewel.darkGlyph ? 0.35 : 0.45} />
       </svg>
       <div
         className="absolute inset-0 flex items-center justify-center pointer-events-none"
@@ -213,7 +213,12 @@ export function MastermindPeg({
       >
         <div style={{ width: size * 0.55, height: size * 0.55 }}>
           {jewel.renderGlyph({
-            className: 'w-full h-full drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]',
+            className: cn(
+              'w-full h-full',
+              jewel.darkGlyph
+                ? 'drop-shadow-[0_1px_0_rgba(255,255,255,0.5)]'
+                : 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]',
+            ),
             color: glyphColor,
           })}
         </div>

@@ -6,8 +6,8 @@ import { PixelButton, PixelPanel } from '../ui/primitives.js';
 import { SeatAvatar } from '../ui/game-bits.js';
 import { PODIUM_STEP_MS, RESULT_ROW_MS, stepTransition, useReducedMotion } from '../ui/motion.js';
 import { seatColor } from '../ui/seat.js';
-import { api } from '../net/socket.js';
-
+import { api, useRoom } from '../net/socket.js';
+import { MastermindSecretReveal } from '../games/MastermindBoard.js';
 export default function ResultsPage(): React.ReactElement {
   const { code = '' } = useParams();
   const navigate = useNavigate();
@@ -16,19 +16,27 @@ export default function ResultsPage(): React.ReactElement {
 
   React.useEffect(() => {
     void (async () => {
+      const storeResults = useRoom.getState().results;
+      if (storeResults && storeResults.length > 0) {
+        setResults(storeResults);
+      }
       const lookup = await api<{ id: string }>(`/api/rooms/${code.toUpperCase()}`);
       if (lookup.status !== 200) {
-        setNotFound(true);
+        if (!storeResults || storeResults.length === 0) setNotFound(true);
         return;
       }
       const res = await api<{ results: ResultRow[] }>(`/api/rooms/${lookup.body.id}/results`);
       if (res.status !== 200) {
-        setNotFound(true);
+        if (!storeResults || storeResults.length === 0) setNotFound(true);
         return;
       }
       setResults(res.body.results ?? []);
     })();
   }, [code]);
+
+  const store = useRoom();
+  const state = store.state as any;
+  const isMastermind = store.room?.gameId === 'mastermind' || results?.some((r) => getMastermindDetail(r.detail) !== null);
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-6">
@@ -47,9 +55,22 @@ export default function ResultsPage(): React.ReactElement {
           <p className="text-pa-ink-dim">Loading…</p>
         )}
       </PixelPanel>
-      <PixelButton className="self-start" onClick={() => navigate('/')}>
-        Back to home
-      </PixelButton>
+      {isMastermind && state?.solution?.code && (
+        <PixelPanel title="Secret Code Reveal">
+          <MastermindSecretReveal
+            code={state.solution.code}
+            colors={state.puzzle?.colors ?? 8}
+          />
+        </PixelPanel>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <PixelButton className="self-start" onClick={() => navigate('/')}>
+          Back to home
+        </PixelButton>
+        <PixelButton variant="secondary" onClick={() => navigate('/admin')}>
+          Host another room
+        </PixelButton>
+      </div>
     </main>
   );
 }

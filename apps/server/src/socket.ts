@@ -245,8 +245,9 @@ export function attachSocket(app: FastifyInstance): IOServer {
       const room = roomOf(socket);
       if (!room) return respond(ack, { error: 'Not in a room' });
       const player = room.player(socket.data.playerId as string);
-      if (!player?.isHost) return respond(ack, { error: 'Only the host can end the room' });
-      await room.finish('host');
+      const isTimeUp = room.endsAt !== null && Date.now() >= room.endsAt;
+      if (!player?.isHost && !isTimeUp) return respond(ack, { error: 'Only the host can end the room' });
+      await room.finish(isTimeUp ? 'time' : 'host');
       respond(ack, { ok: true });
     });
 
