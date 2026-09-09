@@ -12,6 +12,7 @@ import {
   PixelSelect,
 } from '../ui/primitives.js';
 import { api } from '../net/socket.js';
+import { copyText } from '../ui/clipboard.js';
 
 interface RoomRow {
   id: string;
@@ -135,12 +136,16 @@ export default function AdminDashboard(): React.ReactElement {
       body: JSON.stringify({ gameId, config, timeLimitSec: effectiveMinutes * 60 }),
     });
     setBusy(false);
+    if (res.status === 401) {
+      navigate('/admin/login');
+      return;
+    }
     if (res.status !== 200 || !res.body.code) {
       setError(res.body?.error ?? 'Could not create the room');
       return;
     }
     await refresh();
-    navigate(`/r/${res.body.code}`);
+    navigate(`/r/${res.body.code}?host=1`);
   };
 
   const closeRoom = async (roomId: string): Promise<void> => {
@@ -386,8 +391,9 @@ export default function AdminDashboard(): React.ReactElement {
                         variant="ghost"
                         size="sm"
                         onClick={() => {
-                          void navigator.clipboard.writeText(room.code);
-                          toast('CODE COPIED');
+                          void copyText(room.code).then((ok) =>
+                            toast(ok ? 'CODE COPIED' : 'Copy failed — select the code manually'),
+                          );
                         }}
                       >
                         <Copy size={14} strokeWidth={3} className="lucide" />
@@ -398,8 +404,9 @@ export default function AdminDashboard(): React.ReactElement {
                         size="sm"
                         onClick={() => {
                           const url = `${window.location.origin}/r/${room.code}`;
-                          void navigator.clipboard.writeText(url);
-                          toast('LINK COPIED');
+                          void copyText(url).then((ok) =>
+                            toast(ok ? 'LINK COPIED' : 'Copy failed — copy the address bar instead'),
+                          );
                         }}
                       >
                         <Link2 size={14} strokeWidth={3} className="lucide" />
@@ -407,7 +414,7 @@ export default function AdminDashboard(): React.ReactElement {
                       </PixelButton>
                       {isActive ? (
                         <>
-                          <PixelButton size="sm" onClick={() => navigate(`/r/${room.code}`)}>
+                          <PixelButton size="sm" onClick={() => navigate(`/r/${room.code}?host=1`)}>
                             Open
                           </PixelButton>
                           <PixelButton

@@ -262,7 +262,7 @@ describe('rooms', () => {
 
     const hostSocket = connect(hostCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code: runningCode, displayName: 'Host' });
+    await emit(hostSocket, EV.roomJoin, { code: runningCode, displayName: 'Host', asHost: true });
     await emit(hostSocket, EV.roomStart);
     await awaitStart(runningRoomId);
 
@@ -281,6 +281,48 @@ describe('rooms', () => {
     expect(getRoom(runningRoomId)!.status).toBe('running');
 
     hostSocket.close();
+  });
+
+  it("does not deliver an old room's ending to a socket that has moved on to another room", async () => {
+    const roomA = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'sudoku', config: { difficulty: 'easy' }, timeLimitSec: 300 }),
+    });
+    const roomB = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'sudoku', config: { difficulty: 'easy' }, timeLimitSec: 300 }),
+    });
+    const { id: idA, code: codeA } = roomA.body;
+    const { code: codeB } = roomB.body;
+
+    // One socket — the module-singleton pattern the client actually uses —
+    // joins room A as host, then moves on to room B as host.
+    const socket = connect(adminCookie);
+    await connected(socket);
+    await emit(socket, EV.roomJoin, { code: codeA, displayName: 'Host', asHost: true });
+    await emit(socket, EV.roomJoin, { code: codeB, displayName: 'Host', asHost: true });
+
+    const endedEvents: unknown[] = [];
+    socket.on(EV.roomEnded, (payload: unknown) => endedEvents.push(payload));
+
+    const closeRes = await api(`/api/rooms/${idA}/close`, { method: 'POST', cookie: adminCookie });
+    expect(closeRes.status).toBe(200);
+    // No promise or event exists for "the broadcast that should not arrive" —
+    // a genuine delay is the only way to prove its absence against the real
+    // socket.io server this suite runs against.
+    const { promise: settled, resolve: settle } = Promise.withResolvers<void>();
+    setTimeout(settle, 500);
+    await settled;
+
+    expect(endedEvents).toHaveLength(0);
+
+    const freshJoin = await emit(socket, EV.roomJoin, { code: codeB, displayName: 'Host', asHost: true });
+    expect(freshJoin.error).toBeUndefined();
+    expect(freshJoin.snapshot.room.status).toBe('lobby');
+
+    socket.close();
   });
 });
 
@@ -355,6 +397,43 @@ describe('guest identity', () => {
 
     guestSocket.close();
   });
+
+  it('lets a second device on the host account join as an ordinary player, not a host takeover', async () => {
+    const created = await api('/api/rooms', {
+      method: 'POST',
+      cookie: adminCookie,
+      body: JSON.stringify({ gameId: 'sudoku', config: { difficulty: 'easy' }, timeLimitSec: 300 }),
+    });
+    const { code } = created.body;
+
+    // Device A: the host, joining with explicit intent.
+    const deviceA = connect(adminCookie);
+    await connected(deviceA);
+    const hostJoin = await emit(deviceA, EV.roomJoin, { code, displayName: 'Host', asHost: true });
+    expect(hostJoin.error).toBeUndefined();
+    expect(hostJoin.snapshot.you.isHost).toBe(true);
+    const hostPlayerId = hostJoin.snapshot.you.playerId as string;
+
+    // Device B: same host account (same session cookie), a different browser
+    // (its own guest cookie), opening the passcode link with no host intent.
+    const guestRes = await api('/api/guest', { method: 'POST' });
+    const guestCookie = cookieValues(guestRes.setCookie);
+    const deviceB = connect(`${adminCookie}; ${guestCookie}`);
+    await connected(deviceB);
+    const playerJoin = await emit(deviceB, EV.roomJoin, { code, displayName: 'Player' });
+    expect(playerJoin.error).toBeUndefined();
+    expect(playerJoin.snapshot.you.isHost).toBe(false);
+    expect(playerJoin.snapshot.you.playerId).not.toBe(hostPlayerId);
+
+    const deniedStart = await emit(deviceB, EV.roomStart);
+    expect(deniedStart.error).toBe('Only the host can start');
+
+    const startAck = await emit(deviceA, EV.roomStart);
+    expect(startAck.error).toBeUndefined();
+
+    deviceA.close();
+    deviceB.close();
+  });
 });
 
 /* ================================================================== */
@@ -383,7 +462,7 @@ describe('a sudoku room end to end', () => {
     const guestSocket = connect(guestCookie);
     await Promise.all([connected(hostSocket), connected(guestSocket)]);
 
-    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
     expect(hostJoin.error).toBeUndefined();
     expect(hostJoin.snapshot.you.isHost).toBe(true);
 
@@ -547,7 +626,7 @@ describe('crash recovery', () => {
     const guestSocket = connect(guestCookie);
     await Promise.all([connected(hostSocket), connected(guestSocket)]);
 
-    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
     expect(hostJoin.error).toBeUndefined();
 
     const guestJoin = await emit(guestSocket, EV.roomJoin, { code, displayName: 'Guest' });
@@ -629,7 +708,7 @@ describe('instant feedback, when the host turns it on', () => {
 
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
     await emit(hostSocket, EV.roomStart);
     await awaitStart(roomId);
 
@@ -675,7 +754,7 @@ describe('solo play against computer players', () => {
 
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Solo' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Solo', asHost: true });
 
     // 1 human, 0 bots: below the 2-player minimum.
     const tooFew = await emit(hostSocket, EV.roomStart);
@@ -760,7 +839,7 @@ describe('solo play against computer players', () => {
 
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'SoloCongkak' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'SoloCongkak', asHost: true });
 
     const botRes = await api(`/api/rooms/${roomId}/bots`, {
       method: 'POST',
@@ -819,7 +898,7 @@ describe('solo play against computer players', () => {
     const { id: roomId, code } = created.body;
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
     await emit(hostSocket, EV.roomStart);
 
     const res = await api(`/api/rooms/${roomId}/bots`, {
@@ -853,7 +932,7 @@ describe('manor mystery over the wire', () => {
 
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
 
     for (const difficulty of ['normal', 'hard']) {
       await api(`/api/rooms/${roomId}/bots`, {
@@ -915,7 +994,7 @@ describe('event log', () => {
 
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
     await emit(hostSocket, EV.roomStart);
     await awaitStart(roomId);
 
@@ -953,7 +1032,7 @@ describe('event log', () => {
 
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
     await api(`/api/rooms/${roomId}/bots`, {
       method: 'POST',
       cookie: adminCookie,
@@ -1009,7 +1088,7 @@ describe('event log', () => {
 
     const hostSocket = connect(adminCookie);
     await connected(hostSocket);
-    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
 
     const guestCookie = (await api('/api/guest', { method: 'POST' })).setCookie;
     const guestSocket = connect(guestCookie);
@@ -1068,7 +1147,7 @@ describe('a mastermind room end to end', () => {
     const guestSocket = connect(guestCookie);
     await Promise.all([connected(hostSocket), connected(guestSocket)]);
 
-    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host' });
+    const hostJoin = await emit(hostSocket, EV.roomJoin, { code, displayName: 'Host', asHost: true });
     expect(hostJoin.error).toBeUndefined();
     const guestJoin = await emit(guestSocket, EV.roomJoin, { code, displayName: 'Guest' });
     expect(guestJoin.error).toBeUndefined();

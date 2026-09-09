@@ -8,6 +8,13 @@ import { PODIUM_STEP_MS, RESULT_ROW_MS, stepTransition, useReducedMotion } from 
 import { seatColor } from '../ui/seat.js';
 import { api, useRoom } from '../net/socket.js';
 import { MastermindSecretReveal } from '../games/MastermindBoard.js';
+/** The shape of `RoomStore.state` this page actually reads — a live game's
+ * public state carries a lot more, but the reveal only ever needs these two. */
+interface MastermindRevealState {
+  solution?: { code?: number[] };
+  puzzle?: { colors?: number };
+}
+
 export default function ResultsPage(): React.ReactElement {
   const { code = '' } = useParams();
   const navigate = useNavigate();
@@ -16,7 +23,8 @@ export default function ResultsPage(): React.ReactElement {
 
   React.useEffect(() => {
     void (async () => {
-      const storeResults = useRoom.getState().results;
+      const cached = useRoom.getState();
+      const storeResults = cached.room?.code === code.toUpperCase() ? cached.results : null;
       if (storeResults && storeResults.length > 0) {
         setResults(storeResults);
       }
@@ -35,8 +43,10 @@ export default function ResultsPage(): React.ReactElement {
   }, [code]);
 
   const store = useRoom();
-  const state = store.state as any;
-  const isMastermind = store.room?.gameId === 'mastermind' || results?.some((r) => getMastermindDetail(r.detail) !== null);
+  const roomMatches = store.room?.code === code.toUpperCase();
+  const state = roomMatches ? (store.state as MastermindRevealState | null) : null;
+  const isMastermind =
+    (roomMatches && store.room?.gameId === 'mastermind') || results?.some((r) => getMastermindDetail(r.detail) !== null);
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-6">
@@ -64,10 +74,22 @@ export default function ResultsPage(): React.ReactElement {
         </PixelPanel>
       )}
       <div className="flex flex-wrap gap-2">
-        <PixelButton className="self-start" onClick={() => navigate('/')}>
+        <PixelButton
+          className="self-start"
+          onClick={() => {
+            useRoom.getState().reset();
+            navigate('/');
+          }}
+        >
           Back to home
         </PixelButton>
-        <PixelButton variant="secondary" onClick={() => navigate('/admin')}>
+        <PixelButton
+          variant="secondary"
+          onClick={() => {
+            useRoom.getState().reset();
+            navigate('/admin');
+          }}
+        >
           Host another room
         </PixelButton>
       </div>

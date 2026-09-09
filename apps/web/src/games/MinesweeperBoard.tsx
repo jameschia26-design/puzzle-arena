@@ -296,6 +296,7 @@ export function MinesweeperBoard({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              aria-label="Game status"
               className="w-10 h-10 rounded border-2 border-pa-border bg-pa-bg-alt hover:bg-pa-border/40 text-[22px] flex items-center justify-center shadow-inner transition-transform active:scale-95 cursor-pointer"
               title="Status"
             >

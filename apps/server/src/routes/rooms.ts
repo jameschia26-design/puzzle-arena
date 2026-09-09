@@ -158,8 +158,14 @@ export function registerRoomRoutes(app: FastifyInstance): void {
   /* -------- lobby metadata for the join screen -------- */
   app.get('/api/rooms/:code', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const code = String((req.params as { code: string }).code).toUpperCase();
-    const row = (await db.select().from(rooms).where(eq(rooms.code, code)).limit(1))[0];
+    const row = (
+      await db.select().from(rooms).where(eq(rooms.code, code)).orderBy(desc(rooms.createdAt)).limit(1)
+    )[0];
     if (!row) return reply.code(404).send({ error: 'No such room' });
+
+    const session = await auth.api
+      .getSession({ headers: toHeaders(req.headers) })
+      .catch(() => null);
 
     const room = await loadRoom(row.id, app.io);
     const meta = GAME_REGISTRY[row.gameId as keyof typeof GAME_REGISTRY];
@@ -172,6 +178,7 @@ export function registerRoomRoutes(app: FastifyInstance): void {
       timeLimitSec: row.timeLimitSec,
       config: row.config,
       players: room?.playerViews() ?? [],
+      isRoomOwner: Boolean(session?.user?.id && session.user.id === row.hostUserId),
     });
   });
 

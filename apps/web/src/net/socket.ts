@@ -150,11 +150,12 @@ function wire(s: Socket): void {
   s.on(EV.roomStarted, (payload: { startsAt: number; endsAt: number }) => {
     useRoom.setState({ startsAt: payload.startsAt, endsAt: payload.endsAt });
   });
-  s.on(EV.roomEnded, (payload: { results: ResultRow[] }) => {
-    useRoom.setState((prev) => ({
-      results: payload.results,
-      room: prev.room ? { ...prev.room, status: 'finished' } : null,
-    }));
+  s.on(EV.roomEnded, (payload: { roomId?: string; results: ResultRow[] }) => {
+    useRoom.setState((prev) => {
+      if (!prev.room) return {};
+      if (payload.roomId && payload.roomId !== prev.room.id) return {};
+      return { results: payload.results, room: { ...prev.room, status: 'finished' } };
+    });
   });
   s.on(EV.roomPaused, () => {
     useRoom.setState((prev) => ({

@@ -1075,7 +1075,7 @@ export class LiveRoom {
     }
 
     logger.info({ roomId: this.id, reason }, 'room finished');
-    this.io?.to(this.id).emit(EV.roomEnded, { results: this.results });
+    this.io?.to(this.id).emit(EV.roomEnded, { roomId: this.id, results: this.results });
     this.broadcastSnapshot();
 
     // Keep the room in memory for a grace period so late clients still get it.

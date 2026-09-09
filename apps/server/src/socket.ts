@@ -1,6 +1,6 @@
 import { Server as IOServer, type Socket } from 'socket.io';
 import type { FastifyInstance } from 'fastify';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import {
   EV,
@@ -91,7 +91,9 @@ export function attachSocket(app: FastifyInstance): IOServer {
         if (!parsed.success) return respond(ack, { error: 'Invalid join' });
 
         const code = parsed.data.code.toUpperCase();
-        const row = (await db.select().from(rooms).where(eq(rooms.code, code)).limit(1))[0];
+        const row = (
+          await db.select().from(rooms).where(eq(rooms.code, code)).orderBy(desc(rooms.createdAt)).limit(1)
+        )[0];
         if (!row) return respond(ack, { error: 'No such room' });
         if (row.status === 'finished' || row.status === 'abandoned') {
           return respond(ack, { error: 'That room has finished' });
@@ -101,7 +103,13 @@ export function attachSocket(app: FastifyInstance): IOServer {
         if (!room) return respond(ack, { error: 'No such room' });
         room.attach(io);
 
-        const isHostUser = socket.data.userId === row.hostUserId;
+        // The host seat is only ever taken on explicit request from the room's owner.
+        // Sharing a host account across devices must not turn a passcode join into a
+        // host takeover.
+        const claimHost =
+          parsed.data.asHost === true &&
+          typeof socket.data.userId === 'string' &&
+          socket.data.userId === row.hostUserId;
         const guestId = (socket.data.guestId as string | undefined) ?? null;
 
         let joinError: string | undefined;
@@ -111,13 +119,18 @@ export function attachSocket(app: FastifyInstance): IOServer {
           // Reconnect to an existing seat where possible (by guestId or hostId).
           player =
             (guestId ? room.playerByGuest(guestId) : undefined) ??
-            (isHostUser ? room.players.find((p) => p.isHost && !p.left) : undefined);
+            (claimHost ? room.players.find((p) => p.isHost && !p.left) : undefined);
 
           // If cookie/guestId changed on reload or reconnection during an active game,
           // reclaim the player's existing disconnected seat by displayName match.
           if (!player && room.status !== 'lobby') {
             const match = room.players.find(
-              (p) => !p.connected && !p.left && !p.isBot && p.displayName.trim().toLowerCase() === parsed.data.displayName.trim().toLowerCase(),
+              (p) =>
+                !p.connected &&
+                !p.left &&
+                !p.isBot &&
+                (claimHost || !p.isHost) &&
+                p.displayName.trim().toLowerCase() === parsed.data.displayName.trim().toLowerCase(),
             );
             if (match) {
               player = match;
@@ -147,7 +160,7 @@ export function attachSocket(app: FastifyInstance): IOServer {
                     guestId,
                     displayName: parsed.data.displayName,
                     seat,
-                    isHost: isHostUser && !room.players.some((p) => p.isHost),
+                    isHost: claimHost && !room.players.some((p) => p.isHost),
                     isBot: false,
                     avatar: parsed.data.avatar ?? null,
                   })
@@ -216,7 +229,23 @@ export function attachSocket(app: FastifyInstance): IOServer {
         player.displayName = parsed.data.displayName;
         socket.data.playerId = player.id;
         socket.data.roomId = room.id;
+        // One socket, one room. Without this the tab keeps receiving the previous
+        // room's broadcasts — including room:ended, which flips the client's shared
+        // store to "finished" while it is sitting in a brand-new lobby.
+        for (const joined of [...socket.rooms]) {
+          if (joined !== socket.id && joined !== room.id) await socket.leave(joined);
+        }
         await socket.join(room.id);
+        // One seat, one live socket: an older device holding this seat is released so
+        // the two connections cannot share a LivePlayer and clobber `connected`.
+        for (const other of io.sockets.sockets.values()) {
+          if (other.id === socket.id) continue;
+          if (other.data.roomId !== room.id || other.data.playerId !== player.id) continue;
+          other.emit(EV.error, { message: 'This seat was opened on another device' });
+          other.data.playerId = undefined;
+          other.data.roomId = undefined;
+          void other.leave(room.id);
+        }
 
         room.broadcastPlayers();
         room.pushLog(`${player.displayName} joined`, player.id);

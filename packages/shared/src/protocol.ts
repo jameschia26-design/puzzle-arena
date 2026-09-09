@@ -255,6 +255,8 @@ export const roomJoinSchema = z.object({
   code: z.string().length(6),
   displayName: z.string().min(1).max(20),
   avatar: z.string().max(8).optional(),
+  /** Explicit intent to occupy the host seat. Honoured only for the room's owner. */
+  asHost: z.boolean().optional(),
 });
 export type RoomJoinPayload = z.infer<typeof roomJoinSchema>;
 

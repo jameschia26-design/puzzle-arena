@@ -270,7 +270,7 @@ export function PixelDialog({
             <header className="flex items-center justify-between border-b-2 border-pa-border px-4 py-3">
               <Dialog.Title className="font-display text-[14px]">{title}</Dialog.Title>
               {closable && (
-                <Dialog.Close aria-label="Close" className="p-2 cursor-pointer">
+                <Dialog.Close aria-label="Close" className="p-2 cursor-pointer min-h-[44px] min-w-[44px] grid place-items-center">
                   <X size={16} strokeWidth={3} className="lucide" />
                 </Dialog.Close>
               )}

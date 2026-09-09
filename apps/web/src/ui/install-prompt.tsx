@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Share, X } from 'lucide-react';
 import { PixelButton } from './primitives.js';
@@ -34,6 +35,7 @@ const isSafari = (): boolean =>
  * to Home Screen — so there the banner can only teach the gesture.
  */
 export function InstallPrompt(): React.ReactElement | null {
+  const { pathname } = useLocation();
   const reduced = useReducedMotion();
   const [deferred, setDeferred] = React.useState<BeforeInstallPromptEvent | null>(null);
   const [showIosHelp, setShowIosHelp] = React.useState(false);
@@ -81,6 +83,7 @@ export function InstallPrompt(): React.ReactElement | null {
   };
 
   if (dismissed || isStandalone()) return null;
+  if (pathname.startsWith('/r/')) return null;
   if (!deferred && !showIosHelp) return null;
 
   return (

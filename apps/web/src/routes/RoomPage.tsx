@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import { Bot, Copy, Lightbulb, Link2, Menu, Pause, Play, RotateCcw, Send, Settings, Trash2, User, X } from 'lucide-react';
@@ -28,6 +28,7 @@ import {
 import { Countdown, SeatAvatar, StartOverlay } from '../ui/game-bits.js';
 import { CrtToggle } from '../ui/crt.js';
 import { cn } from '../ui/cn.js';
+import { copyText } from '../ui/clipboard.js';
 import { ROW_REORDER_MS, stepTransition, useReducedMotion } from '../ui/motion.js';
 import { seatColor } from '../ui/seat.js';
 import { api, emit, ensureGuest, getSocket, useRoom } from '../net/socket.js';
@@ -101,6 +102,9 @@ class GameErrorBoundary extends React.Component<
 }
 export default function RoomPage(): React.ReactElement {
   const { code = '' } = useParams();
+  const codeUpper = code.toUpperCase();
+  const [search, setSearch] = useSearchParams();
+  const wantsHost = search.get('host') === '1';
   const navigate = useNavigate();
   const store = useRoom();
   const [name, setName] = React.useState(
@@ -116,7 +120,7 @@ export default function RoomPage(): React.ReactElement {
 
   const joiningRef = React.useRef(false);
   const join = React.useCallback(
-    async (displayName: string, chosenAvatar: string | null) => {
+    async (displayName: string, chosenAvatar: string | null, asHost: boolean = wantsHost) => {
       if (joiningRef.current) return;
       joiningRef.current = true;
       setJoinError(null);
@@ -124,16 +128,17 @@ export default function RoomPage(): React.ReactElement {
         await ensureGuest();
         getSocket();
         const res = await emit<{ error?: string; snapshot?: RoomSnapshot }>(EV.roomJoin, {
-          code: code.toUpperCase(),
+          code: codeUpper,
           displayName,
           ...(chosenAvatar ? { avatar: chosenAvatar } : {}),
+          ...(asHost ? { asHost: true } : {}),
         });
         if (res.error) {
           // A finished or abandoned room is a dead end for room:join — send the
           // player to the results page instead of leaving them stuck on a bare
           // error with no way back.
           if (res.error === 'That room has finished') {
-            navigate(`/r/${code.toUpperCase()}/results`, { replace: true });
+            navigate(`/r/${codeUpper}/results`, { replace: true });
             return;
           }
           setJoinError(res.error);
@@ -147,7 +152,7 @@ export default function RoomPage(): React.ReactElement {
         joiningRef.current = false;
       }
     },
-    [code, store, navigate],
+    [codeUpper, store, navigate, wantsHost],
   );
 
   // Auto-rejoin when we already have a name (covers reconnects and refreshes).
@@ -156,7 +161,9 @@ export default function RoomPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const room = store.room;
+  // The store is a module singleton that outlives navigation: a previous
+  // room's finished state must never be rendered under this route.
+  const room = store.room?.code === codeUpper ? store.room : null;
   const gameId = (room?.gameId ?? 'sudoku') as GameId;
   const meta = GAME_REGISTRY[gameId];
   const you = store.you;
@@ -165,10 +172,21 @@ export default function RoomPage(): React.ReactElement {
   const isGameFullscreen = isFullscreenEligible && inGameMode;
   // When the game ends (time is up, solved, or ended early), navigate to the results/game over screen
   React.useEffect(() => {
+    if (useRoom.getState().room?.code !== codeUpper) useRoom.getState().reset();
+  }, [codeUpper]);
+  React.useEffect(() => {
     if (room?.status === 'finished') {
-      navigate(`/r/${code.toUpperCase()}/results`);
+      navigate(`/r/${codeUpper}/results`);
     }
-  }, [room?.status, code, navigate]);
+  }, [room?.status, codeUpper, navigate]);
+
+  const [isRoomOwner, setIsRoomOwner] = React.useState(false);
+  React.useEffect(() => {
+    void (async () => {
+      const res = await api<{ isRoomOwner?: boolean }>(`/api/rooms/${codeUpper}`);
+      if (res.status === 200) setIsRoomOwner(Boolean(res.body.isRoomOwner));
+    })();
+  }, [codeUpper]);
 
   React.useEffect(() => {
     if (room?.status === 'running') {
@@ -206,12 +224,39 @@ export default function RoomPage(): React.ReactElement {
     };
   }, [room?.status, gameId, store.paused]);
 
+  React.useEffect(() => {
+    if (!store.error) return;
+    toast.error(store.error);
+    useRoom.setState({ error: null });
+  }, [store.error]);
+
   /* ---------------- name gate ---------------- */
   if (!joined) {
     return (
       <main className="min-h-screen grid place-items-center p-6">
         <PixelCard className="w-full max-w-md flex flex-col gap-5">
-          <h1 className="font-display text-[18px]">Join {code.toUpperCase()}</h1>
+          <h1 className="font-display text-[18px]">Join {codeUpper}</h1>
+          {wantsHost && isRoomOwner ? (
+            <p className="text-[12px] text-pa-cyan">You are opening this room as its host.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-[12px] text-pa-ink-dim">
+                You are joining as a player. Your host account is not used for this seat.
+              </p>
+              {isRoomOwner && (
+                <PixelButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearch({ host: '1' });
+                    if (name.trim()) void join(name.trim(), avatar, true);
+                  }}
+                >
+                  Open as host instead
+                </PixelButton>
+              )}
+            </div>
+          )}
           <PixelInput
             label="Display name"
             value={name}
@@ -247,7 +292,7 @@ export default function RoomPage(): React.ReactElement {
                 {joinError}
               </p>
               <PixelButton variant="secondary" size="sm" onClick={() => navigate('/')}>
-                Back to home
+                Enter a different code
               </PixelButton>
             </div>
           )}
@@ -274,7 +319,7 @@ export default function RoomPage(): React.ReactElement {
                 {joinError}
               </p>
               <PixelButton variant="secondary" size="sm" onClick={() => navigate('/')}>
-                Back to home
+                Enter a different code
               </PixelButton>
             </div>
           )}
@@ -288,16 +333,30 @@ export default function RoomPage(): React.ReactElement {
 
   return (
     <main className={cn('min-h-screen flex flex-col', isGameFullscreen && 'h-dvh max-h-dvh overflow-hidden')}>
+      {!store.connected && (
+        <div
+          role="status"
+          className="sticky top-0 z-50 bg-pa-danger text-pa-bg font-display text-[10px] uppercase text-center py-2"
+        >
+          Reconnecting…
+        </div>
+      )}
       {/* In-game fullscreen controls (mobile only) */}
       {isGameFullscreen && (
         <div className="fixed top-[max(8px,env(safe-area-inset-top))] right-[max(8px,env(safe-area-inset-right))] z-50 lg:hidden flex items-center gap-1.5">
+          {running && store.endsAt && (
+            <Countdown
+              endsAt={store.endsAt}
+              className="text-[12px] h-11 px-2 grid place-items-center bg-pa-surface/90 border-2 border-pa-border"
+            />
+          )}
           {isHost && running && (
             <button
               type="button"
               aria-label={store.paused ? 'Resume game' : 'Pause game'}
               onClick={() => void emit(store.paused ? EV.roomResume : EV.roomPause)}
               className={cn(
-                'flex items-center justify-center h-8 px-2.5 gap-1.5 border-2 active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)] font-display text-[10px]',
+                'flex items-center justify-center h-11 px-2.5 gap-1.5 border-2 active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)] font-display text-[10px]',
                 store.paused
                   ? 'bg-pa-amber text-pa-bg border-pa-amber font-bold'
                   : 'bg-pa-surface/90 hover:bg-pa-surface border-pa-border text-pa-ink',
@@ -321,7 +380,7 @@ export default function RoomPage(): React.ReactElement {
             type="button"
             aria-label="Open menu and options"
             onClick={() => setInGameMode(false)}
-            className="flex items-center justify-center w-8 h-8 bg-pa-surface/90 hover:bg-pa-surface border-2 border-pa-border text-pa-ink-dim hover:text-pa-ink active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)]"
+            className="flex items-center justify-center w-11 h-11 bg-pa-surface/90 hover:bg-pa-surface border-2 border-pa-border text-pa-ink-dim hover:text-pa-ink active:scale-95 transition-transform backdrop-blur-xs cursor-pointer select-none touch-manipulation shadow-[2px_2px_0_var(--color-pa-shadow)]"
             title="Menu & Options"
           >
             <Menu size={16} strokeWidth={2.5} className="lucide" />
@@ -390,7 +449,7 @@ export default function RoomPage(): React.ReactElement {
               className="text-[16px] md:text-[24px]"
               onExpire={() => {
                 void emit(EV.roomEndEarly);
-                navigate(`/r/${code.toUpperCase()}/results`);
+                navigate(`/r/${codeUpper}/results`);
               }}
             />
           )}
@@ -455,7 +514,7 @@ export default function RoomPage(): React.ReactElement {
                         if (name.trim()) void join(name.trim(), next);
                       }}
                       className={cn(
-                        'w-8 h-8 border text-[14px] cursor-pointer flex items-center justify-center',
+                        'w-11 h-11 border text-[14px] cursor-pointer flex items-center justify-center',
                         avatar === emoji ? 'border-pa-cyan bg-pa-cyan/10' : 'border-pa-border',
                       )}
                     >
@@ -473,7 +532,7 @@ export default function RoomPage(): React.ReactElement {
                     if (res?.error) {
                       toast.error(res.error);
                     } else {
-                      navigate(`/r/${code.toUpperCase()}/results`);
+                      navigate(`/r/${codeUpper}/results`);
                     }
                   }}
                 >
@@ -579,12 +638,17 @@ export default function RoomPage(): React.ReactElement {
       {/* Under lg the rail collapses into a bottom tab bar. */}
       {running && !isGameFullscreen && <div className="lg:hidden h-32" aria-hidden="true" />}
       {!isGameFullscreen && (
-        <nav className="lg:hidden flex border-t-2 border-pa-border bg-pa-surface">
+        <nav
+          aria-label="Room views"
+          className="lg:hidden flex border-t-2 border-pa-border bg-pa-surface"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           {(['board', 'leaderboard', 'chat'] as const).map((tab) => (
             <button
               key={tab}
               type="button"
               onClick={() => setMobileTab(tab)}
+              aria-current={mobileTab === tab ? 'page' : undefined}
               className={cn(
                 'flex-1 font-display text-[10px] uppercase min-h-[52px] cursor-pointer',
                 mobileTab === tab ? 'text-pa-cyan border-t-2 border-pa-cyan' : 'text-pa-ink-dim',
@@ -653,8 +717,7 @@ function Lobby({
             variant="ghost"
             size="sm"
             onClick={() => {
-              void navigator.clipboard.writeText(code);
-              toast('CODE COPIED');
+              void copyText(code).then((ok) => toast(ok ? 'CODE COPIED' : 'Copy failed — select the code manually'));
             }}
           >
             <Copy size={14} strokeWidth={3} className="lucide" />
@@ -665,8 +728,7 @@ function Lobby({
             size="sm"
             onClick={() => {
               const url = `${window.location.origin}/r/${code}`;
-              void navigator.clipboard.writeText(url);
-              toast('LINK COPIED');
+              void copyText(url).then((ok) => toast(ok ? 'LINK COPIED' : 'Copy failed — copy the address bar instead'));
             }}
           >
             <Link2 size={14} strokeWidth={3} className="lucide" />

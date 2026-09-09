@@ -173,7 +173,7 @@ export function CodeInput({
   };
 
   return (
-    <div className={cn('flex gap-2', invalid && 'pa-shake')}>
+    <div className={cn('flex gap-1.5 sm:gap-2', invalid && 'pa-shake')}>
       {chars.map((char, i) => (
         <input
           key={i}
@@ -219,7 +219,7 @@ export function CodeInput({
             refs.current[Math.min(pasted.length, 5)]?.focus();
           }}
           className={cn(
-            'w-12 h-14 md:w-14 md:h-16 text-center font-display text-[18px] uppercase',
+            'w-11 h-14 sm:w-12 md:w-14 md:h-16 text-center font-display text-[18px] uppercase',
             'bg-pa-bg border-2 text-pa-ink',
             invalid ? 'border-pa-danger' : 'border-pa-border',
           )}

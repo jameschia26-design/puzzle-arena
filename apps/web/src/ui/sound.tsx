@@ -1202,7 +1202,7 @@ export function SoundControlButtons({ className }: { className?: string }): Reac
         onClick={toggleMusic}
         aria-label={music ? 'Mute Music' : 'Enable Music'}
         className={cn(
-          'p-2 min-h-[40px] min-w-[40px] grid place-items-center cursor-pointer',
+          'p-2 min-h-[44px] min-w-[44px] grid place-items-center cursor-pointer',
           music ? 'text-pa-cyan' : 'text-pa-ink-dim opacity-60',
         )}
       >
@@ -1215,7 +1215,7 @@ export function SoundControlButtons({ className }: { className?: string }): Reac
         onClick={toggleSfx}
         aria-label={sound ? 'Mute Sound Effects' : 'Enable Sound Effects'}
         className={cn(
-          'p-2 min-h-[40px] min-w-[40px] grid place-items-center cursor-pointer',
+          'p-2 min-h-[44px] min-w-[44px] grid place-items-center cursor-pointer',
           sound ? 'text-pa-amber' : 'text-pa-ink-dim opacity-60',
         )}
       >
