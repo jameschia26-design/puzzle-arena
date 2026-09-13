@@ -12,6 +12,9 @@ import { bgm, sfx } from '../ui/sound.js';
 const CANVAS_W = 256;
 const CANVAS_H = 224;
 const ASSIST_STORAGE_KEY = 'pa:puzzle-bubble-assist';
+const BUBBLE_RENDER_SCALE = 0.6;
+const DISPLAY_BUBBLE_PITCH = 16;
+const LOGICAL_SHOOTER_X = 7 * 1024;
 const COLOR: Record<BubbleColor, { outline: string; shade: string; body: string; rim: string; spec: string }> = {
   coral: { outline: '#52141a', shade: '#99222c', body: '#ee4740', rim: '#ff9288', spec: '#ffffff' },
   gold: { outline: '#503505', shade: '#9a640c', body: '#f3b72b', rim: '#ffe682', spec: '#ffffff' },
@@ -46,17 +49,23 @@ type VisualState = {
   recoilVelocity: number;
   shake: number;
   descentOffset: number;
+  shotColor: BubbleColor | null;
+  shotPath: Array<{ x: number; y: number }>;
+  shotProgress: number;
 };
 
 function canvasPoint(point: BubblePoint): { x: number; y: number } {
-  return { x: Math.round(point.x / 64) + 16, y: Math.round(point.y / 128) + 10 };
+  return {
+    x: Math.round(128 + (point.x - LOGICAL_SHOOTER_X) * (DISPLAY_BUBBLE_PITCH / (2 * 1024))),
+    y: Math.round(point.y / 128) + 10,
+  };
 }
 
 function aimAngle(x: number, y: number): number {
   return Math.max(-80, Math.min(80, Math.round(Math.atan2(x - 128, Math.max(1, 207 - y)) * (180 / Math.PI))));
 }
 
-function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, color: BubbleColor, scale = 1, alpha = 1): void {
+function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, color: BubbleColor, scale = BUBBLE_RENDER_SCALE, alpha = 1): void {
   const palette = COLOR[color];
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -177,7 +186,7 @@ function drawLauncher(ctx: CanvasRenderingContext2D, angle: number, current: Bub
   ctx.fillStyle = '#9cb2cc';
   ctx.fillRect(-9, -28, 1, 20);
   ctx.fillRect(8, -28, 1, 20);
-  drawBubble(ctx, 0, -16, current);
+  drawBubble(ctx, 0, -16, current, BUBBLE_RENDER_SCALE * 1.15);
   ctx.fillStyle = '#8f5623';
   ctx.fillRect(-9, -10, 3, 4);
   ctx.fillRect(6, -10, 3, 4);
@@ -201,9 +210,30 @@ function drawAssist(ctx: CanvasRenderingContext2D, player: PuzzleBubblePublicPla
   ctx.stroke();
   if (landing) {
     const point = canvasPoint(puzzleBubbleRules.bubblePoint(landing, player.rowParity));
-    drawBubble(ctx, point.x, point.y, player.current, 1, 0.3);
+    drawBubble(ctx, point.x, point.y, player.current, BUBBLE_RENDER_SCALE, 0.3);
   }
   ctx.restore();
+}
+
+function drawFlyingShot(ctx: CanvasRenderingContext2D, path: Array<{ x: number; y: number }>, color: BubbleColor, progress: number): void {
+  if (path.length === 0) return;
+  const scaled = Math.min(path.length - 1, progress * (path.length - 1));
+  const index = Math.floor(scaled);
+  const from = path[index]!;
+  const to = path[Math.min(path.length - 1, index + 1)]!;
+  const fraction = scaled - index;
+  const x = from.x + (to.x - from.x) * fraction;
+  const y = from.y + (to.y - from.y) * fraction;
+  for (let trail = 1; trail <= 3; trail += 1) {
+    const behind = Math.max(0, scaled - trail * 0.45);
+    const trailIndex = Math.floor(behind);
+    const trailPoint = path[trailIndex]!;
+    ctx.fillStyle = COLOR[color].rim;
+    ctx.globalAlpha = 0.35 - trail * 0.08;
+    ctx.fillRect(Math.round(trailPoint.x) - 1, Math.round(trailPoint.y) - 1, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+  drawBubble(ctx, x, y, color, BUBBLE_RENDER_SCALE * 1.08);
 }
 
 function drawParticles(ctx: CanvasRenderingContext2D, particles: VisualParticle[]): void {
@@ -215,7 +245,7 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: VisualParticle[
     const alpha = Math.max(0, 1 - particle.life / particle.maxLife);
     if (particle.kind === 'drop') {
       particle.vy += 0.34;
-      drawBubble(ctx, particle.x, particle.y, particle.color, 0.92, alpha);
+      drawBubble(ctx, particle.x, particle.y, particle.color, BUBBLE_RENDER_SCALE * 0.92, alpha);
     } else if (particle.kind === 'ring') {
       const radius = 4 + particle.life;
       ctx.save();
@@ -283,6 +313,8 @@ export function PuzzleBubbleBoard({
   });
   const [locked, setLocked] = React.useState(false);
   const lockTimer = React.useRef<number | null>(null);
+  const aimHoldDelay = React.useRef<number | null>(null);
+  const aimHoldInterval = React.useRef<number | null>(null);
   const angleRef = React.useRef(angle);
   const assistRef = React.useRef(assist);
   const playerRef = React.useRef(you);
@@ -297,6 +329,9 @@ export function PuzzleBubbleBoard({
     recoilVelocity: 0,
     shake: 0,
     descentOffset: 0,
+    shotColor: null,
+    shotPath: [],
+    shotProgress: 1,
   });
   const [clockNow, setClockNow] = React.useState(() => Date.now());
   angleRef.current = angle;
@@ -309,6 +344,8 @@ export function PuzzleBubbleBoard({
   }, []);
   React.useEffect(() => () => {
     if (lockTimer.current !== null) window.clearTimeout(lockTimer.current);
+    if (aimHoldDelay.current !== null) window.clearTimeout(aimHoldDelay.current);
+    if (aimHoldInterval.current !== null) window.clearInterval(aimHoldInterval.current);
   }, []);
 
   React.useEffect(() => {
@@ -338,6 +375,10 @@ export function PuzzleBubbleBoard({
       if (player) {
         drawBoard(ctx, player, performance.now(), fx.descentOffset);
         if (assistRef.current && !player.gameOver) drawAssist(ctx, player, angleRef.current);
+        if (fx.shotColor && fx.shotProgress < 1) {
+          drawFlyingShot(ctx, fx.shotPath, fx.shotColor, fx.shotProgress);
+          fx.shotProgress = Math.min(1, fx.shotProgress + 0.045);
+        }
         drawLauncher(ctx, angleRef.current, player.current, fx.recoil);
         drawParticles(ctx, fx.particles);
       }
@@ -361,6 +402,9 @@ export function PuzzleBubbleBoard({
     }
     if (you.shots > fx.lastShotCount && you.lastShot) {
       const shot = you.lastShot;
+      fx.shotPath = shot.path.map(canvasPoint);
+      fx.shotColor = fx.previousCurrent ?? you.current;
+      fx.shotProgress = 0;
       const colorAt = (row: number, col: number) => fx.previousBoard.get(`${row}:${col}`) ?? fx.previousCurrent ?? you.current;
       for (const slot of shot.popped) {
         const point = canvasPoint(puzzleBubbleRules.bubblePoint(slot, fx.previousParity));
@@ -413,16 +457,42 @@ export function PuzzleBubbleBoard({
     }, puzzleBubbleRules.shotAnimationMs(view.config.speed));
   }, [angle, locked, onAction, view.config.speed, view.phase, you]);
 
+  const nudgeAim = React.useCallback((delta: number) => {
+    setAngle((value) => Math.max(-80, Math.min(80, value + delta)));
+  }, []);
+
+  const stopAimHold = React.useCallback(() => {
+    if (aimHoldDelay.current !== null) {
+      window.clearTimeout(aimHoldDelay.current);
+      aimHoldDelay.current = null;
+    }
+    if (aimHoldInterval.current !== null) {
+      window.clearInterval(aimHoldInterval.current);
+      aimHoldInterval.current = null;
+    }
+  }, []);
+
+  const startAimHold = React.useCallback((event: React.PointerEvent<HTMLButtonElement>, delta: number) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stopAimHold();
+    nudgeAim(delta);
+    aimHoldDelay.current = window.setTimeout(() => {
+      aimHoldDelay.current = null;
+      aimHoldInterval.current = window.setInterval(() => nudgeAim(delta), 60);
+    }, 260);
+  }, [nudgeAim, stopAimHold]);
+
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
       if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        setAngle((value) => Math.max(-80, value - 4));
+        nudgeAim(-4);
       } else if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'd') {
         event.preventDefault();
-        setAngle((value) => Math.min(80, value + 4));
+        nudgeAim(4);
       } else if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault();
         fire();
@@ -433,7 +503,7 @@ export function PuzzleBubbleBoard({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [fire]);
+  }, [fire, nudgeAim]);
 
   const toggleAssist = () => {
     setAssist((value) => {
@@ -488,9 +558,25 @@ export function PuzzleBubbleBoard({
         />
       </div>
       <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 sm:mx-auto sm:w-[min(100%,640px)]">
-        <button type="button" className="min-h-11 border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5" onClick={() => setAngle((value) => Math.max(-80, value - 4))}>LEFT</button>
-        <button type="button" className="min-h-11 border-2 border-pa-amber bg-pa-amber font-display text-[12px] text-pa-shadow pa-shadow disabled:opacity-45" disabled={locked || you.gameOver || view.phase === 'game_over'} onClick={() => fire()}>{you.gameOver ? 'OUT' : locked ? 'AIMING…' : 'FIRE'}</button>
-        <button type="button" className="min-h-11 border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5" onClick={() => setAngle((value) => Math.min(80, value + 4))}>RIGHT</button>
+        <button
+          type="button"
+          className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
+          onPointerDown={(event) => startAimHold(event, -4)}
+          onPointerUp={stopAimHold}
+          onPointerCancel={stopAimHold}
+          onLostPointerCapture={stopAimHold}
+          onClick={(event) => { if (event.detail === 0) nudgeAim(-4); }}
+        >LEFT</button>
+        <button type="button" className="min-h-11 select-none border-2 border-pa-amber bg-pa-amber font-display text-[12px] text-pa-shadow pa-shadow disabled:opacity-45" disabled={locked || you.gameOver || view.phase === 'game_over'} onClick={() => fire()}>{you.gameOver ? 'OUT' : locked ? 'AIMING…' : 'FIRE'}</button>
+        <button
+          type="button"
+          className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
+          onPointerDown={(event) => startAimHold(event, 4)}
+          onPointerUp={stopAimHold}
+          onPointerCancel={stopAimHold}
+          onLostPointerCapture={stopAimHold}
+          onClick={(event) => { if (event.detail === 0) nudgeAim(4); }}
+        >RIGHT</button>
       </div>
       <button type="button" className="self-center border-2 border-pa-border bg-pa-surface px-3 py-2 font-display text-[9px] text-pa-ink-dim pa-shadow" onClick={toggleAssist}>ASSIST: {assist ? 'ON' : 'OFF'} · G</button>
     </div>

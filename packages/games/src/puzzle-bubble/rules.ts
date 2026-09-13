@@ -167,7 +167,15 @@ export function traceShot(board: BubbleCell[], rowParity: 0 | 1, angleDeg: numbe
     }
     const impact = { x, y };
     if (y <= 0) return { path: [...path, impact], impact, hit: null };
-    const hit = board.find((cell) => distanceSquared(impact, bubblePoint(cell, rowParity)) <= COLLISION_DISTANCE_SQUARED);
+    let hit: BubbleCell | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const cell of board) {
+      const distance = distanceSquared(impact, bubblePoint(cell, rowParity));
+      if (distance <= COLLISION_DISTANCE_SQUARED && distance < nearestDistance) {
+        hit = cell;
+        nearestDistance = distance;
+      }
+    }
     if (hit) return { path: [...path, impact], impact, hit: { row: hit.row, col: hit.col } };
     if (step % 8 === 7) path.push(impact);
   }
