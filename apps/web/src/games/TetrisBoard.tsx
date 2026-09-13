@@ -25,8 +25,8 @@ const GHOST_ALPHA: Record<TetrominoKind, string> = {
 };
 
 const TETROMINO_BASE: Record<string, [number, number][]> = {
-  I: [[-1,0],[0,0],[1,0],[2,0]], J: [[-1,0],[-1,1],[0,0],[1,0]], L: [[-1,0],[0,0],[1,0],[1,1]],
-  O: [[0,0],[1,0],[0,1],[1,1]], S: [[-1,1],[0,1],[0,0],[1,0]], T: [[-1,0],[0,0],[1,0],[0,1]], Z: [[-1,0],[0,0],[0,1],[1,1]],
+  I: [[-1,0],[0,0],[1,0],[2,0]], J: [[-1, 0], [-1, 1], [0, 1], [1, 1]], L: [[1, 0], [-1, 1], [0, 1], [1, 1]],
+  O: [[0,0],[1,0],[0,1],[1,1]], S: [[-1,1],[0,1],[0,0],[1,0]], T: [[0, 0], [-1, 1], [0, 1], [1, 1]], Z: [[-1,0],[0,0],[0,1],[1,1]],
 };
 /** Absolute occupied cells for a piece at its current origin/rotation. Shared
  *  by the live board (active + ghost) and the spectator mini-boards. */
