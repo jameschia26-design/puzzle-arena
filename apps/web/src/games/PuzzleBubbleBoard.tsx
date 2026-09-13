@@ -12,15 +12,15 @@ import { bgm, sfx } from '../ui/sound.js';
 const CANVAS_W = 256;
 const CANVAS_H = 224;
 const ASSIST_STORAGE_KEY = 'pa:puzzle-bubble-assist';
-const COLOR: Record<BubbleColor, { body: string; shade: string; glyph: string; mark: string }> = {
-  coral: { body: '#f05c54', shade: '#9c2533', glyph: '#ffd5bb', mark: '●' },
-  gold: { body: '#e8b43d', shade: '#94621e', glyph: '#fff5b8', mark: '★' },
-  leaf: { body: '#5fbd68', shade: '#25734d', glyph: '#d8ffbb', mark: '◆' },
-  sky: { body: '#4a9ed4', shade: '#24507e', glyph: '#c6f5ff', mark: '✦' },
-  violet: { body: '#9671ce', shade: '#513b83', glyph: '#ead7ff', mark: '☾' },
-  rose: { body: '#d6699c', shade: '#823c69', glyph: '#ffd5eb', mark: '✚' },
-  mint: { body: '#54c6ad', shade: '#24776d', glyph: '#caffea', mark: '✦' },
-  amber: { body: '#e57d36', shade: '#94411e', glyph: '#ffdaa8', mark: '♛' },
+const COLOR: Record<BubbleColor, { body: string; shade: string; highlight: string }> = {
+  coral: { body: '#f05c54', shade: '#9c2533', highlight: '#ffd5bb' },
+  gold: { body: '#e8b43d', shade: '#94621e', highlight: '#fff5b8' },
+  leaf: { body: '#5fbd68', shade: '#25734d', highlight: '#d8ffbb' },
+  sky: { body: '#4a9ed4', shade: '#24507e', highlight: '#c6f5ff' },
+  violet: { body: '#9671ce', shade: '#513b83', highlight: '#ead7ff' },
+  rose: { body: '#d6699c', shade: '#823c69', highlight: '#ffd5eb' },
+  mint: { body: '#54c6ad', shade: '#24776d', highlight: '#caffea' },
+  amber: { body: '#e57d36', shade: '#94411e', highlight: '#ffdaa8' },
 };
 
 function canvasPoint(point: BubblePoint): { x: number; y: number } {
@@ -34,19 +34,35 @@ function aimAngle(x: number, y: number): number {
 function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, color: BubbleColor, alpha = 1): void {
   const palette = COLOR[color];
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#151b30';
-  ctx.fillRect(x - 13, y - 9, 27, 19);
+
+  // Stepped edges keep the orb crisp at low resolution rather than turning it into a square tile.
+  ctx.fillStyle = '#10182d';
+  ctx.fillRect(x - 5, y - 13, 11, 2);
+  ctx.fillRect(x - 9, y - 11, 19, 2);
+  ctx.fillRect(x - 11, y - 9, 23, 4);
+  ctx.fillRect(x - 13, y - 5, 27, 11);
+  ctx.fillRect(x - 11, y + 6, 23, 4);
+  ctx.fillRect(x - 9, y + 10, 19, 2);
+  ctx.fillRect(x - 5, y + 12, 11, 2);
+
   ctx.fillStyle = palette.shade;
-  ctx.fillRect(x - 12, y - 8, 25, 17);
+  ctx.fillRect(x - 5, y - 11, 11, 2);
+  ctx.fillRect(x - 9, y - 9, 19, 4);
+  ctx.fillRect(x - 11, y - 5, 23, 11);
+  ctx.fillRect(x - 9, y + 6, 19, 4);
+  ctx.fillRect(x - 5, y + 10, 11, 2);
+
   ctx.fillStyle = palette.body;
-  ctx.fillRect(x - 10, y - 9, 20, 19);
-  ctx.fillStyle = palette.glyph;
-  ctx.fillRect(x - 6, y - 6, 5, 3);
-  ctx.fillStyle = '#18233b';
-  ctx.font = '10px monospace';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(palette.mark, x, y + 2);
+  ctx.fillRect(x - 5, y - 9, 11, 2);
+  ctx.fillRect(x - 8, y - 7, 17, 12);
+  ctx.fillRect(x - 6, y + 5, 13, 3);
+
+  ctx.fillStyle = palette.highlight;
+  ctx.fillRect(x - 6, y - 7, 5, 3);
+  ctx.fillRect(x - 8, y - 4, 3, 5);
+  ctx.fillStyle = '#10182d';
+  ctx.fillRect(x + 3, y + 2, 3, 2);
+  ctx.fillRect(x, y + 5, 4, 2);
   ctx.globalAlpha = 1;
 }
 
@@ -139,7 +155,7 @@ function MiniBoard({ player }: { player: PuzzleBubblePublicPlayer }): React.Reac
         {player.board.filter((cell) => cell.row < 9).map((cell) => {
           const longRow = (cell.row + player.rowParity) % 2 === 0;
           const left = longRow ? cell.col * 12.2 : cell.col * 12.2 + 6.1;
-          return <span key={`${cell.row}:${cell.col}`} className="absolute h-3 w-3 border border-[#15213d]" style={{ left: `${left}%`, top: `${cell.row * 10}%`, backgroundColor: COLOR[cell.color].body }} />;
+          return <span key={`${cell.row}:${cell.col}`} className="absolute h-3 w-3 rounded-full border border-[#15213d]" style={{ left: `${left}%`, top: `${cell.row * 10}%`, backgroundColor: COLOR[cell.color].body }} />;
         })}
       </div>
       <div className="mt-1 text-right font-display text-[8px] text-pa-ink-dim">WAVE {player.wave}{player.gameOver ? ' · OUT' : ''}</div>
@@ -238,11 +254,9 @@ export function PuzzleBubbleBoard({
     });
   };
 
-  const aimFromPointer = (event: React.PointerEvent<HTMLCanvasElement>): number => {
+  const aimFromPointer = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const nextAngle = aimAngle(((event.clientX - rect.left) / rect.width) * CANVAS_W, ((event.clientY - rect.top) / rect.height) * CANVAS_H);
-    setAngle(nextAngle);
-    return nextAngle;
+    setAngle(aimAngle(((event.clientX - rect.left) / rect.width) * CANVAS_W, ((event.clientY - rect.top) / rect.height) * CANVAS_H));
   };
 
   if (!you) return <div className="p-4 text-pa-ink-dim">Waiting for your Puzzle Bubble board…</div>;
@@ -256,7 +270,7 @@ export function PuzzleBubbleBoard({
           <div><span className="font-display text-[9px] text-pa-ink-dim">SCORE </span><span className="font-display text-[18px] text-pa-amber tabular-nums">{you.score.toLocaleString()}</span></div>
           <div className="font-display text-[9px] text-pa-ink-dim">WAVE {you.wave} · {view.config.speed.toUpperCase()}</div>
           <div className="font-display text-[9px] text-pa-ink-dim">PRESSURE {you.pressureRemaining}/{pressure}</div>
-          <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span className="h-5 w-5 border-2 border-[#15213d]" style={{ backgroundColor: COLOR[you.next].body }} aria-label={`Next ${you.next} bubble`} /></div>
+          <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span className="h-5 w-5 rounded-full border-2 border-[#15213d]" style={{ backgroundColor: COLOR[you.next].body }} aria-label={`Next ${you.next} bubble`} /></div>
         </div>
         {opponent && <MiniBoard player={opponent} />}
       </div>
@@ -272,15 +286,12 @@ export function PuzzleBubbleBoard({
             event.currentTarget.setPointerCapture(event.pointerId);
             aimFromPointer(event);
           }}
-          onPointerUp={(event) => {
-            fire(aimFromPointer(event));
-          }}
-          aria-label="Puzzle Bubble playfield. Move to aim and release to fire."
+          aria-label="Puzzle Bubble playfield. Drag to aim, then press Fire to shoot."
         />
       </div>
       <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 sm:mx-auto sm:w-[min(100%,640px)]">
         <button type="button" className="min-h-11 border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5" onClick={() => setAngle((value) => Math.max(-80, value - 4))}>LEFT</button>
-        <button type="button" className="min-h-11 border-2 border-pa-amber bg-pa-amber font-display text-[12px] text-pa-shadow pa-shadow disabled:opacity-45" disabled={locked || you.gameOver || view.phase === 'game_over'} onClick={fire}>{you.gameOver ? 'OUT' : locked ? 'AIMING…' : 'FIRE'}</button>
+        <button type="button" className="min-h-11 border-2 border-pa-amber bg-pa-amber font-display text-[12px] text-pa-shadow pa-shadow disabled:opacity-45" disabled={locked || you.gameOver || view.phase === 'game_over'} onClick={() => fire()}>{you.gameOver ? 'OUT' : locked ? 'AIMING…' : 'FIRE'}</button>
         <button type="button" className="min-h-11 border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5" onClick={() => setAngle((value) => Math.min(80, value + 4))}>RIGHT</button>
       </div>
       <button type="button" className="self-center border-2 border-pa-border bg-pa-surface px-3 py-2 font-display text-[9px] text-pa-ink-dim pa-shadow" onClick={toggleAssist}>ASSIST: {assist ? 'ON' : 'OFF'} · G</button>
