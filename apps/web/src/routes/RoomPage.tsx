@@ -52,7 +52,7 @@ import { TetrisBoard } from '../games/TetrisBoard.js';
 import { PacManBoard } from '../games/PacManBoard.js';
 import { SpaceInvadersBoard } from '../games/SpaceInvadersBoard.js';
 import { BombermanBoard } from '../games/BombermanBoard.js';
-import { ResultsTable } from './ResultsPage.js';
+import { PuzzleBubbleBoard } from '../games/PuzzleBubbleBoard.js';
 import { SoundControlButtons, bgm, sfx } from '../ui/sound.js';
 
 
@@ -168,7 +168,7 @@ export default function RoomPage(): React.ReactElement {
   const meta = GAME_REGISTRY[gameId];
   const you = store.you;
   const isHost = you?.isHost ?? false;
-  const isFullscreenEligible = (gameId === 'tetris' || gameId === 'pacman' || gameId === 'space-invaders' || gameId === 'bomberman') && room?.status === 'running';
+  const isFullscreenEligible = (gameId === 'tetris' || gameId === 'pacman' || gameId === 'space-invaders' || gameId === 'bomberman' || gameId === 'puzzle-bubble') && room?.status === 'running';
   const isGameFullscreen = isFullscreenEligible && inGameMode;
   // When the game ends (time is up, solved, or ended early), navigate to the results/game over screen
   React.useEffect(() => {
@@ -211,7 +211,7 @@ export default function RoomPage(): React.ReactElement {
       else if (GAME_REGISTRY[gameId].kind === 'puzzle') bgm.play('puzzle');
       else if (gameId === 'pacman') bgm.play('pacman');
       else if (gameId === 'tetris') bgm.play('tetris');
-      else if (gameId === 'space-invaders' || gameId === 'bomberman') bgm.play('arcade');
+      else if (gameId === 'space-invaders' || gameId === 'bomberman' || gameId === 'puzzle-bubble') bgm.play('arcade');
       else bgm.play('board');
     } else if (room.status === 'finished') {
       sfx.victory();
@@ -574,48 +574,6 @@ export default function RoomPage(): React.ReactElement {
                 <GameSurface gameId={gameId} />
               </GameErrorBoundary>
             </div>
-          )}
-          {finished && store.results && (
-            <PixelPanel title="Results">
-              <ResultsTable results={store.results} />
-              <PuzzleReveal gameId={gameId} />
-              {/* A finished room is a dead end without this: the only way out
-                  used to be the browser's back button or editing the URL. */}
-              <div className="mt-6 flex flex-wrap gap-2 border-t-2 border-pa-border pt-4">
-                {isHost && (
-                  <PixelButton
-                    variant="primary"
-                    onClick={async () => {
-                      const res = await emit<{ ok?: boolean; error?: string }>(EV.roomRestart);
-                      if (res.error) toast(res.error);
-                      else toast('REMATCH STARTED!');
-                    }}
-                  >
-                    <RotateCcw size={14} strokeWidth={3} className="lucide" />
-                    Play Again (Rematch)
-                  </PixelButton>
-                )}
-                <PixelButton
-                  onClick={() => {
-                    store.reset();
-                    navigate('/');
-                  }}
-                >
-                  Back to home
-                </PixelButton>
-                {isHost && (
-                  <PixelButton
-                    variant="secondary"
-                    onClick={() => {
-                      store.reset();
-                      navigate('/admin');
-                    }}
-                  >
-                    Host another room
-                  </PixelButton>
-                )}
-              </div>
-            </PixelPanel>
           )}
         </section>
 
@@ -1318,6 +1276,18 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
   if (gameId === 'bomberman') {
     return (
       <BombermanBoard
+        view={state}
+        players={store.players}
+        youId={store.you?.playerId ?? null}
+        legalActions={store.legalActions}
+        turnEndsAt={store.turnEndsAt}
+        onAction={(a) => void gameAction(a)}
+      />
+    );
+  }
+  if (gameId === 'puzzle-bubble') {
+    return (
+      <PuzzleBubbleBoard
         view={state}
         players={store.players}
         youId={store.you?.playerId ?? null}

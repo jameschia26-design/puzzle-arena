@@ -62,7 +62,7 @@ export function rankResults<T extends RankableResult>(results: T[]): (T & { rank
 
 /** Speed component, exposed for the results table. */
 export function speedComponent(i: ScoreInput, timeLimitMs: number): number {
-  return i.completed && i.completedAtMs !== null
+  return timeLimitMs > 0 && i.completed && i.completedAtMs !== null
     ? Math.max(0, (timeLimitMs - i.completedAtMs) / timeLimitMs)
     : 0;
 }

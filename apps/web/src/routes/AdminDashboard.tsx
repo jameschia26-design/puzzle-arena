@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Activity, BarChart2, Copy, Cpu, Link2, LogOut, Plus, Shield, Trash2, Users, XCircle } from 'lucide-react';
+import { Activity, BarChart2, Copy, Cpu, Link2, LoaderCircle, LogOut, Plus, Shield, Trash2, Users, XCircle } from 'lucide-react';
 import { GAME_IDS, GAME_REGISTRY, WORD_SEARCH_THEMES, type GameId } from '@puzzle-arena/shared';
 import {
   PixelBadge,
@@ -64,6 +64,7 @@ export default function AdminDashboard(): React.ReactElement {
   const [gameId, setGameId] = React.useState<GameId>('sudoku');
   const [difficulty, setDifficulty] = React.useState('medium');
   const [minutes, setMinutes] = React.useState<number | string>(15);
+  const [noTimeLimit, setNoTimeLimit] = React.useState(false);
   const [instantFeedback, setInstantFeedback] = React.useState(false);
   const [theme, setTheme] = React.useState<string>(WORD_SEARCH_THEMES[0]);
   const [size, setSize] = React.useState('10');
@@ -73,6 +74,8 @@ export default function AdminDashboard(): React.ReactElement {
   const [mmSlots, setMmSlots] = React.useState('4');
   const [mmColors, setMmColors] = React.useState('8');
   const [mmAttempts, setMmAttempts] = React.useState<number | string>(10);
+  const [puzzleBubbleColors, setPuzzleBubbleColors] = React.useState('6');
+  const [puzzleBubbleSpeed, setPuzzleBubbleSpeed] = React.useState<'slow' | 'normal' | 'fast'>('normal');
   const [rooms, setRooms] = React.useState<RoomRow[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -102,50 +105,62 @@ export default function AdminDashboard(): React.ReactElement {
   }, [refresh]);
 
   React.useEffect(() => {
-    setMinutes(Math.round(GAME_REGISTRY[gameId].defaultTimeLimitSec / 60));
+    const defaultSeconds = GAME_REGISTRY[gameId].defaultTimeLimitSec;
+    setNoTimeLimit(defaultSeconds === 0);
+    setMinutes(defaultSeconds === 0 ? 10 : Math.round(defaultSeconds / 60));
   }, [gameId]);
 
   const create = async (): Promise<void> => {
     setBusy(true);
     setError(null);
-    const config: Record<string, unknown> = {};
-    if (isPuzzle && gameId !== 'mastermind') {
-      config['difficulty'] = difficulty;
-      config['instantFeedback'] = instantFeedback;
-    }
-    if (gameId === 'mastermind') {
-      config['slots'] = Number(mmSlots);
-      config['colors'] = Number(mmColors);
-      const attemptsNum = Math.min(30, Math.max(6, Math.round(Number(mmAttempts)) || 10));
-      config['maxTries'] = attemptsNum;
-    }
-    if (gameId === 'nonogram') config['size'] = Number(size);
-    if (gameId === 'word-search') {
-      config['theme'] = theme;
-      config['size'] = 14;
-    }
-    if (gameId === 'chess' || gameId === 'xiangqi') {
-      config['clockMinutes'] = Math.min(120, Math.max(1, Math.round(Number(clockMinutes)) || 1));
-      config['incrementSec'] = Math.min(60, Math.max(0, Math.round(Number(incrementSec)) || 0));
-      config['allowTakeback'] = allowTakeback;
-    }
+    try {
+      const config: Record<string, unknown> = {};
+      if (isPuzzle && gameId !== 'mastermind') {
+        config['difficulty'] = difficulty;
+        config['instantFeedback'] = instantFeedback;
+      }
+      if (gameId === 'mastermind') {
+        config['slots'] = Number(mmSlots);
+        config['colors'] = Number(mmColors);
+        const attemptsNum = Math.min(30, Math.max(6, Math.round(Number(mmAttempts)) || 10));
+        config['maxTries'] = attemptsNum;
+      }
+      if (gameId === 'nonogram') config['size'] = Number(size);
+      if (gameId === 'word-search') {
+        config['theme'] = theme;
+        config['size'] = 14;
+      }
+      if (gameId === 'chess' || gameId === 'xiangqi') {
+        config['clockMinutes'] = Math.min(120, Math.max(1, Math.round(Number(clockMinutes)) || 1));
+        config['incrementSec'] = Math.min(60, Math.max(0, Math.round(Number(incrementSec)) || 0));
+        config['allowTakeback'] = allowTakeback;
+      }
+      if (gameId === 'puzzle-bubble') {
+        config['colors'] = Number(puzzleBubbleColors);
+        config['speed'] = puzzleBubbleSpeed;
+      }
 
-    const effectiveMinutes = Math.min(240, Math.max(1, Math.round(Number(minutes)) || 1));
-    const res = await api<{ code?: string; error?: string }>('/api/rooms', {
-      method: 'POST',
-      body: JSON.stringify({ gameId, config, timeLimitSec: effectiveMinutes * 60 }),
-    });
-    setBusy(false);
-    if (res.status === 401) {
-      navigate('/admin/login');
-      return;
+      const effectiveMinutes = Math.min(240, Math.max(1, Math.round(Number(minutes)) || 1));
+      const timeLimitSec = noTimeLimit ? 0 : effectiveMinutes * 60;
+      const res = await api<{ code?: string; error?: string }>('/api/rooms', {
+        method: 'POST',
+        body: JSON.stringify({ gameId, config, timeLimitSec }),
+      });
+      if (res.status === 401) {
+        navigate('/admin/login');
+        return;
+      }
+      if (res.status !== 200 || !res.body.code) {
+        setError(res.body?.error ?? 'Could not create the room');
+        return;
+      }
+      await refresh();
+      navigate(`/r/${res.body.code}?host=1`);
+    } catch {
+      setError('Could not create the room. Please try again.');
+    } finally {
+      setBusy(false);
     }
-    if (res.status !== 200 || !res.body.code) {
-      setError(res.body?.error ?? 'Could not create the room');
-      return;
-    }
-    await refresh();
-    navigate(`/r/${res.body.code}?host=1`);
   };
 
   const closeRoom = async (roomId: string): Promise<void> => {
@@ -196,20 +211,34 @@ export default function AdminDashboard(): React.ReactElement {
             onValueChange={(v) => setGameId(v as GameId)}
             options={GAME_IDS.map((id) => ({ value: id, label: GAME_REGISTRY[id].title }))}
           />
-          <PixelInput
-            label="Time limit (minutes)"
-            type="number"
-            min={1}
-            max={240}
-            value={minutes}
-            onChange={(e) => setMinutes(e.target.value)}
-            onBlur={() => {
-              const n = Number(minutes);
-              if (!n || n < 1) setMinutes(1);
-              else if (n > 240) setMinutes(240);
-              else setMinutes(Math.round(n));
-            }}
-          />
+          <div className="flex flex-col gap-2">
+            {noTimeLimit ? (
+              <div className="flex min-h-11 items-center border-2 border-pa-border bg-pa-surface px-3 font-display text-[10px] text-pa-lime">
+                NO TIME LIMIT
+              </div>
+            ) : (
+              <PixelInput
+                label="Time limit (minutes)"
+                type="number"
+                min={1}
+                max={240}
+                value={minutes}
+                onChange={(e) => setMinutes(e.target.value)}
+                onBlur={() => {
+                  const n = Number(minutes);
+                  if (!n || n < 1) setMinutes(1);
+                  else if (n > 240) setMinutes(240);
+                  else setMinutes(Math.round(n));
+                }}
+              />
+            )}
+            {meta.defaultTimeLimitSec === 0 && (
+              <label className="flex items-center gap-2 text-[12px] text-pa-ink-dim">
+                <input type="checkbox" checked={noTimeLimit} onChange={(e) => setNoTimeLimit(e.target.checked)} className="h-4 w-4 accent-[var(--color-pa-cyan)]" />
+                No time limit
+              </label>
+            )}
+          </div>
 
 {isPuzzle && gameId !== 'mastermind' && (
             <PixelSelect
@@ -243,6 +272,26 @@ export default function AdminDashboard(): React.ReactElement {
               onValueChange={setTheme}
               options={WORD_SEARCH_THEMES.map((t) => ({ value: t, label: t }))}
             />
+          )}
+          {gameId === 'puzzle-bubble' && (
+            <>
+              <PixelSelect
+                label="Bubble colours"
+                value={puzzleBubbleColors}
+                onValueChange={setPuzzleBubbleColors}
+                options={[3, 4, 5, 6, 7, 8].map((n) => ({ value: String(n), label: `${n} colours` }))}
+              />
+              <PixelSelect
+                label="Speed"
+                value={puzzleBubbleSpeed}
+                onValueChange={(value) => setPuzzleBubbleSpeed(value as 'slow' | 'normal' | 'fast')}
+                options={[
+                  { value: 'slow', label: 'Slow · 8 misses' },
+                  { value: 'normal', label: 'Normal · 6 misses' },
+                  { value: 'fast', label: 'Fast · 4 misses' },
+                ]}
+              />
+            </>
           )}
           {gameId === 'mastermind' && (
             <>
@@ -352,10 +401,24 @@ export default function AdminDashboard(): React.ReactElement {
         )}
 
         <div className="mt-6">
-          <PixelButton size="lg" onClick={() => void create()} disabled={busy}>
-            <Plus size={16} strokeWidth={3} className="lucide" />
-            {busy ? 'Creating…' : 'Create room'}
+          <PixelButton
+            size="lg"
+            onClick={() => void create()}
+            disabled={busy}
+            aria-busy={busy}
+          >
+            {busy ? (
+              <LoaderCircle size={16} strokeWidth={3} className="lucide animate-spin" aria-hidden="true" />
+            ) : (
+              <Plus size={16} strokeWidth={3} className="lucide" aria-hidden="true" />
+            )}
+            {busy ? 'Creating room…' : 'Create room'}
           </PixelButton>
+          {busy && (
+            <p role="status" className="mt-2 text-[12px] text-pa-ink-dim">
+              Preparing your room — this can take a few seconds.
+            </p>
+          )}
         </div>
       </PixelPanel>
 

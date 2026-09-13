@@ -622,3 +622,249 @@ Prerequisites: `PLAN.md` exists at the repo root (step 0). Then `docker compose 
 - **Nonogram uniqueness cost.** If 20×20 generation exceeds ~2s, cap the size at 15×15 and generate 20×20 in a background job at room creation with a lobby spinner, rather than relaxing the uniqueness check.
 - **Engagement extras are deliberately out.** Sound effects, confetti, live emote reactions and bespoke touch-gesture handling are **not** built. Seat colour + avatar identity **is** built, because Property Tycoon and Manor Mystery tokens must be distinguishable on the board — it is a functional requirement, not decoration. Layouts are responsive to 360px but there is no pinch-zoom, pan, or drag-gesture layer. If you want any of the extras later, each is contained: sounds = `howler@2.2.4` with one preloaded sprite plus a mute toggle in the existing settings popover; confetti = `canvas-confetti@1.9.4` fired from the results screen and the solve handler; emotes = one `chat:emote` socket event plus a floating layer over the board.
 - **Pixel styling versus fine detail.** The retro direction fights small type, which is why Press Start 2P is capped at headings and labels while Sudoku digits, deed rent ladders and cash figures use Space Grotesk with tabular numerals. If a reviewer asks for pixel type in the grids, push back: it drops digit legibility below usable at 20px. The escape hatch, if it is insisted on, is `@fontsource-variable/pixelify-sans@5.3.0`, which is a pixel face with real lowercase and far better small-size legibility than Press Start 2P.
+
+---
+
+## Expansion plan — Puzzle Bubble
+
+### Product decision
+
+Add **Puzzle Bubble** with internal id `puzzle-bubble`. It is an endless, concurrent bubble-shooter for **1–2 players**. Each player has an independent board and plays until their own bubbles cross the danger line. In a two-player room there are **no attacks, garbage bubbles, or shared board effects**: the competition is only for the highest score. A player who tops out watches the other player continue; the room ends when both players are out, when the optional room timer expires, or when the host ends it.
+
+Solo play supports one bot seat, matching the platform rule that every game is playable against a computer opponent.
+
+### Research basis and deliberate differences
+
+The 1994 Taito game establishes the useful mechanical language:
+
+- aim a launcher from the bottom and shoot in a straight line;
+- bounce shots from the side walls;
+- snap shots into a staggered, six-neighbour bubble grid;
+- remove connected groups of at least three matching colours;
+- drop every bubble no longer connected to the ceiling;
+- draw the next bubble only from colours still present;
+- lower the playfield after several non-clearing shots;
+- end when a bubble crosses the bottom line.
+
+Puzzle Bubble keeps that readable loop but uses an endless survival board rather than copying the original game's 30 stage layouts. Clearing a board advances to a newly generated wave. A pressure drop inserts a fresh ceiling row so a no-time-limit game cannot become permanently empty.
+
+Do **not** reproduce Taito's characters, enemy-in-bubble art, logo, stage layouts, sound effects, or music. Puzzle Bobble and Bust-A-Move remain active Taito properties. The title requested for this project is Puzzle Bubble, but all art and audio must be original.
+
+Research references:
+
+- Original release and gameplay summary: https://en.wikipedia.org/wiki/Puzzle_Bobble
+- Current official Taito modes, including survival and versus: https://www.taito.co.jp/en/PBEverybubble/gamemodes
+- Current official Taito setting and character treatment: https://www.taito.co.jp/en/PBEverybubble/story
+- Original scoring and two-player rules FAQ: https://www.neo-geo.com/wiki/index.php?title=Puzzle_Bobble/Bust-A-Move_FAQ_v1.24
+- Mega Drive tile and palette constraints used as the visual reference: https://plutiedev.com/tiles-and-palettes
+
+### Host settings
+
+These are the only Puzzle Bubble game settings:
+
+| Setting | Values | Default | Effect |
+|---|---|---|---|
+| Bubble colours | integer **3–8** | **6** | Size of the colour palette used for generated boards and upcoming bubbles |
+| Speed | `slow` / `normal` / `fast` | **`normal`** | Pressure pace and shot animation pace |
+| Room time limit | no limit, or **1–240 minutes** | **no limit** | Existing room-level setting, not part of the game config |
+
+Speed maps to fixed values:
+
+| Speed | Non-clearing shots before pressure row | Shot travel animation |
+|---|---:|---:|
+| Slow | 8 | 520 ms |
+| Normal | 6 | 360 ms |
+| Fast | 4 | 240 ms |
+
+The pressure counter is visible. A shot that pops at least one matched bubble resets it to the full allowance; a shot that only attaches decrements it. Reaching zero inserts a ceiling row and resets the counter. This is simpler and more legible than copying the original's hidden colour-dependent drop schedule.
+
+### Assist shadow
+
+The assist shadow is a **per-player visual preference**, not a host setting and not authoritative game state:
+
+- default **on**;
+- toggle from a labelled `ASSIST` button or the `G` key;
+- persist under `localStorage["pa:puzzle-bubble-assist"]`;
+- show a dotted trajectory through all wall bounces plus a translucent bubble at the predicted landing slot;
+- when off, retain only the short launcher arrow so aiming remains possible;
+- never alter scoring, physics, the opponent's display, or the event log.
+
+Both the engine and client call the same exported trajectory helper. The client predicts from the visible board; the server remains authoritative over the final slot. There is no `toggleAssist` socket action.
+
+### Exact board and rules
+
+Use a staggered hex-packed grid with alternating rows of **8 and 7 slots**, up to **13 playable rows**. A middle bubble has six neighbours. `rowParity` records whether the current ceiling row is long or short; inserting a row flips it. The danger line is immediately below row 12.
+
+Each player starts from the same generated five-row board and the same current/next bubble sequence:
+
+- generate only from the host-selected colour count;
+- include every enabled colour at least once;
+- all starting bubbles must be connected to the ceiling;
+- reject a generated board containing an existing connected group of three or more;
+- clone the complete generated player state, including its RNG state, for every seat.
+
+Every player owns a cloned RNG state. Never consume a shared room RNG in player action order: that would let the faster network connection change the other player's upcoming bubbles. Identical shot histories must produce identical boards and queues regardless of how the two players' socket events interleave.
+
+The only human game action is:
+
+```ts
+{ type: 'shoot', angleDeg: number }
+```
+
+`angleDeg` is an integer from **-80 to +80**, measured from straight up. The client changes its aim locally and sends only the final shot. The schema rejects fractions and out-of-range values.
+
+Resolve each accepted shot atomically in the pure reducer:
+
+1. Trace a ray from the launcher using fixed-point integer coordinates.
+2. Reflect against left/right walls; the ceiling is a collision surface.
+3. Stop at first bubble contact and choose the nearest valid empty grid slot.
+4. Break an exact distance tie by row, then column, so replay is stable.
+5. Flood-fill the placed bubble's same-colour component.
+6. If its size is at least three, remove the component.
+7. Flood-fill from every occupied ceiling slot; every unvisited bubble drops.
+8. Apply score and pressure changes.
+9. Draw the next colour from colours currently present. After a board clear, generate the next wave first, then draw.
+10. Mark game over if an occupied bubble touches the danger row.
+
+Use fixed-point maths throughout collision and wall reflection. Do not use browser-only geometry or tolerances that can choose different slots on client and server. Export `traceShot`, `neighbours`, `matchingCluster`, and `findDetached` from `rules.ts`; rendering imports these helpers rather than reimplementing them.
+
+When a wave clears, increment `wave`, generate a new connected pattern, and increase starting fill depth by one row every three waves, capped at eight rows. The selected colour count never changes. A new pressure row is full enough to anchor the old board but uses the same “no existing group of three” placement rule where possible; after 100 failed seeded attempts, accept the first connected row so generation always terminates.
+
+### Scoring and winner
+
+Use the original game's score shape because it rewards the defining skill—cutting down large hanging sections:
+
+- directly matched bubbles: **10 points each**;
+- `n` detached bubbles: `n === 0 ? 0 : 20 × 2^(min(n, 17) - 1)`;
+- 17 or more detached bubbles therefore award the capped **1,310,720** points;
+- no time bonus, combo multiplier, attack score, or assist penalty;
+- saturate the running total at PostgreSQL integer max `2,147,483,647`.
+
+`score()` returns the raw total as `assetValue`. Add `puzzle-bubble` to the runtime's raw-score list. Results detail records `{ wave, wavesCleared, shots, clearingShots, bubblesPopped, bubblesDropped }`. Display accuracy is `clearingShots / max(1, shots)` and progress is `min(1, wavesCleared / 10)`; neither changes the raw score.
+
+After all boards are terminal, the engine winner is highest score, then most detached bubbles, then most waves cleared, then fewest shots, then lowest seat. Mark only that player as `completed` so the existing result ranking follows the same winner on an exact score tie. At room-time expiry, the runtime ranks the current raw scores; it does not force boards to top out.
+
+### Original 16-bit presentation
+
+Render the main playfield to a `<canvas>` with a **256×224 logical resolution**, then scale it with `image-rendering: pixelated` and `ctx.imageSmoothingEnabled = false`. This follows the common Mega Drive H32 frame and its 8×8 tile discipline without pretending to emulate the hardware.
+
+Art direction: **Sky Pop Workshop**—a cheerful floating-island repair shop with checker-cloud horizons, brass launcher parts, striped awnings, and two original round mechanic mascots. It keeps the original game's cute, bright, toy-like energy without using bubble dragons or Taito silhouettes.
+
+Visual rules:
+
+- all coordinates and sprite frames land on integer pixels;
+- construct scenery from reusable 8×8 tiles;
+- use four deliberate 16-entry palette ramps, with transparency occupying entry zero;
+- each bubble uses a dark outline, two flat body shades, a two-pixel highlight, and a unique inner glyph;
+- colour is never the only identifier: the eight bubbles use circle, star, diamond, bolt, leaf, moon, cross, and crown glyphs;
+- no smooth gradients, blur, vector-perfect curves, or anti-aliased scaling;
+- use 2–4 frame animations for launcher recoil, bubble pop, falling bubbles, mascot reactions, and danger warning;
+- use a two-layer stepped parallax background and palette cycling rather than large raster images;
+- make the danger line flash by swapping palette entries, not opacity fading;
+- respect reduced motion by resolving pop/drop frames immediately while preserving state changes and sound cues.
+
+Desktop shows the player's full board and the opponent's small live board. Mobile keeps the full board, score, next bubble, wave, and pressure counter above 44px minimum touch controls; the opponent board collapses to a score strip with an expand button. Spectators see both boards at equal size when space allows.
+
+Controls:
+
+- keyboard: Left/Right aim, Space shoots, G toggles assist;
+- pointer: move or drag above the launcher to aim, release/tap FIRE to shoot;
+- touch: large Left, Fire, Right buttons below the board;
+- disable repeat firing until the current shot animation resolves locally.
+
+Add an original synthesized chiptune cue set and one original stage loop in `sound.tsx`. Use short square-wave/arpeggio phrases and noise percussion, but do not quote Puzzle Bobble melodies or samples.
+
+### Engine, bot, and server work
+
+Create `packages/games/src/puzzle-bubble/`:
+
+- `state.ts` — config, hex board, per-player RNG, score counters, last-shot animation payload, actions and public view;
+- `rules.ts` — fixed-point ray tracing, wall reflection, deterministic snap, graph searches, seeded board/row generation, scoring helpers;
+- `index.ts` — concurrent `GameEngine` setup/reduce/view/score/isOver implementation;
+- `bot.ts` — view-only policy;
+- `puzzle-bubble.test.ts` — durable behavioural tests.
+
+Bot policy evaluates legal angles against only `view.you`:
+
+- easy: sample coarse angles and add seeded aim error;
+- normal: choose the best immediate `score gained - resulting board height`;
+- hard: evaluate every 2 degrees and prefer large detached drops, with one-bubble lookahead using the visible next bubble;
+- all levels use the speed setting only for scheduler delay, never for hidden information.
+
+`bot.ts` must not import `PuzzleBubbleState`. `autoAction()` shoots straight up as a guaranteed valid fallback. Add the bot to the existing concurrent scheduler; Puzzle Bubble needs no arcade tick watchdog because a shot resolves atomically.
+
+Integration changes:
+
+1. `packages/shared/src/registry.ts`: register `puzzle-bubble`, 1–2 players, bots enabled, default time `0`, `colors: 3..8`, and the speed enum.
+2. `packages/shared/src/protocol.ts`: add the validated `shoot` action to `gameActionSchema`.
+3. `packages/games/src/index.ts`: export the engine, rules, bot, types, and add it to `BOARD_ENGINES`.
+4. `apps/server/src/rooms/runtime.ts`: select the engine, treat it as concurrent, include raw score/results detail, and finish only after all player boards are terminal.
+5. `apps/server/src/rooms/bots.ts`: route Puzzle Bubble bots through `scheduleConcurrentBots`.
+6. `apps/web/src/routes/AdminDashboard.tsx`: show Bubble colours and Speed only for this game.
+7. `apps/web/src/games/PuzzleBubbleBoard.tsx`: canvas renderer, input, assist, responsive HUD, opponent preview, and animations.
+8. `apps/web/src/routes/RoomPage.tsx`: route the board, allow arcade fullscreen, and select the new original arcade audio theme.
+
+No database migration is needed for the game itself; config and state already use JSON.
+
+### Room timer correction required by this game
+
+The current dashboard turns a registry default of `0` minutes into a forced one-minute value, while the runtime hard-codes several arcade ids to ignore positive room limits. That cannot express “no limit by default, but it can be set.”
+
+Make room timing consistent:
+
+- allow `timeLimitSec` to be exactly `0` or 30–14,400 in `apps/server/src/routes/rooms.ts`;
+- for games whose registry default is `0`, show a checked `No time limit` control and hide/disable the minute input;
+- unchecking it reveals the 1–240 minute input, initially 10 minutes;
+- send `timeLimitSec: 0` for no limit;
+- in `LiveRoom.start()`, set `endsAt` whenever `timeLimitSec > 0` and remove the arcade id exclusion list.
+
+This also makes optional timers work consistently for Tetris, Pac-Man, Space Invaders, and Bomberman instead of silently ignoring the host's value.
+
+### Implementation order
+
+1. Add registry config, protocol action, and the no-limit room-timer contract.
+2. Build and prove the pure hex-grid, trajectory, matching, detached-drop, pressure, and scoring helpers.
+3. Build the concurrent engine and deterministic same-seed player setup.
+4. Add the view-only bot and scheduler/runtime integration.
+5. Build the canvas board and local assist shadow from the shared trajectory helper.
+6. Add host settings, room routing, opponent preview, audio, and results detail.
+7. Smoke-test solo, bot, two-browser competition, time expiry, pause/resume, reconnect, and crash replay.
+8. Remove any temporary harnesses or generated research captures.
+
+### Verification
+
+Permanent engine tests must prove observable failure-prone rules:
+
+- direct shots, one-wall bank shots, and exact snap ties land in the expected slot;
+- a 3+ group pops while a group of two remains;
+- detached bubbles are exactly the occupied cells no longer connected to the ceiling;
+- scoring matches 10-per-pop and the capped exponential drop table;
+- pressure inserts a correctly staggered row at 8/6/4 misses and danger-row contact ends only that player;
+- a full clear creates the next wave without changing the configured colour count;
+- two cloned players with the same shot sequence remain bit-identical even when their reducer calls are interleaved differently;
+- one player's shot never changes the other player's board, queue, pressure, or score;
+- the room ends only when all active boards are terminal;
+- replaying accepted actions from the same seed reproduces the exact state;
+- config accepts colour bounds and all three speeds, and rejects everything else;
+- the bot receives only its public view and always returns an in-range integer angle.
+
+Run the focused checks:
+
+```bash
+npx vitest run packages/games/src/puzzle-bubble/puzzle-bubble.test.ts
+npx vitest run packages/shared/src/registry.test.ts apps/server/src/rooms/runtime.test.ts
+npx tsc -b
+```
+
+Browser proof uses two profiles in one room:
+
+1. Create the default room and confirm it says `NO LIMIT`, six colours, and normal speed.
+2. Confirm both initial boards and queues match.
+3. Make the same bank shot on both boards and confirm the same landing and score.
+4. Diverge the shots and confirm neither board sends bubbles or penalties to the other.
+5. Toggle assist on one browser; confirm only that browser changes and reload preserves it.
+6. Top out one player; confirm the other keeps playing and the finished player can spectate.
+7. Top out the second player; confirm raw score decides the result.
+8. Create a fast, eight-colour, one-minute room and confirm pressure falls every four misses and the room ends at the configured time.
+9. At 360px wide, confirm the canvas and controls fit without horizontal scrolling and every touch target is at least 44×44px.
+10. Visually confirm nearest-neighbour pixels, the limited palette, glyph-based colour identification, reduced-motion behaviour, and that no Taito art or audio appears.

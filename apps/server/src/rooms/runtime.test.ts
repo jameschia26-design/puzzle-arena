@@ -242,7 +242,7 @@ describe('pause during the pre-game start countdown', () => {
   });
 });
 
-describe('concurrent arcade games wiring (space-invaders & bomberman)', () => {
+describe('concurrent arcade games wiring (space-invaders, bomberman & Puzzle Bubble)', () => {
   it('wires space-invaders runtime invariants correctly', () => {
     const room = new LiveRoom({
       id: 'si-room',
@@ -309,7 +309,38 @@ describe('concurrent arcade games wiring (space-invaders & bomberman)', () => {
     }
   });
 
-  it('schedules concurrent bots for space-invaders and bomberman without error', () => {
+  it('wires Puzzle Bubble as a concurrent score game without a tick watchdog', () => {
+    const room = new LiveRoom({
+      id: 'pb-room',
+      code: 'PB1234',
+      gameId: 'puzzle-bubble',
+      config: { colors: 6, speed: 'normal' },
+      timeLimitSec: 0,
+      status: 'lobby',
+      startedAt: null,
+      endsAt: null,
+    });
+    room.players = [makePlayer('p1', { seat: 0, isHost: true }), makePlayer('p2', { seat: 1, isBot: true })];
+    room.gameState = room.engine().setup(['p1', 'p2'], 42, room.config);
+    room.status = 'running';
+
+    expect(room.actorToAct()).toBeNull();
+    expect(room.engine().id).toBe('puzzle-bubble');
+    expect(room.scoreInputFor(room.players[0]!).assetValue).toBe(0);
+
+    vi.useFakeTimers();
+    try {
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      room.armArcadeTickWatchdog();
+      vi.advanceTimersByTime(1_100);
+      expect(applySpy).not.toHaveBeenCalled();
+    } finally {
+      clearInterval(internals(room).arcadeTickTimer);
+      vi.useRealTimers();
+    }
+  });
+
+  it('schedules concurrent bots for space-invaders, bomberman, and Puzzle Bubble without error', () => {
     vi.useFakeTimers();
     try {
       const room = new LiveRoom({
@@ -357,6 +388,31 @@ describe('concurrent arcade games wiring (space-invaders & bomberman)', () => {
       expect(applySpy).toHaveBeenCalledWith('b1', expect.anything());
     } finally {
       stopBots('bm-bots');
+      vi.useRealTimers();
+    }
+
+    vi.useFakeTimers();
+    try {
+      const room = new LiveRoom({
+        id: 'pb-bots',
+        code: 'PBBOTS',
+        gameId: 'puzzle-bubble',
+        config: { colors: 6, speed: 'normal' },
+        timeLimitSec: 0,
+        status: 'lobby',
+        startedAt: null,
+        endsAt: null,
+      });
+      room.players = [makePlayer('b1', { seat: 0, isBot: true })];
+      room.gameState = room.engine().setup(['b1'], 42, room.config);
+      room.status = 'running';
+
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      scheduleBots(room);
+      vi.advanceTimersByTime(2_000);
+      expect(applySpy).toHaveBeenCalledWith('b1', { type: 'shoot', angleDeg: expect.any(Number) });
+    } finally {
+      stopBots('pb-bots');
       vi.useRealTimers();
     }
   });

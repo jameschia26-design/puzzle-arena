@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeScore, rankResults, type ScoreInput } from './scoring.js';
+import { computeScore, rankResults, speedComponent, type ScoreInput } from './scoring.js';
 import { mulberry32, rngFrom, seedFromString } from './rng.js';
 
 const base: ScoreInput = {
@@ -59,6 +59,10 @@ describe('computeScore — the exact values named in the plan', () => {
   it('speed contributes nothing when the player did not complete', () => {
     const a = computeScore({ ...base, progress: 1, accuracy: 1, completed: false }, LIMIT);
     expect(a).toBe(750);
+  });
+
+  it('reports zero speed for a completed no-limit game', () => {
+    expect(speedComponent({ ...base, completed: true, completedAtMs: 5_000 }, 0)).toBe(0);
   });
 });
 

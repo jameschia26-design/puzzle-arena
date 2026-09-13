@@ -65,7 +65,7 @@ function makeCode(): string {
 const createRoomSchema = z.object({
   gameId: gameIdSchema,
   config: z.unknown().optional(),
-  timeLimitSec: z.number().int().min(30).max(14_400).optional(),
+  timeLimitSec: z.number().int().min(0).max(14_400).optional(),
 });
 
 export async function pruneHostRooms(userId: string, keepCount = 10): Promise<void> {

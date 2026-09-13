@@ -50,6 +50,7 @@ import {
   bomberman,
   xiangqi,
   xiangqiRules,
+  puzzleBubble,
 } from '@puzzle-arena/games';
 import { mastermind } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -245,8 +246,7 @@ export class LiveRoom {
 
     const startsAt = Date.now() + START_COUNTDOWN_MS;
     this.startedAt = startsAt;
-    const hasTimeLimit = this.timeLimitMs > 0 && this.gameId !== 'pacman' && this.gameId !== 'tetris' && this.gameId !== 'space-invaders' && this.gameId !== 'bomberman';
-    this.endsAt = hasTimeLimit ? startsAt + this.timeLimitMs : null;
+    this.endsAt = this.timeLimitMs > 0 ? startsAt + this.timeLimitMs : null;
     this.status = 'running';
 
     await db
@@ -306,6 +306,7 @@ export class LiveRoom {
     if (this.gameId === 'pacman') return pacman as unknown as typeof propertyTycoon;
     if (this.gameId === 'space-invaders') return spaceInvaders as unknown as typeof propertyTycoon;
     if (this.gameId === 'bomberman') return bomberman as unknown as typeof propertyTycoon;
+    if (this.gameId === 'puzzle-bubble') return puzzleBubble as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -325,6 +326,7 @@ export class LiveRoom {
     if (this.gameId === 'pacman') return null; // concurrent — no turn
     if (this.gameId === 'space-invaders') return null; // concurrent — no turn
     if (this.gameId === 'bomberman') return null; // concurrent — no turn
+    if (this.gameId === 'puzzle-bubble') return null; // concurrent — no turn
     if (this.gameId === 'animal-chess') return animalChessRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
@@ -1008,6 +1010,7 @@ export class LiveRoom {
             this.gameId === 'pacman' ||
             this.gameId === 'space-invaders' ||
             this.gameId === 'bomberman' ||
+            this.gameId === 'puzzle-bubble' ||
             this.gameId === 'mastermind') &&
           input.assetValue !== undefined;
         const score = usesAssetValue
@@ -1022,6 +1025,18 @@ export class LiveRoom {
           const tries = Array.isArray(st?.guesses) ? st!.guesses.length : 0;
           const maxTries = puz?.maxTries ?? 10;
           detail = { mastermind: { tries, maxTries } };
+        } else if (this.gameId === 'puzzle-bubble' && this.gameState) {
+          const inputState = this.engine().view(this.gameState as never, p.id) as {
+            you: {
+              wave: number;
+              wavesCleared: number;
+              shots: number;
+              clearingShots: number;
+              bubblesPopped: number;
+              bubblesDropped: number;
+            } | null;
+          };
+          detail = inputState.you ? { puzzleBubble: inputState.you } : {};
         }
         return {
           playerId: p.id,

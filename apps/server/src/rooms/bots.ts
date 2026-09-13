@@ -14,6 +14,7 @@ import {
   pacmanBot,
   spaceInvadersBot,
   bombermanBot,
+  puzzleBubbleBot,
   type BigTwoBotView,
   type CheckersBotView,
   type ChessBotView,
@@ -29,6 +30,7 @@ import {
   type PacManBotView,
   type SpaceInvadersBotView,
   type BombermanBotView,
+  type PuzzleBubbleBotView,
 } from '@puzzle-arena/games';
 import { mastermind } from '@puzzle-arena/puzzles';
 import { mulberry32, type BotDifficulty, type Rng } from '@puzzle-arena/shared';
@@ -96,7 +98,7 @@ function thinkDelay(rng: Rng, gameId?: string, difficulty?: BotDifficulty): numb
  */
 export function scheduleBots(room: LiveRoom): void {
   if (room.kind !== 'board' || room.status !== 'running') return;
-  if (room.gameId === 'tetris' || room.gameId === 'pacman' || room.gameId === 'space-invaders' || room.gameId === 'bomberman') {
+  if (room.gameId === 'tetris' || room.gameId === 'pacman' || room.gameId === 'space-invaders' || room.gameId === 'bomberman' || room.gameId === 'puzzle-bubble') {
     scheduleConcurrentBots(room);
     return;
   }
@@ -201,7 +203,7 @@ function scheduleConcurrentBots(room: LiveRoom): void {
       const activeBots = room.players.filter((p) => p.isBot && !p.left);
       let roomTicked = false;
       for (const bot of activeBots) {
-      const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView | SpaceInvadersBotView | BombermanBotView;
+      const view = room.engine().view(room.gameState as never, bot.id) as unknown as TetrisBotView | PacManBotView | SpaceInvadersBotView | BombermanBotView | PuzzleBubbleBotView;
       const difficulty: BotDifficulty = bot.botDifficulty ?? 'normal';
       // concurrent games expose `you` with gameOver; narrow via typed view, not inline shape cast
       const concurrentView = view as unknown as { you: { gameOver?: boolean } | null };
@@ -215,6 +217,8 @@ function scheduleConcurrentBots(room: LiveRoom): void {
           action = spaceInvadersBot.chooseAction(view as SpaceInvadersBotView, bot.id, rng, difficulty);
         } else if (room.gameId === 'bomberman') {
           action = bombermanBot.chooseAction(view as BombermanBotView, bot.id, rng, difficulty);
+        } else if (room.gameId === 'puzzle-bubble') {
+          action = puzzleBubbleBot.chooseAction(view as PuzzleBubbleBotView, bot.id, rng, difficulty);
         } else {
           action = tetrisBot.chooseAction(view as TetrisBotView, bot.id, rng, difficulty);
         }

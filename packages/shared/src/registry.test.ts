@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   GAME_REGISTRY,
   mastermindConfigSchema,
+  puzzleBubbleConfigSchema,
   parseGameConfig,
 } from './registry.js';
 
@@ -53,5 +54,26 @@ describe('mastermind registry and configuration', () => {
   it('parses correctly via parseGameConfig', () => {
     const parsed = parseGameConfig('mastermind', { colors: 10, slots: 5, maxTries: 12 });
     expect(parsed).toEqual({ colors: 10, slots: 5, maxTries: 12 });
+  });
+});
+
+describe('Puzzle Bubble registry and configuration', () => {
+  it('registers the two-player board game with no default time limit', () => {
+    const meta = GAME_REGISTRY['puzzle-bubble'];
+
+    expect(meta).toMatchObject({
+      id: 'puzzle-bubble',
+      kind: 'board',
+      minPlayers: 1,
+      maxPlayers: 2,
+      supportsBots: true,
+      defaultTimeLimitSec: 0,
+    });
+  });
+
+  it('parses its bounded color count and speed', () => {
+    expect(puzzleBubbleConfigSchema.parse({})).toEqual({ colors: 6, speed: 'normal' });
+    expect(parseGameConfig('puzzle-bubble', { colors: 3, speed: 'fast' })).toEqual({ colors: 3, speed: 'fast' });
+    expect(() => puzzleBubbleConfigSchema.parse({ colors: 9 })).toThrow();
   });
 });

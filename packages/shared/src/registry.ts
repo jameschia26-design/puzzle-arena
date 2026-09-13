@@ -22,6 +22,7 @@ export const GAME_IDS = [
   'pacman',
   'space-invaders',
   'bomberman',
+  'puzzle-bubble',
 ] as const;
 export type GameId = (typeof GAME_IDS)[number];
 
@@ -142,6 +143,10 @@ export const spaceInvadersConfigSchema = z.object({
 export const bombermanConfigSchema = z.object({
   tickMs: z.number().int().min(20).max(200).default(60),
   softDensity: z.number().int().min(30).max(80).default(65),
+});
+export const puzzleBubbleConfigSchema = z.object({
+  colors: z.number().int().min(3).max(8).default(6),
+  speed: z.enum(['slow', 'normal', 'fast']).default('normal'),
 });
 /**
  * Chess and Xiangqi are the only two board games that use a real chess-clock
@@ -408,6 +413,17 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: bombermanConfigSchema,
     blurb: 'Blast soft blocks, collect power-ups, trap rivals and dodge fiery cross-explosions in dynamic grid arenas.',
+  },
+  'puzzle-bubble': {
+    id: 'puzzle-bubble',
+    title: 'Puzzle Bubble',
+    kind: 'board',
+    minPlayers: 1,
+    maxPlayers: 2,
+    defaultTimeLimitSec: 0,
+    supportsBots: true,
+    configSchema: puzzleBubbleConfigSchema,
+    blurb: 'Bank shots, match three, and drop hanging bubbles before your own board reaches the line.',
   },
 };
 

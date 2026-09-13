@@ -204,6 +204,11 @@ export const bombermanActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tick') }),
 ]);
 export type BombermanAction = z.infer<typeof bombermanActionSchema>;
+export const puzzleBubbleActionSchema = z.object({
+  type: z.literal('shoot'),
+  angleDeg: z.number().int().min(-80).max(80),
+});
+export type PuzzleBubbleAction = z.infer<typeof puzzleBubbleActionSchema>;
 
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
@@ -220,6 +225,7 @@ export const gameActionSchema = z.union([
   pacmanActionSchema,
   spaceInvadersActionSchema,
   bombermanActionSchema,
+  puzzleBubbleActionSchema,
 ]);
 export type GameAction =
   | PropertyTycoonAction
@@ -235,7 +241,8 @@ export type GameAction =
   | TetrisAction
   | PacmanAction
   | SpaceInvadersAction
-  | BombermanAction;
+  | BombermanAction
+  | PuzzleBubbleAction;
 
 /**
  * `forfeit` is deliberately NOT part of `gameActionSchema` — it is produced
