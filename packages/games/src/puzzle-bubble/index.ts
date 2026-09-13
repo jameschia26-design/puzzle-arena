@@ -78,6 +78,7 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): PuzzleBub
       bubblesPopped: 0,
       bubblesDropped: 0,
       pressureRemaining: pressure,
+      descents: 0,
       gameOver: false,
       lastShot: null,
       actionsSubmitted: 0,
@@ -104,6 +105,27 @@ function reduce(prev: PuzzleBubbleState, playerId: string, action: PuzzleBubbleA
   if (!player) return { ok: false, error: 'Unknown player' };
   if (player.gameOver) return { ok: false, error: 'Game over' };
   if (state.phase === 'game_over') return { ok: false, error: 'Game over' };
+  if (action.type === 'descent') {
+    const rng = rngFrom(player.rng);
+    const pressured = insertPressureRow(player.board, player.rowParity, state.config, rng);
+    state.seq += 1;
+    player.board = pressured.board;
+    player.rowParity = pressured.rowParity;
+    player.rng = rng.state();
+    player.descents += 1;
+    if (hasReachedDanger(player.board)) player.gameOver = true;
+
+    const log: LogEntry[] = [makeLog('Ceiling descended', player.id)];
+    if (player.gameOver) log.push(makeLog('BUBBLES OVER THE LINE', player.id));
+    if (state.players.every((candidate) => candidate.gameOver)) {
+      state.phase = 'game_over';
+      state.winner = [...state.players].sort(comparePlayers)[0]?.id ?? null;
+      log.push(makeLog(`Game over — ${state.winner ? 'score leader wins' : 'no winner'}`, null));
+    }
+    state.log.push(...stampLogs(state, log));
+    state.log = state.log.slice(-200);
+    return { ok: true, state, log };
+  }
   if (action.type !== 'shoot' || !Number.isInteger(action.angleDeg) || action.angleDeg < -80 || action.angleDeg > 80) {
     return { ok: false, error: 'Invalid shot angle' };
   }
@@ -203,6 +225,7 @@ function toPublic(player: PuzzleBubblePlayerState, config: PuzzleBubbleConfig): 
     bubblesDropped: player.bubblesDropped,
     pressureRemaining: player.pressureRemaining,
     pressureLimit: pressureLimit(config.speed),
+    descents: player.descents,
     gameOver: player.gameOver,
     lastShot: player.lastShot ? structuredClone(player.lastShot) : null,
   };

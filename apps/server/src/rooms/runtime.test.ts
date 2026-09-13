@@ -22,6 +22,7 @@ interface LiveRoomInternals {
   scheduleStartCountdown(delay: number): void;
   armChessClock(actorId: string, actor: LivePlayer): void;
   arcadeTickTimer: NodeJS.Timeout | null;
+  puzzleBubblePressureTimer: NodeJS.Timeout | null;
 }
 
 /** Casts to the private-member view above; the shape is verified by the room's own source, not runtime data. */
@@ -336,6 +337,36 @@ describe('concurrent arcade games wiring (space-invaders, bomberman & Puzzle Bub
       expect(applySpy).not.toHaveBeenCalled();
     } finally {
       clearInterval(internals(room).arcadeTickTimer);
+      vi.useRealTimers();
+    }
+  });
+
+  it('descends every active Puzzle Bubble board on its difficulty timer', () => {
+    const room = new LiveRoom({
+      id: 'pb-descent',
+      code: 'PBDESC',
+      gameId: 'puzzle-bubble',
+      config: { colors: 6, speed: 'fast' },
+      timeLimitSec: 0,
+      status: 'lobby',
+      startedAt: null,
+      endsAt: null,
+    });
+    room.players = [makePlayer('p1', { seat: 0, isHost: true }), makePlayer('p2', { seat: 1 })];
+    room.gameState = room.engine().setup(['p1', 'p2'], 42, room.config);
+    room.status = 'running';
+
+    vi.useFakeTimers();
+    try {
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      room.armPuzzleBubblePressureTimer();
+      vi.advanceTimersByTime(11_999);
+      expect(applySpy).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(applySpy).toHaveBeenNthCalledWith(1, 'p1', { type: 'descent' });
+      expect(applySpy).toHaveBeenNthCalledWith(2, 'p2', { type: 'descent' });
+    } finally {
+      clearInterval(internals(room).puzzleBubblePressureTimer);
       vi.useRealTimers();
     }
   });

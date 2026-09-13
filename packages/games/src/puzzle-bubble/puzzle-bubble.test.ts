@@ -3,6 +3,7 @@ import { mulberry32 } from '@puzzle-arena/shared';
 import { puzzleBubble } from './index.js';
 import {
   dropScore,
+  descentIntervalMs,
   findDetached,
   generateWave,
   insertPressureRow,
@@ -58,6 +59,12 @@ describe('puzzle bubble rules', () => {
     expect(pressureLimit('fast')).toBe(4);
   });
 
+  it('shortens the automatic descent timer as speed increases', () => {
+    expect(descentIntervalMs('slow')).toBe(30_000);
+    expect(descentIntervalMs('normal')).toBe(20_000);
+    expect(descentIntervalMs('fast')).toBe(12_000);
+  });
+
   it('inserts a staggered pressure row and retains danger-row bubbles for defeat detection', () => {
     const rng = mulberry32(21);
     const result = insertPressureRow([{ row: BUBBLE_ROWS - 1, col: 0, color: 'coral' }], 0, { colors: 3, speed: 'fast' }, rng);
@@ -98,6 +105,18 @@ describe('puzzle bubble engine', () => {
     expect(separate.ok).toBe(true);
     if (!separate.ok) return;
     expect(interleaved.state.players[0]).toEqual(separate.state.players[0]);
+  });
+
+  it('applies a deterministic ceiling descent without consuming a shot', () => {
+    const state = puzzleBubble.setup(['p1'], 52, { colors: 4, speed: 'normal' });
+    const result = puzzleBubble.reduce(state, 'p1', { type: 'descent' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players[0]?.descents).toBe(1);
+    expect(result.state.players[0]?.shots).toBe(0);
+    expect(result.state.players[0]?.board.some((cell) => cell.row === 0)).toBe(true);
+    expect(result.state.players[0]?.rowParity).toBe(1);
   });
 
   it('rejects non-integer and out-of-range angles', () => {

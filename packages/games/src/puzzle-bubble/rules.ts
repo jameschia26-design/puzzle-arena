@@ -36,6 +36,13 @@ export function shotAnimationMs(speed: PuzzleBubbleSpeed): number {
   return 360;
 }
 
+/** Real-time ceiling descent cadence; faster modes leave less time between rows. */
+export function descentIntervalMs(speed: PuzzleBubbleSpeed): number {
+  if (speed === 'slow') return 30_000;
+  if (speed === 'fast') return 12_000;
+  return 20_000;
+}
+
 export function slotCount(row: number, rowParity: 0 | 1): number {
   return (row + rowParity) % 2 === 0 ? LONG_ROW_SLOTS : SHORT_ROW_SLOTS;
 }

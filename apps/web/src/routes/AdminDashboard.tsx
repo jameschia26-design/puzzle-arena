@@ -286,9 +286,9 @@ export default function AdminDashboard(): React.ReactElement {
                 value={puzzleBubbleSpeed}
                 onValueChange={(value) => setPuzzleBubbleSpeed(value as 'slow' | 'normal' | 'fast')}
                 options={[
-                  { value: 'slow', label: 'Slow · 8 misses' },
-                  { value: 'normal', label: 'Normal · 6 misses' },
-                  { value: 'fast', label: 'Fast · 4 misses' },
+                  { value: 'slow', label: 'Slow · ceiling every 30s' },
+                  { value: 'normal', label: 'Normal · ceiling every 20s' },
+                  { value: 'fast', label: 'Fast · ceiling every 12s' },
                 ]}
               />
             </>

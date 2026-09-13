@@ -54,6 +54,7 @@ export interface PuzzleBubblePlayerState {
   bubblesPopped: number;
   bubblesDropped: number;
   pressureRemaining: number;
+  descents: number;
   gameOver: boolean;
   lastShot: PuzzleBubbleShot | null;
   actionsSubmitted: number;
@@ -71,7 +72,9 @@ export interface PuzzleBubbleState extends BaseState {
   log: LogEntry[];
 }
 
-export type PuzzleBubbleAction = { type: 'shoot'; angleDeg: number };
+export type PuzzleBubbleAction =
+  | { type: 'shoot'; angleDeg: number }
+  | { type: 'descent' };
 
 export interface PuzzleBubblePublicPlayer {
   id: string;
@@ -88,6 +91,7 @@ export interface PuzzleBubblePublicPlayer {
   bubblesPopped: number;
   bubblesDropped: number;
   pressureRemaining: number;
+  descents: number;
   pressureLimit: number;
   gameOver: boolean;
   lastShot: PuzzleBubbleShot | null;
@@ -99,5 +103,7 @@ export interface PuzzleBubbleView {
   you: PuzzleBubblePublicPlayer | null;
   players: PuzzleBubblePublicPlayer[];
   config: PuzzleBubbleConfig;
+  /** Runtime-owned epoch deadline for the next automatic ceiling descent. */
+  pressureEndsAtMs?: number | null;
   log: LogEntry[];
 }

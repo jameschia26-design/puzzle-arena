@@ -51,6 +51,7 @@ import {
   xiangqi,
   xiangqiRules,
   puzzleBubble,
+  puzzleBubbleRules,
 } from '@puzzle-arena/games';
 import { mastermind } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -152,6 +153,8 @@ export class LiveRoom {
   /** Chess-clock games: fires the "still thinking?" prompts every 60s of idling on one move. */
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private arcadeTickTimer: NodeJS.Timeout | null = null;
+  private puzzleBubblePressureTimer: NodeJS.Timeout | null = null;
+  private puzzleBubblePressureEndsAt: number | null = null;
   private playerLastActionMs = new Map<string, number>();
   private idleStrikes = 0;
   constructor(row: {
@@ -282,6 +285,7 @@ export class LiveRoom {
       if (this.kind === 'board') {
         this.armTurnTimer();
         this.armArcadeTickWatchdog();
+        this.armPuzzleBubblePressureTimer();
         // The first actor's deadline exists only once the countdown clears.
         this.broadcastGameState();
         scheduleBots(this);
@@ -363,6 +367,7 @@ export class LiveRoom {
       clearInterval(this.arcadeTickTimer);
       this.arcadeTickTimer = null;
     }
+    this.clearPuzzleBubblePressureTimer();
     stopBots(this.id);
     this.pushLog('Game paused by host');
     this.io?.to(this.id).emit(EV.roomPaused, { paused: true });
@@ -393,6 +398,7 @@ export class LiveRoom {
       this.scheduleStartCountdown(remaining);
     } else if (this.kind === 'board') {
       this.armArcadeTickWatchdog();
+      this.armPuzzleBubblePressureTimer();
       scheduleBots(this);
     } else if (this.kind === 'puzzle') {
       schedulePuzzleBots(this);
@@ -421,6 +427,7 @@ export class LiveRoom {
       clearInterval(this.arcadeTickTimer);
       this.arcadeTickTimer = null;
     }
+    this.clearPuzzleBubblePressureTimer();
     stopBots(this.id);
 
     this.status = 'lobby';
@@ -570,6 +577,39 @@ export class LiveRoom {
         }
       }
     }, 1000);
+  }
+
+  private clearPuzzleBubblePressureTimer(): void {
+    if (this.puzzleBubblePressureTimer) {
+      clearInterval(this.puzzleBubblePressureTimer);
+      this.puzzleBubblePressureTimer = null;
+    }
+    this.puzzleBubblePressureEndsAt = null;
+  }
+
+  /** Runs the authoritative, difficulty-scaled ceiling timer for Puzzle Bubble. */
+  armPuzzleBubblePressureTimer(): void {
+    this.clearPuzzleBubblePressureTimer();
+    if (this.kind !== 'board' || this.gameId !== 'puzzle-bubble' || this.status !== 'running' || this.paused || !this.gameState) {
+      return;
+    }
+    const state = this.gameState as { config?: { speed?: 'slow' | 'normal' | 'fast' } };
+    const interval = puzzleBubbleRules.descentIntervalMs(state.config?.speed ?? 'normal');
+    this.puzzleBubblePressureEndsAt = Date.now() + interval;
+    this.puzzleBubblePressureTimer = setInterval(() => {
+      if (this.status !== 'running' || this.paused || !this.gameState) return;
+      this.puzzleBubblePressureEndsAt = Date.now() + interval;
+      for (const player of this.players) {
+        if (player.left) continue;
+        const view = this.engine().view(this.gameState as never, player.id) as { you: { gameOver?: boolean } | null };
+        if (!view.you || view.you.gameOver) continue;
+        const applied = this.applyGameAction(player.id, { type: 'descent' });
+        if (!applied.accepted) {
+          logger.error({ roomId: this.id, playerId: player.id, err: applied.error }, 'Puzzle Bubble ceiling descent rejected');
+        }
+        if (this.status !== 'running') break;
+      }
+    }, interval);
   }
 
   /**
@@ -993,6 +1033,7 @@ export class LiveRoom {
       clearInterval(this.arcadeTickTimer);
       this.arcadeTickTimer = null;
     }
+    this.clearPuzzleBubblePressureTimer();
     stopBots(this.id);
     const rowsToRank = this.players
       .filter((p) => !p.left || p.isBot)
@@ -1231,6 +1272,9 @@ export class LiveRoom {
       ) {
         const v = view as { log: LogEntry[] };
         v.log = v.log.map((entry) => this.humanise(entry));
+      }
+      if (this.gameId === 'puzzle-bubble') {
+        return { ...(view as object), pressureEndsAtMs: this.puzzleBubblePressureEndsAt };
       }
       return view;
     }
@@ -1628,6 +1672,7 @@ export async function rehydrateRunningRooms(io: IOServer): Promise<void> {
       room.armEndTimer();
       room.armTurnTimer();
       room.armArcadeTickWatchdog();
+      room.armPuzzleBubblePressureTimer();
       // whose next actor is a bot comes back 'running' and then sits there
       // forever, because nothing is left to take the bot's turn.
       if (room.kind === 'board') scheduleBots(room);
