@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '@puzzle-arena/shared';
 import { puzzleBubble } from './index.js';
 import {
+  BOARD_WIDTH,
+  BUBBLE_RADIUS,
+  allSlots,
+  bubblePoint,
   dropScore,
   descentIntervalMs,
   findDetached,
@@ -30,6 +34,34 @@ describe('puzzle bubble rules', () => {
     expect(bankLanding).not.toBeNull();
     expect(bank.path.length).toBeGreaterThan(1);
     expect(straightLanding).not.toEqual({ row: 0, col: 3 });
+  });
+
+  it('keeps every grid slot fully inside the playfield walls', () => {
+    for (const parity of [0, 1] as const) {
+      for (const slot of allSlots(parity)) {
+        const { x } = bubblePoint(slot, parity);
+        expect(x - BUBBLE_RADIUS).toBeGreaterThanOrEqual(0);
+        expect(x + BUBBLE_RADIUS).toBeLessThanOrEqual(BOARD_WIDTH);
+      }
+    }
+  });
+
+  it('banks a shot off the wall where the bubble touches it, not where its centre would', () => {
+    const trace = traceShot([], 0, 70);
+    const xs = trace.path.map((point) => point.x);
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(BUBBLE_RADIUS);
+    expect(Math.max(...xs)).toBeLessThanOrEqual(BOARD_WIDTH - BUBBLE_RADIUS);
+    // The trace records the exact contact point so a renderer draws the corner.
+    expect(xs).toContain(BOARD_WIDTH - BUBBLE_RADIUS);
+  });
+
+  it('can reach every ceiling column from the shooter', () => {
+    const reached = new Set<number>();
+    for (let angle = -80; angle <= 80; angle += 1) {
+      const landing = resolveLanding([], 0, traceShot([], 0, angle));
+      if (landing) reached.add(landing.col);
+    }
+    expect([...reached].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 
   it('pops a matching triple and drops bubbles no longer anchored to the ceiling', () => {

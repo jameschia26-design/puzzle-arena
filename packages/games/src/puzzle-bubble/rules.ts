@@ -13,15 +13,28 @@ import {
 } from './state.js';
 
 export const PIXEL_UNIT = 1024;
-export const BOARD_WIDTH = 14 * PIXEL_UNIT;
-export const ROW_HEIGHT = 1774;
 export const BUBBLE_RADIUS = PIXEL_UNIT;
+/**
+ * Wall-to-wall playfield width. Bubble *centres* never reach 0 or BOARD_WIDTH —
+ * they stop a radius short, because a bubble is a disc, not a point. Renderers
+ * must draw the side walls at logical x = 0 and x = BOARD_WIDTH, otherwise shots
+ * appear to bounce off nothing.
+ */
+export const BOARD_WIDTH = LONG_ROW_SLOTS * 2 * PIXEL_UNIT;
+export const ROW_HEIGHT = 1774;
+/** Ceiling plane: a radius above row 0's centre line. */
+export const CEILING_Y = -BUBBLE_RADIUS;
+export const SHOOTER_X = BOARD_WIDTH / 2;
+export const SHOOTER_Y = (BUBBLE_ROWS + 1) * ROW_HEIGHT;
+/** A bubble occupying this row has crossed the death line. */
+export const DANGER_ROW = BUBBLE_ROWS - 1;
 const COLLISION_DISTANCE_SQUARED = (BUBBLE_RADIUS * 2) ** 2;
 const NEIGHBOUR_TOLERANCE = PIXEL_UNIT ** 2 / 3;
 const SHOT_STEP = 128;
-const SHOOTER_X = 7 * PIXEL_UNIT;
-const SHOOTER_Y = (BUBBLE_ROWS + 1) * ROW_HEIGHT;
-const MAX_SHOT_STEPS = 420;
+const MIN_SHOT_X = BUBBLE_RADIUS;
+const MAX_SHOT_X = BOARD_WIDTH - BUBBLE_RADIUS;
+/** Enough steps for the flattest legal angle (±80°) to cross the whole board. */
+const MAX_SHOT_STEPS = 1200;
 const MAX_SCORE = 2_147_483_647;
 
 export function pressureLimit(speed: PuzzleBubbleSpeed): number {
@@ -58,7 +71,7 @@ export function slotKey(slot: BubbleSlot): string {
 export function bubblePoint(slot: BubbleSlot, rowParity: 0 | 1): BubblePoint {
   const longRow = slotCount(slot.row, rowParity) === LONG_ROW_SLOTS;
   return {
-    x: (longRow ? slot.col * 2 : slot.col * 2 + 1) * PIXEL_UNIT,
+    x: (longRow ? slot.col * 2 + 1 : slot.col * 2 + 2) * PIXEL_UNIT,
     y: slot.row * ROW_HEIGHT,
   };
 }
@@ -161,12 +174,17 @@ export function traceShot(board: BubbleCell[], rowParity: 0 | 1, angleDeg: numbe
   for (let step = 0; step < MAX_SHOT_STEPS; step += 1) {
     x += dx;
     y += dy;
-    if (x < 0 || x > BOARD_WIDTH) {
-      x = Math.max(0, Math.min(BOARD_WIDTH, x));
+    if (x < MIN_SHOT_X || x > MAX_SHOT_X) {
+      x = x < MIN_SHOT_X ? MIN_SHOT_X : MAX_SHOT_X;
       dx = -dx;
+      // Exact wall contact, so renderers draw the corner instead of a chord across it.
+      path.push({ x, y });
+    }
+    if (y <= 0) {
+      const ceiling = { x, y: 0 };
+      return { path: [...path, ceiling], impact: ceiling, hit: null };
     }
     const impact = { x, y };
-    if (y <= 0) return { path: [...path, impact], impact, hit: null };
     let hit: BubbleCell | null = null;
     let nearestDistance = Number.POSITIVE_INFINITY;
     for (const cell of board) {
@@ -238,7 +256,7 @@ export function insertPressureRow(board: BubbleCell[], rowParity: 0 | 1, config:
 }
 
 export function hasReachedDanger(board: BubbleCell[]): boolean {
-  return board.some((cell) => cell.row >= BUBBLE_ROWS - 1);
+  return board.some((cell) => cell.row >= DANGER_ROW);
 }
 
 export function clampScore(score: number): number {

@@ -746,7 +746,18 @@ After all boards are terminal, the engine winner is highest score, then most det
 
 ### Original 16-bit presentation
 
-Render the main playfield to a `<canvas>` with a **256×224 logical resolution**, then scale it with `image-rendering: pixelated` and `ctx.imageSmoothingEnabled = false`. This follows the common Mega Drive H32 frame and its 8×8 tile discipline without pretending to emulate the hardware.
+Render the main playfield to a `<canvas>` with a **256×416 logical resolution** (a
+portrait H32-width frame), then scale it with `image-rendering: pixelated` and
+`ctx.imageSmoothingEnabled = false`. It keeps the Mega Drive H32 width and 8×8 tile
+discipline, but the frame is tall rather than 224 high: 8 columns × 13 hex-packed rows
+at one bubble diameter of 28px need ~370px of height, and squeezing that into a 224-high
+frame forces a bubble pitch of 16px, which leaves the grid occupying only the middle
+128px of the 224px-wide playfield with the wall bounce nowhere near the drawn walls.
+All canvas layout is derived from the shared logical geometry in `rules.ts`
+(`BOARD_WIDTH`, `BUBBLE_RADIUS`, `CEILING_Y`, `SHOOTER_X/Y`, `DANGER_ROW`) — never
+hand-tuned — so the drawn walls, ceiling, danger line and launcher always sit exactly
+where the trajectory helper thinks they are. The canvas scales by height
+(`min(62vh, 620px, 142vw)`), so it stays inside short viewports and 360px-wide phones.
 
 Art direction: **Sky Pop Workshop**—a cheerful floating-island repair shop with checker-cloud horizons, brass launcher parts, striped awnings, and two original round mechanic mascots. It keeps the original game's cute, bright, toy-like energy without using bubble dragons or Taito silhouettes.
 
@@ -762,6 +773,16 @@ Visual rules:
 - use a two-layer stepped parallax background and palette cycling rather than large raster images;
 - make the danger line flash by swapping palette entries, not opacity fading;
 - respect reduced motion by resolving pop/drop frames immediately while preserving state changes and sound cues.
+
+Presentation lags the server by exactly one shot animation. The reducer resolves a
+shot atomically, so the authoritative board already has the pop applied the moment
+`game:state` arrives; drawing that immediately makes bubbles burst while their shot
+is still visibly in the air. `PuzzleBubbleBoard` therefore keeps a *drawn* snapshot
+(board, score, pressure, loaded bubble) separate from the latest server snapshot,
+flies the bubble along `lastShot.path` into its landing slot, and only then commits
+the new snapshot and releases the pop rings, sparks, score popup and falling
+bubbles. A descent or pressure row arriving mid-flight is queued into the same
+commit, so board, HUD and effects never disagree.
 
 Desktop shows the player's full board and the opponent's small live board. Mobile keeps the full board, score, next bubble, wave, and pressure counter above 44px minimum touch controls; the opponent board collapses to a score strip with an expand button. Spectators see both boards at equal size when space allows.
 

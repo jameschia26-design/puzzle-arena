@@ -9,12 +9,26 @@ import {
 } from '@puzzle-arena/games';
 import { bgm, sfx } from '../ui/sound.js';
 
-const CANVAS_W = 256;
-const CANVAS_H = 224;
+const rules = puzzleBubbleRules;
+
+/**
+ * Canvas layout is derived from the shared logical geometry, never guessed.
+ * PITCH is one bubble diameter in canvas pixels; everything else follows, so the
+ * drawn side walls sit exactly where `traceShot` bounces and the grid fills the
+ * playfield instead of huddling in the middle.
+ */
+const PITCH = 28;
+const SCALE = PITCH / (2 * rules.PIXEL_UNIT);
+const WALL = 16;
+const FIELD_X = WALL;
+const FIELD_W = Math.round(rules.BOARD_WIDTH * SCALE);
+const CANVAS_W = FIELD_W + WALL * 2;
+const CEILING_PX = 24;
+const FLOOR_Y = 392;
+const CANVAS_H = 416;
 const ASSIST_STORAGE_KEY = 'pa:puzzle-bubble-assist';
-const BUBBLE_RENDER_SCALE = 0.6;
-const DISPLAY_BUBBLE_PITCH = 16;
-const LOGICAL_SHOOTER_X = 7 * 1024;
+const MAX_ANGLE = 80;
+
 const COLOR: Record<BubbleColor, { outline: string; shade: string; body: string; rim: string; spec: string }> = {
   coral: { outline: '#52141a', shade: '#99222c', body: '#ee4740', rim: '#ff9288', spec: '#ffffff' },
   gold: { outline: '#503505', shade: '#9a640c', body: '#f3b72b', rim: '#ffe682', spec: '#ffffff' },
@@ -24,6 +38,46 @@ const COLOR: Record<BubbleColor, { outline: string; shade: string; body: string;
   rose: { outline: '#4e1435', shade: '#8e2762', body: '#db4b98', rim: '#fba0d3', spec: '#ffffff' },
   mint: { outline: '#0f3c37', shade: '#1d7469', body: '#3cc6b2', rim: '#96f5e7', spec: '#ffffff' },
   amber: { outline: '#53230a', shade: '#974513', body: '#eb7526', rim: '#ffb580', spec: '#ffffff' },
+};
+
+type BoardCell = PuzzleBubblePublicPlayer['board'][number];
+type Shot = NonNullable<PuzzleBubblePublicPlayer['lastShot']>;
+type Pixel = { x: number; y: number };
+
+function canvasPoint(point: BubblePoint): Pixel {
+  return {
+    x: FIELD_X + Math.round(point.x * SCALE),
+    y: CEILING_PX + Math.round((point.y - rules.CEILING_Y) * SCALE),
+  };
+}
+
+const SHOOTER = canvasPoint({ x: rules.SHOOTER_X, y: rules.SHOOTER_Y });
+const PIVOT_Y = SHOOTER.y + 16;
+const DANGER_LINE_Y = canvasPoint(rules.bubblePoint({ row: rules.DANGER_ROW, col: 0 }, 0)).y - PITCH / 2;
+
+/** A bubble burst, held back until its shot has finished flying. */
+type Burst = {
+  pops: Array<Pixel & { color: BubbleColor }>;
+  drops: Array<Pixel & { color: BubbleColor }>;
+  score: number;
+  pressureAdded: boolean;
+};
+
+/**
+ * A drawable instant of the game. Presentation (board, score, loaded bubble)
+ * moves as one, so nothing about a shot's outcome is shown before its bubble
+ * has finished flying.
+ */
+type Snapshot = { player: PuzzleBubblePublicPlayer; board: BoardCell[]; rowParity: 0 | 1; version: number };
+
+type Flight = {
+  points: Pixel[];
+  distances: number[];
+  total: number;
+  travelled: number;
+  speed: number;
+  color: BubbleColor;
+  burst: Burst;
 };
 
 type VisualParticle = {
@@ -39,33 +93,35 @@ type VisualParticle = {
 };
 
 type VisualState = {
-  descents: number;
+  ready: boolean;
+  /** What is currently drawn. Lags `latest` while a shot is in the air. */
+  view: Snapshot | null;
+  /** Latest authoritative board from the server. */
+  latest: Snapshot | null;
+  flight: Flight | null;
+  queuedDescent: boolean;
   lastShotCount: number;
-  previousCurrent: BubbleColor | null;
-  previousBoard: Map<string, BubbleColor>;
-  previousParity: 0 | 1;
+  descents: number;
+  loaded: BubbleColor | null;
   particles: VisualParticle[];
   recoil: number;
   recoilVelocity: number;
   shake: number;
   descentOffset: number;
-  shotColor: BubbleColor | null;
-  shotPath: Array<{ x: number; y: number }>;
-  shotProgress: number;
+  assistKey: string;
+  assistPath: Pixel[];
+  assistLanding: Pixel | null;
 };
 
-function canvasPoint(point: BubblePoint): { x: number; y: number } {
-  return {
-    x: Math.round(128 + (point.x - LOGICAL_SHOOTER_X) * (DISPLAY_BUBBLE_PITCH / (2 * 1024))),
-    y: Math.round(point.y / 128) + 10,
-  };
+function clampAngle(angle: number): number {
+  return Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
 }
 
 function aimAngle(x: number, y: number): number {
-  return Math.max(-80, Math.min(80, Math.round(Math.atan2(x - 128, Math.max(1, 207 - y)) * (180 / Math.PI))));
+  return clampAngle(Math.round(Math.atan2(x - SHOOTER.x, Math.max(1, SHOOTER.y - y)) * (180 / Math.PI)));
 }
 
-function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, color: BubbleColor, scale = BUBBLE_RENDER_SCALE, alpha = 1): void {
+function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, color: BubbleColor, scale = 1, alpha = 1): void {
   const palette = COLOR[color];
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -108,132 +164,138 @@ function drawBackground(ctx: CanvasRenderingContext2D): void {
   for (let y = 0; y < CANVAS_H; y += 8) {
     for (let x = (y / 8) % 2 === 0 ? 0 : 4; x < CANVAS_W; x += 8) ctx.fillRect(x, y, 1, 1);
   }
-  ctx.fillStyle = '#1b283e';
-  ctx.fillRect(0, 0, 16, 224);
-  ctx.fillRect(240, 0, 16, 224);
-  ctx.fillStyle = '#526882';
-  ctx.fillRect(2, 0, 3, 224);
-  ctx.fillRect(251, 0, 3, 224);
+  // Playfield interior: exactly the logical wall-to-wall span.
   ctx.fillStyle = '#0d1729';
-  ctx.fillRect(13, 7, 230, 181);
+  ctx.fillRect(FIELD_X - 3, CEILING_PX - 3, FIELD_W + 6, FLOOR_Y - CEILING_PX + 3);
   ctx.fillStyle = '#20385f';
-  ctx.fillRect(16, 11, 224, 173);
-  ctx.fillStyle = '#314f7a';
-  ctx.fillRect(16, 11, 224, 3);
+  ctx.fillRect(FIELD_X, CEILING_PX, FIELD_W, FLOOR_Y - CEILING_PX);
+  ctx.fillStyle = '#1a2f52';
+  for (let y = CEILING_PX; y < FLOOR_Y; y += 16) ctx.fillRect(FIELD_X, y, FIELD_W, 1);
+  // Cabinet rails flush against the bounce boundary.
+  ctx.fillStyle = '#1b283e';
+  ctx.fillRect(0, 0, WALL, FLOOR_Y);
+  ctx.fillRect(CANVAS_W - WALL, 0, WALL, FLOOR_Y);
+  ctx.fillStyle = '#526882';
+  ctx.fillRect(FIELD_X - 4, 0, 4, FLOOR_Y);
+  ctx.fillRect(FIELD_X + FIELD_W, 0, 4, FLOOR_Y);
+  ctx.fillStyle = '#8fa6c0';
+  ctx.fillRect(FIELD_X - 4, 0, 1, FLOOR_Y);
+  ctx.fillRect(FIELD_X + FIELD_W + 3, 0, 1, FLOOR_Y);
+  // Ceiling rail with rivets.
   ctx.fillStyle = '#445a74';
-  ctx.fillRect(16, 5, 224, 6);
+  ctx.fillRect(FIELD_X - 4, 6, FIELD_W + 8, CEILING_PX - 6);
   ctx.fillStyle = '#a7b8cb';
-  ctx.fillRect(18, 6, 220, 1);
+  ctx.fillRect(FIELD_X - 2, 7, FIELD_W + 4, 1);
   ctx.fillStyle = '#1d2b40';
-  for (let x = 20; x < 238; x += 16) ctx.fillRect(x, 11, 8, 4);
+  for (let x = FIELD_X + 4; x < FIELD_X + FIELD_W - 4; x += PITCH) ctx.fillRect(x, 12, PITCH - 12, 5);
+  // Floor.
   ctx.fillStyle = '#d6a142';
-  for (let x = 8; x < 248; x += 24) {
-    ctx.fillRect(x, 189, 16, 3);
-    ctx.fillRect(x + 3, 193, 10, 3);
+  for (let x = FIELD_X - 4; x < FIELD_X + FIELD_W + 4; x += 24) {
+    ctx.fillRect(x, FLOOR_Y - 7, 16, 3);
+    ctx.fillRect(x + 3, FLOOR_Y - 4, 10, 3);
   }
   ctx.fillStyle = '#6b4123';
-  ctx.fillRect(0, 199, 256, 25);
+  ctx.fillRect(0, FLOOR_Y, CANVAS_W, CANVAS_H - FLOOR_Y);
   ctx.fillStyle = '#9a6330';
-  for (let x = 0; x < 256; x += 16) {
-    ctx.fillRect(x, 203 + ((x / 16) % 2) * 4, 8, 4);
-    ctx.fillRect(x + 8, 211 + ((x / 16) % 2) * 4, 8, 4);
+  for (let x = 0; x < CANVAS_W; x += 16) {
+    ctx.fillRect(x, FLOOR_Y + 4 + ((x / 16) % 2) * 4, 8, 4);
+    ctx.fillRect(x + 8, FLOOR_Y + 12 + ((x / 16) % 2) * 4, 8, 4);
   }
 }
 
 function drawDangerLine(ctx: CanvasRenderingContext2D, danger: boolean, now: number): void {
-  const pulse = danger ? 0.45 + 0.55 * Math.sin(now / 180) ** 2 : 0.75;
+  const pulse = danger ? 0.45 + 0.55 * Math.sin(now / 180) ** 2 : 0.7;
   ctx.save();
   ctx.globalAlpha = pulse;
   ctx.strokeStyle = danger ? '#ff4052' : '#f7bf50';
   ctx.lineWidth = danger ? 3 : 2;
-  ctx.setLineDash([4, 3]);
+  ctx.setLineDash([5, 4]);
   ctx.beginPath();
-  ctx.moveTo(16, 175);
-  ctx.lineTo(240, 175);
+  ctx.moveTo(FIELD_X, DANGER_LINE_Y);
+  ctx.lineTo(FIELD_X + FIELD_W, DANGER_LINE_Y);
   ctx.stroke();
   ctx.restore();
 }
 
-function drawBoard(ctx: CanvasRenderingContext2D, player: PuzzleBubblePublicPlayer, now: number, descentOffset: number): void {
-  for (const cell of player.board) {
-    if (cell.row > 12) continue;
-    const point = canvasPoint(puzzleBubbleRules.bubblePoint(cell, player.rowParity));
+function drawBoard(ctx: CanvasRenderingContext2D, snapshot: Snapshot, now: number, descentOffset: number): void {
+  for (const cell of snapshot.board) {
+    if (cell.row > rules.DANGER_ROW) continue;
+    const point = canvasPoint(rules.bubblePoint(cell, snapshot.rowParity));
     drawBubble(ctx, point.x, point.y + descentOffset, cell.color);
   }
-  drawDangerLine(ctx, player.gameOver || player.board.some((cell) => cell.row >= 10), now);
+  drawDangerLine(ctx, snapshot.board.some((cell) => cell.row >= rules.DANGER_ROW - 2), now);
 }
 
-function drawLauncher(ctx: CanvasRenderingContext2D, angle: number, current: BubbleColor, recoil: number): void {
-  const radians = (angle * Math.PI) / 180;
+function drawLauncher(ctx: CanvasRenderingContext2D, angle: number, current: BubbleColor, recoil: number, firing: boolean): void {
   ctx.save();
-  ctx.translate(128, 207);
+  ctx.translate(SHOOTER.x, PIVOT_Y);
   ctx.fillStyle = '#5c3b1b';
-  ctx.fillRect(-12, -12, 24, 24);
+  ctx.fillRect(-14, -14, 28, 28);
   ctx.fillStyle = '#d49b42';
-  ctx.fillRect(-9, -15, 6, 4);
-  ctx.fillRect(3, -15, 6, 4);
-  ctx.fillRect(-15, -3, 4, 6);
-  ctx.fillRect(11, -3, 4, 6);
-  ctx.fillRect(-9, 11, 6, 4);
-  ctx.fillRect(3, 11, 6, 4);
+  ctx.fillRect(-11, -18, 7, 4);
+  ctx.fillRect(4, -18, 7, 4);
+  ctx.fillRect(-18, -4, 4, 8);
+  ctx.fillRect(14, -4, 4, 8);
+  ctx.fillRect(-11, 14, 7, 4);
+  ctx.fillRect(4, 14, 7, 4);
   ctx.fillStyle = '#291b18';
-  ctx.fillRect(-4, -4, 8, 8);
-  ctx.rotate(radians);
+  ctx.fillRect(-5, -5, 10, 10);
+  ctx.rotate((angle * Math.PI) / 180);
   ctx.translate(0, recoil);
   ctx.fillStyle = '#1a263a';
-  ctx.fillRect(-10, -29, 3, 22);
-  ctx.fillRect(7, -29, 3, 22);
+  ctx.fillRect(-11, -32, 4, 24);
+  ctx.fillRect(7, -32, 4, 24);
   ctx.fillStyle = '#9cb2cc';
-  ctx.fillRect(-9, -28, 1, 20);
-  ctx.fillRect(8, -28, 1, 20);
-  drawBubble(ctx, 0, -16, current, BUBBLE_RENDER_SCALE * 1.15);
+  ctx.fillRect(-10, -31, 1, 22);
+  ctx.fillRect(9, -31, 1, 22);
+  if (!firing) drawBubble(ctx, 0, -16, current);
   ctx.fillStyle = '#8f5623';
-  ctx.fillRect(-9, -10, 3, 4);
-  ctx.fillRect(6, -10, 3, 4);
+  ctx.fillRect(-10, -10, 3, 5);
+  ctx.fillRect(7, -10, 3, 5);
   ctx.restore();
 }
 
-function drawAssist(ctx: CanvasRenderingContext2D, player: PuzzleBubblePublicPlayer, angle: number): void {
-  const trace = puzzleBubbleRules.traceShot(player.board, player.rowParity, angle);
-  const landing = puzzleBubbleRules.resolveLanding(player.board, player.rowParity, trace);
+function drawAssist(ctx: CanvasRenderingContext2D, path: Pixel[], landing: Pixel | null, color: BubbleColor): void {
+  if (path.length < 2) return;
   ctx.save();
   ctx.strokeStyle = '#e8ecff';
-  ctx.globalAlpha = 0.68;
+  ctx.globalAlpha = 0.6;
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 3]);
   ctx.beginPath();
-  for (let index = 0; index < trace.path.length; index += 1) {
-    const point = canvasPoint(trace.path[index]!);
+  for (let index = 0; index < path.length; index += 1) {
+    const point = path[index]!;
     if (index === 0) ctx.moveTo(point.x, point.y);
     else ctx.lineTo(point.x, point.y);
   }
   ctx.stroke();
-  if (landing) {
-    const point = canvasPoint(puzzleBubbleRules.bubblePoint(landing, player.rowParity));
-    drawBubble(ctx, point.x, point.y, player.current, BUBBLE_RENDER_SCALE, 0.3);
-  }
   ctx.restore();
+  if (landing) drawBubble(ctx, landing.x, landing.y, color, 1, 0.28);
 }
 
-function drawFlyingShot(ctx: CanvasRenderingContext2D, path: Array<{ x: number; y: number }>, color: BubbleColor, progress: number): void {
-  if (path.length === 0) return;
-  const scaled = Math.min(path.length - 1, progress * (path.length - 1));
-  const index = Math.floor(scaled);
-  const from = path[index]!;
-  const to = path[Math.min(path.length - 1, index + 1)]!;
-  const fraction = scaled - index;
-  const x = from.x + (to.x - from.x) * fraction;
-  const y = from.y + (to.y - from.y) * fraction;
+function flightPosition(flight: Flight): Pixel {
+  const travelled = Math.min(flight.total, flight.travelled);
+  let index = 1;
+  while (index < flight.distances.length - 1 && flight.distances[index]! < travelled) index += 1;
+  const from = flight.points[index - 1]!;
+  const to = flight.points[index]!;
+  const segmentStart = flight.distances[index - 1]!;
+  const segment = flight.distances[index]! - segmentStart;
+  const fraction = segment <= 0 ? 1 : (travelled - segmentStart) / segment;
+  return { x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction };
+}
+
+function drawFlight(ctx: CanvasRenderingContext2D, flight: Flight): void {
+  const head = flightPosition(flight);
   for (let trail = 1; trail <= 3; trail += 1) {
-    const behind = Math.max(0, scaled - trail * 0.45);
-    const trailIndex = Math.floor(behind);
-    const trailPoint = path[trailIndex]!;
-    ctx.fillStyle = COLOR[color].rim;
-    ctx.globalAlpha = 0.35 - trail * 0.08;
-    ctx.fillRect(Math.round(trailPoint.x) - 1, Math.round(trailPoint.y) - 1, 3, 3);
+    const behind = { ...flight, travelled: Math.max(0, flight.travelled - trail * 7) };
+    const point = flightPosition(behind);
+    ctx.fillStyle = COLOR[flight.color].rim;
+    ctx.globalAlpha = 0.32 - trail * 0.08;
+    ctx.fillRect(Math.round(point.x) - 1, Math.round(point.y) - 1, 3, 3);
   }
   ctx.globalAlpha = 1;
-  drawBubble(ctx, x, y, color, BUBBLE_RENDER_SCALE * 1.08);
+  drawBubble(ctx, head.x, head.y, flight.color);
 }
 
 function drawParticles(ctx: CanvasRenderingContext2D, particles: VisualParticle[]): void {
@@ -245,9 +307,9 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: VisualParticle[
     const alpha = Math.max(0, 1 - particle.life / particle.maxLife);
     if (particle.kind === 'drop') {
       particle.vy += 0.34;
-      drawBubble(ctx, particle.x, particle.y, particle.color, BUBBLE_RENDER_SCALE * 0.92, alpha);
+      drawBubble(ctx, particle.x, particle.y, particle.color, 0.95, alpha);
     } else if (particle.kind === 'ring') {
-      const radius = 4 + particle.life;
+      const radius = 5 + particle.life * 1.3;
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = COLOR[particle.color].rim;
@@ -258,7 +320,7 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: VisualParticle[
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.fillStyle = '#ffea6c';
-      ctx.font = '8px monospace';
+      ctx.font = '9px monospace';
       ctx.fillText(particle.text!, Math.round(particle.x), Math.round(particle.y));
       ctx.restore();
     } else {
@@ -271,17 +333,68 @@ function drawParticles(ctx: CanvasRenderingContext2D, particles: VisualParticle[
   }
 }
 
+function snapshotOf(player: PuzzleBubblePublicPlayer, version: number): Snapshot {
+  return { player, board: player.board.map((cell) => ({ ...cell })), rowParity: player.rowParity, version };
+}
+
+function buildBurst(shot: Shot, before: Snapshot, fired: BubbleColor): Burst {
+  const colors = new Map(before.board.map((cell) => [`${cell.row}:${cell.col}`, cell.color]));
+  const spot = (slot: { row: number; col: number }) => {
+    const point = canvasPoint(rules.bubblePoint(slot, before.rowParity));
+    return { x: point.x, y: point.y, color: colors.get(`${slot.row}:${slot.col}`) ?? fired };
+  };
+  return {
+    pops: shot.popped.map(spot),
+    drops: shot.dropped.map(spot),
+    score: rules.scoreShot(shot.popped.length, shot.dropped.length),
+    pressureAdded: shot.pressureAdded,
+  };
+}
+
+function buildFlight(shot: Shot, before: Snapshot, fired: BubbleColor, durationMs: number): Flight {
+  const raw = [...shot.path, rules.bubblePoint(shot.landing, before.rowParity)].map(canvasPoint);
+  const points = raw.filter((point, index) => index === 0 || point.x !== raw[index - 1]!.x || point.y !== raw[index - 1]!.y);
+  if (points.length < 2) points.push({ ...points[0]!, y: points[0]!.y - 1 });
+  const distances = [0];
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    total += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
+    distances.push(total);
+  }
+  return {
+    points,
+    distances,
+    total,
+    travelled: 0,
+    speed: total / Math.max(1, durationMs),
+    color: fired,
+    burst: buildBurst(shot, before, fired),
+  };
+}
+
 function MiniBoard({ player }: { player: PuzzleBubblePublicPlayer }): React.ReactElement {
   return (
     <div className="border-2 border-pa-border bg-[#15213d] p-2 min-w-0">
       <div className="flex items-baseline justify-between gap-2 font-display text-[9px] text-pa-ink-dim">
         <span>OPPONENT</span><span className="text-pa-amber">{player.score.toLocaleString()}</span>
       </div>
-      <div className="relative mt-2 h-20 overflow-hidden border border-[#31558a] bg-[#263e68]">
-        {player.board.filter((cell) => cell.row < 9).map((cell) => {
+      <div className="relative mt-2 h-24 overflow-hidden border border-[#31558a] bg-[#263e68]">
+        {player.board.filter((cell) => cell.row <= rules.DANGER_ROW).map((cell) => {
           const longRow = (cell.row + player.rowParity) % 2 === 0;
-          const left = longRow ? cell.col * 12.2 : cell.col * 12.2 + 6.1;
-          return <span key={`${cell.row}:${cell.col}`} className="absolute h-3 w-3 rounded-full border border-[#15213d]" style={{ left: `${left}%`, top: `${cell.row * 10}%`, backgroundColor: COLOR[cell.color].body }} />;
+          const left = longRow ? cell.col * 12.5 : cell.col * 12.5 + 6.25;
+          return (
+            <span
+              key={`${cell.row}:${cell.col}`}
+              className="absolute rounded-full border border-[#15213d]"
+              style={{
+                left: `${left}%`,
+                top: `${(cell.row * 100) / (rules.DANGER_ROW + 1)}%`,
+                width: '12.5%',
+                height: `${100 / (rules.DANGER_ROW + 1)}%`,
+                backgroundColor: COLOR[cell.color].body,
+              }}
+            />
+          );
         })}
       </div>
       <div className="mt-1 text-right font-display text-[8px] text-pa-ink-dim">WAVE {player.wave}{player.gameOver ? ' · OUT' : ''}</div>
@@ -319,24 +432,74 @@ export function PuzzleBubbleBoard({
   const assistRef = React.useRef(assist);
   const playerRef = React.useRef(you);
   const fxRef = React.useRef<VisualState>({
-    descents: -1,
+    ready: false,
+    view: null,
+    latest: null,
+    flight: null,
+    queuedDescent: false,
     lastShotCount: -1,
-    previousBoard: new Map(),
-    previousCurrent: null,
-    previousParity: 0,
+    descents: 0,
+    loaded: null,
     particles: [],
     recoil: 0,
     recoilVelocity: 0,
     shake: 0,
     descentOffset: 0,
-    shotColor: null,
-    shotPath: [],
-    shotProgress: 1,
+    assistKey: '',
+    assistPath: [],
+    assistLanding: null,
   });
   const [clockNow, setClockNow] = React.useState(() => Date.now());
+  /** The board instant the HUD reflects — held back with the canvas during a flight. */
+  const [shown, setShown] = React.useState<PuzzleBubblePublicPlayer | null>(you);
   angleRef.current = angle;
   assistRef.current = assist;
   playerRef.current = you;
+
+  /** Swap the drawn board to the newest server truth and release its held-back effects. */
+  const commit = React.useCallback((burst: Burst | null) => {
+    const fx = fxRef.current;
+    if (!fx.latest) return;
+    fx.view = fx.latest;
+    setShown(fx.latest.player);
+    if (burst) {
+      for (const pop of burst.pops) {
+        fx.particles.push({ kind: 'ring', x: pop.x, y: pop.y, vx: 0, vy: 0, color: pop.color, life: 0, maxLife: 16 });
+        for (let shard = 0; shard < 6; shard += 1) {
+          const radians = (shard * Math.PI) / 3;
+          fx.particles.push({
+            kind: 'spark',
+            x: pop.x,
+            y: pop.y,
+            vx: Math.cos(radians) * 2,
+            vy: Math.sin(radians) * 2,
+            color: pop.color,
+            life: 0,
+            maxLife: 20,
+          });
+        }
+      }
+      for (const drop of burst.drops) {
+        fx.particles.push({ kind: 'drop', x: drop.x, y: drop.y, vx: ((drop.x % 3) - 1) * 0.6, vy: -1.8, color: drop.color, life: 0, maxLife: 90 });
+      }
+      if (burst.pops.length > 0) {
+        const first = burst.pops[0]!;
+        fx.particles.push({ kind: 'score', x: first.x - 9, y: first.y - 8, vx: 0, vy: -0.5, color: first.color, life: 0, maxLife: 42, text: `+${burst.score}` });
+        sfx.pop();
+      } else {
+        sfx.chip();
+      }
+      if (burst.pressureAdded) {
+        fx.shake = 3.5;
+        fx.descentOffset = -14;
+      }
+    }
+    if (fx.queuedDescent) {
+      fx.queuedDescent = false;
+      fx.shake = 3.5;
+      fx.descentOffset = -14;
+    }
+  }, []);
 
   React.useEffect(() => {
     bgm.play('arcade');
@@ -355,7 +518,10 @@ export function PuzzleBubbleBoard({
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false;
     let frame = 0;
-    const render = () => {
+    let previous = performance.now();
+    const render = (now: number) => {
+      const delta = Math.min(50, now - previous);
+      previous = now;
       const player = playerRef.current;
       const fx = fxRef.current;
       const spring = -0.28 * fx.recoil - 0.68 * fx.recoilVelocity;
@@ -368,18 +534,35 @@ export function PuzzleBubbleBoard({
       fx.descentOffset *= 0.78;
       if (Math.abs(fx.descentOffset) < 0.05) fx.descentOffset = 0;
       fx.shake *= 0.82;
-      const shake = Math.round(Math.sin(performance.now() * 0.08) * fx.shake);
+      if (fx.flight) {
+        fx.flight.travelled += fx.flight.speed * delta;
+        if (fx.flight.travelled >= fx.flight.total) {
+          const burst = fx.flight.burst;
+          fx.flight = null;
+          commit(burst);
+        }
+      }
+      const shake = Math.round(Math.sin(now * 0.08) * fx.shake);
       ctx.save();
       ctx.translate(0, shake);
       drawBackground(ctx);
-      if (player) {
-        drawBoard(ctx, player, performance.now(), fx.descentOffset);
-        if (assistRef.current && !player.gameOver) drawAssist(ctx, player, angleRef.current);
-        if (fx.shotColor && fx.shotProgress < 1) {
-          drawFlyingShot(ctx, fx.shotPath, fx.shotColor, fx.shotProgress);
-          fx.shotProgress = Math.min(1, fx.shotProgress + 0.045);
+      const drawn = fx.view;
+      if (player && drawn) {
+        drawBoard(ctx, drawn, now, fx.descentOffset);
+        if (assistRef.current && !drawn.player.gameOver && !fx.flight) {
+          const key = `${angleRef.current}:${drawn.version}`;
+          if (key !== fx.assistKey) {
+            const trace = rules.traceShot(drawn.board, drawn.rowParity, angleRef.current);
+            const landing = rules.resolveLanding(drawn.board, drawn.rowParity, trace);
+            fx.assistKey = key;
+            fx.assistPath = trace.path.map(canvasPoint);
+            fx.assistLanding = landing ? canvasPoint(rules.bubblePoint(landing, drawn.rowParity)) : null;
+          }
+          drawAssist(ctx, fx.assistPath, fx.assistLanding, drawn.player.current);
         }
-        drawLauncher(ctx, angleRef.current, player.current, fx.recoil);
+        if (fx.flight) drawFlight(ctx, fx.flight);
+        // The barrel stays empty while a bubble is in the air, then reloads.
+        drawLauncher(ctx, angleRef.current, drawn.player.current, fx.recoil, fx.flight !== null);
         drawParticles(ctx, fx.particles);
       }
       ctx.restore();
@@ -387,58 +570,44 @@ export function PuzzleBubbleBoard({
     };
     frame = window.requestAnimationFrame(render);
     return () => window.cancelAnimationFrame(frame);
-  }, []);
+  }, [commit]);
 
   React.useEffect(() => {
     if (!you) return;
     const fx = fxRef.current;
-    if (fx.previousBoard.size === 0) {
-      for (const cell of you.board) fx.previousBoard.set(`${cell.row}:${cell.col}`, cell.color);
-      fx.previousCurrent = you.current;
-      fx.previousParity = you.rowParity;
+    if (!fx.ready) {
+      const initial = snapshotOf(you, 1);
+      fx.ready = true;
+      fx.view = initial;
+      fx.latest = initial;
       fx.lastShotCount = you.shots;
       fx.descents = you.descents;
+      fx.loaded = you.current;
+      setShown(you);
       return;
     }
-    if (you.shots > fx.lastShotCount && you.lastShot) {
-      const shot = you.lastShot;
-      fx.shotPath = shot.path.map(canvasPoint);
-      fx.shotColor = fx.previousCurrent ?? you.current;
-      fx.shotProgress = 0;
-      const colorAt = (row: number, col: number) => fx.previousBoard.get(`${row}:${col}`) ?? fx.previousCurrent ?? you.current;
-      for (const slot of shot.popped) {
-        const point = canvasPoint(puzzleBubbleRules.bubblePoint(slot, fx.previousParity));
-        const color = colorAt(slot.row, slot.col);
-        fx.particles.push({ kind: 'ring', x: point.x, y: point.y, vx: 0, vy: 0, color, life: 0, maxLife: 16 });
-        for (let shard = 0; shard < 6; shard += 1) {
-          const radians = (shard * Math.PI) / 3;
-          fx.particles.push({ kind: 'spark', x: point.x, y: point.y, vx: Math.cos(radians) * 1.8, vy: Math.sin(radians) * 1.8, color, life: 0, maxLife: 20 });
-        }
-      }
-      for (const slot of shot.dropped) {
-        const point = canvasPoint(puzzleBubbleRules.bubblePoint(slot, fx.previousParity));
-        fx.particles.push({ kind: 'drop', x: point.x, y: point.y, vx: ((slot.col % 3) - 1) * 0.6, vy: -1.8, color: colorAt(slot.row, slot.col), life: 0, maxLife: 72 });
-      }
-      if (shot.popped.length > 0) {
-        const point = canvasPoint(puzzleBubbleRules.bubblePoint(shot.popped[0]!, fx.previousParity));
-        fx.particles.push({ kind: 'score', x: point.x - 8, y: point.y - 5, vx: 0, vy: -0.5, color: you.current, life: 0, maxLife: 40, text: `+${puzzleBubbleRules.scoreShot(shot.popped.length, shot.dropped.length)}` });
-      }
-      fx.recoil = 4.5;
-      if (shot.pressureAdded) {
-        fx.shake = 3.5;
-        fx.descentOffset = -14;
-      }
-      fx.lastShotCount = you.shots;
-    }
+    const before = fx.view;
+    if (!before) return;
+    fx.latest = snapshotOf(you, before.version + 1);
     if (you.descents > fx.descents) {
-      fx.shake = 3.5;
-      fx.descentOffset = -14;
+      fx.descents = you.descents;
+      fx.queuedDescent = true;
     }
-    fx.previousBoard = new Map(you.board.map((cell) => [`${cell.row}:${cell.col}`, cell.color]));
-    fx.previousCurrent = you.current;
-    fx.previousParity = you.rowParity;
-    fx.descents = you.descents;
-  }, [you]);
+    const shot = you.shots > fx.lastShotCount ? you.lastShot : null;
+    if (shot) {
+      fx.lastShotCount = you.shots;
+      // Never overlap two flights: land the previous one instantly.
+      if (fx.flight) {
+        const pending = fx.flight.burst;
+        fx.flight = null;
+        commit(pending);
+      }
+      fx.flight = buildFlight(shot, before, fx.loaded ?? you.current, rules.shotAnimationMs(view.config.speed));
+      fx.recoil = 5;
+    }
+    if (!fx.flight) commit(null);
+    fx.loaded = you.current;
+  }, [commit, view.config.speed, you]);
 
   React.useEffect(() => {
     const interval = window.setInterval(() => setClockNow(Date.now()), 250);
@@ -454,11 +623,11 @@ export function PuzzleBubbleBoard({
     lockTimer.current = window.setTimeout(() => {
       lockTimer.current = null;
       setLocked(false);
-    }, puzzleBubbleRules.shotAnimationMs(view.config.speed));
+    }, rules.shotAnimationMs(view.config.speed));
   }, [angle, locked, onAction, view.config.speed, view.phase, you]);
 
   const nudgeAim = React.useCallback((delta: number) => {
-    setAngle((value) => Math.max(-80, Math.min(80, value + delta)));
+    setAngle((value) => clampAngle(value + delta));
   }, []);
 
   const stopAimHold = React.useCallback(() => {
@@ -489,10 +658,10 @@ export function PuzzleBubbleBoard({
       if (target?.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
       if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        nudgeAim(-4);
+        nudgeAim(-3);
       } else if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'd') {
         event.preventDefault();
-        nudgeAim(4);
+        nudgeAim(3);
       } else if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault();
         fire();
@@ -524,9 +693,11 @@ export function PuzzleBubbleBoard({
 
   if (!you) return <div className="p-4 text-pa-ink-dim">Waiting for your Puzzle Bubble board…</div>;
   const opponent = view.players.find((player) => player.id !== youId);
-  const pressure = puzzleBubbleRules.pressureLimit(view.config.speed);
+  // Interactivity follows the server; the numbers follow what is on screen.
+  const hud = shown ?? you;
+  const pressure = rules.pressureLimit(view.config.speed);
   const descentMs = view.pressureEndsAtMs === null || view.pressureEndsAtMs === undefined
-    ? puzzleBubbleRules.descentIntervalMs(view.config.speed)
+    ? rules.descentIntervalMs(view.config.speed)
     : Math.max(0, view.pressureEndsAtMs - clockNow);
   const descentSeconds = Math.ceil(descentMs / 1_000);
 
@@ -534,21 +705,21 @@ export function PuzzleBubbleBoard({
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 p-2 sm:p-4">
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-2 border-pa-border bg-pa-surface p-2 pa-shadow">
-          <div><span className="font-display text-[9px] text-pa-ink-dim">SCORE </span><span className="font-display text-[18px] text-pa-amber tabular-nums">{you.score.toLocaleString()}</span></div>
-          <div className="font-display text-[9px] text-pa-ink-dim">WAVE {you.wave} · {view.config.speed.toUpperCase()}</div>
+          <div><span className="font-display text-[9px] text-pa-ink-dim">SCORE </span><span className="font-display text-[18px] text-pa-amber tabular-nums">{hud.score.toLocaleString()}</span></div>
+          <div className="font-display text-[9px] text-pa-ink-dim">WAVE {hud.wave} · {view.config.speed.toUpperCase()}</div>
           <div className="font-display text-[9px] text-pa-ink-dim">CEILING {String(Math.floor(descentSeconds / 60)).padStart(2, '0')}:{String(descentSeconds % 60).padStart(2, '0')}</div>
-          <div className="font-display text-[9px] text-pa-ink-dim">PRESSURE {you.pressureRemaining}/{pressure}</div>
-          <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span className="h-5 w-5 rounded-full border-2 border-[#15213d]" style={{ backgroundColor: COLOR[you.next].body }} aria-label={`Next ${you.next} bubble`} /></div>
+          <div className="font-display text-[9px] text-pa-ink-dim">PRESSURE {hud.pressureRemaining}/{pressure}</div>
+          <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span className="h-5 w-5 rounded-full border-2 border-[#15213d]" style={{ backgroundColor: COLOR[hud.next].body }} aria-label={`Next ${hud.next} bubble`} /></div>
         </div>
         {opponent && <MiniBoard player={opponent} />}
       </div>
-      <div className="mx-auto w-full max-w-[640px] border-4 border-[#15213d] bg-[#091126] p-1 pa-shadow">
+      <div className="flex w-full justify-center">
         <canvas
           ref={canvasRef}
           width={CANVAS_W}
           height={CANVAS_H}
-          className="block h-auto w-full touch-none select-none"
-          style={{ imageRendering: 'pixelated' }}
+          className="block border-4 border-[#15213d] bg-[#091126] pa-shadow touch-none select-none"
+          style={{ imageRendering: 'pixelated', height: 'min(62vh, 620px, 142vw)', width: 'auto' }}
           onPointerMove={aimFromPointer}
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -557,25 +728,25 @@ export function PuzzleBubbleBoard({
           aria-label="Puzzle Bubble playfield. Drag to aim, then press Fire to shoot."
         />
       </div>
-      <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 sm:mx-auto sm:w-[min(100%,640px)]">
+      <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 sm:mx-auto sm:w-[min(100%,420px)]">
         <button
           type="button"
           className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
-          onPointerDown={(event) => startAimHold(event, -4)}
+          onPointerDown={(event) => startAimHold(event, -3)}
           onPointerUp={stopAimHold}
           onPointerCancel={stopAimHold}
           onLostPointerCapture={stopAimHold}
-          onClick={(event) => { if (event.detail === 0) nudgeAim(-4); }}
+          onClick={(event) => { if (event.detail === 0) nudgeAim(-3); }}
         >LEFT</button>
         <button type="button" className="min-h-11 select-none border-2 border-pa-amber bg-pa-amber font-display text-[12px] text-pa-shadow pa-shadow disabled:opacity-45" disabled={locked || you.gameOver || view.phase === 'game_over'} onClick={() => fire()}>{you.gameOver ? 'OUT' : locked ? 'AIMING…' : 'FIRE'}</button>
         <button
           type="button"
           className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
-          onPointerDown={(event) => startAimHold(event, 4)}
+          onPointerDown={(event) => startAimHold(event, 3)}
           onPointerUp={stopAimHold}
           onPointerCancel={stopAimHold}
           onLostPointerCapture={stopAimHold}
-          onClick={(event) => { if (event.detail === 0) nudgeAim(4); }}
+          onClick={(event) => { if (event.detail === 0) nudgeAim(3); }}
         >RIGHT</button>
       </div>
       <button type="button" className="self-center border-2 border-pa-border bg-pa-surface px-3 py-2 font-display text-[9px] text-pa-ink-dim pa-shadow" onClick={toggleAssist}>ASSIST: {assist ? 'ON' : 'OFF'} · G</button>

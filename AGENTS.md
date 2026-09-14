@@ -98,6 +98,20 @@ real Postgres. It needs `docker compose up -d` first.
   `packages/shared` if the client needs to render from it directly (board
   layout, tile values, …) — importing `@puzzle-arena/games` client-side
   should stay limited to types and small per-game view/rules helpers.
+- **Puzzle Bubble canvas layout is derived, never hand-tuned.** Bubble
+  *centres* stop one `BUBBLE_RADIUS` short of `0` and `BOARD_WIDTH`
+  (`puzzle-bubble/rules.ts`), because a bubble is a disc. `PuzzleBubbleBoard.tsx`
+  computes every wall, the ceiling, the danger line and the launcher from those
+  constants at one pixel pitch. Picking canvas numbers independently is what
+  previously drew the walls ~48px away from where shots actually banked and
+  squeezed the 8-column grid into the middle half of the playfield.
+- **The Puzzle Bubble client draws one shot behind the server.** The reducer
+  resolves a shot atomically, so the board in `game:state` already has the pop
+  applied; rendering it directly bursts bubbles while their shot is still in
+  the air. The component holds a drawn snapshot (board + HUD + loaded bubble)
+  and commits it — with the pop/drop particles — only when the flight along
+  `lastShot.path` reaches the landing slot. `/dev/bubble` is the harness for
+  checking this without a server, like `/dev/pacman`.
 
 ## AI providers
 
