@@ -345,7 +345,7 @@ describe('concurrent arcade games wiring (space-invaders, bomberman & Puzzle Bub
       id: 'bb-room',
       code: 'BB1234',
       gameId: 'block-blaster',
-      config: { turnTimeLimitSec: 0 },
+      config: { turnTimeLimitSec: 0, startingLayout: 'empty' },
       timeLimitSec: 0,
       status: 'lobby',
       startedAt: null,

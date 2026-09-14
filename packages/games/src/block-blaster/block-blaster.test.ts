@@ -253,3 +253,48 @@ describe('block-blaster: game over detection & restart', () => {
     expect(r.state.phase).toBe('playing');
   });
 });
+
+describe('block-blaster: starting templates & difficulty scales', () => {
+  it('generates non-empty templated boards for starting layouts', () => {
+    const sBait = blockBlaster.setup(['p1'], 1, { startingLayout: 'bait', difficulty: 'easy' });
+    const pBait = sBait.players[0]!;
+    const occupiedBait = pBait.board.flat().filter((cell) => cell !== 0);
+    expect(occupiedBait.length).toBeGreaterThan(5);
+
+    const sEmpty = blockBlaster.setup(['p1'], 1, { startingLayout: 'empty' });
+    const occupiedEmpty = sEmpty.players[0]!.board.flat().filter((cell) => cell !== 0);
+    expect(occupiedEmpty.length).toBe(0);
+  });
+
+  it('scales piece generation difficulty appropriately', () => {
+    const board = createEmptyBoard();
+    const rngEasy = mulberry32(100);
+    let largeEasy = 0;
+    for (let i = 0; i < 30; i++) {
+      const batch = generateBatch(board, rngEasy, 'easy');
+      largeEasy += batch.filter((p) => p.category === 'large').length;
+    }
+    expect(largeEasy).toBe(0); // easy has 0 large pieces
+
+    const rngHard = mulberry32(100);
+    let largeHard = 0;
+    for (let i = 0; i < 30; i++) {
+      const batch = generateBatch(board, rngHard, 'hard');
+      largeHard += batch.filter((p) => p.category === 'large').length;
+    }
+    expect(largeHard).toBeGreaterThan(5); // hard has multiple large pieces
+  });
+
+  it('allows restart with different difficulty and layout', () => {
+    const s = blockBlaster.setup(['p1'], 1, { difficulty: 'easy', startingLayout: 'empty' });
+    expect(s.config.difficulty).toBe('easy');
+
+    const r = blockBlaster.reduce(s, 'p1', { type: 'restart', difficulty: 'hard', startingLayout: 'bait' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.state.config.difficulty).toBe('hard');
+    expect(r.state.config.startingLayout).toBe('bait');
+    const occupied = r.state.players[0]!.board.flat().filter((c) => c !== 0);
+    expect(occupied.length).toBeGreaterThan(0);
+  });
+});

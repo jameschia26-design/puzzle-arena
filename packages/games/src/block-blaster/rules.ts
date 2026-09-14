@@ -7,10 +7,17 @@ import {
   canPlacePiece,
   hasAnyPlacement,
   checkGameOver,
+  createEmptyBoard,
+  createStartingBoard,
+  STARTING_TEMPLATES,
+  BLOCK_BLASTER_DIFFICULTIES,
+  BLOCK_BLASTER_LAYOUTS,
   type BlockPiece,
   type CellState,
   type PieceCategory,
   type ShapeDefinition,
+  type BlockBlasterDifficulty,
+  type BlockBlasterLayout,
 } from '@puzzle-arena/shared';
 import type { ClearEvent } from './state.js';
 
@@ -22,15 +29,13 @@ export {
   canPlacePiece,
   hasAnyPlacement,
   checkGameOver,
+  createEmptyBoard,
+  createStartingBoard,
+  STARTING_TEMPLATES,
+  BLOCK_BLASTER_DIFFICULTIES,
+  BLOCK_BLASTER_LAYOUTS,
 };
 
-export function createEmptyBoard(): CellState[][] {
-  const board: CellState[][] = [];
-  for (let r = 0; r < BLOCK_BLASTER_BOARD_SIZE; r++) {
-    board.push(new Array<CellState>(BLOCK_BLASTER_BOARD_SIZE).fill(0));
-  }
-  return board;
-}
 
 export function cloneBoard(board: CellState[][]): CellState[][] {
   return board.map((row) => [...row]);
@@ -64,27 +69,33 @@ export function instantiatePiece(def: ShapeDefinition, rng: Rng): BlockPiece {
  * 2. Safety Check: Maximum one Large piece per batch of 3.
  * 3. Pity Guarantee: At least one piece in the batch must have a valid placement on the board.
  */
-export function generateBatch(board: CellState[][], rng: Rng): BlockPiece[] {
+export function generateBatch(
+  board: CellState[][],
+  rng: Rng,
+  difficulty: BlockBlasterDifficulty = 'normal',
+): BlockPiece[] {
   const batch: BlockPiece[] = [];
   let largeCount = 0;
 
+  // Difficulty weighting thresholds
+  const smallThreshold = difficulty === 'easy' ? 50 : difficulty === 'hard' ? 20 : 35;
+  const mediumThreshold = difficulty === 'easy' ? 95 : difficulty === 'hard' ? 65 : 85;
+  const maxLargeAllowed = difficulty === 'easy' ? 0 : difficulty === 'hard' ? 2 : 1;
+
   for (let i = 0; i < BLOCK_BLASTER_TRAY_SIZE; i++) {
-    // Determine category based on weighting
     let category: PieceCategory;
     const roll = rng.int(100);
 
-    if (roll < 35) {
+    if (roll < smallThreshold) {
       category = 'small';
-    } else if (roll < 85) {
+    } else if (roll < mediumThreshold) {
       category = 'medium';
     } else {
       category = 'large';
     }
 
-    // Safety rule: Max 1 large piece per batch of 3
     if (category === 'large') {
-      if (largeCount >= 1) {
-        // Fall back to medium or small
+      if (largeCount >= maxLargeAllowed) {
         category = rng.int(2) === 0 ? 'small' : 'medium';
       } else {
         largeCount++;
@@ -94,17 +105,19 @@ export function generateBatch(board: CellState[][], rng: Rng): BlockPiece[] {
     const pool = SHAPES_BY_CATEGORY[category];
     const pickedDef = pool[rng.int(pool.length)];
     if (!pickedDef) {
-      // Fallback
       batch.push(instantiatePiece(BLOCK_SHAPES[0]!, rng));
     } else {
       batch.push(instantiatePiece(pickedDef, rng));
     }
   }
 
-  // Pity Guarantee: Check if at least one piece in batch can be placed on current board
-  const hasFit = batch.some((piece) => hasAnyPlacement(board, piece));
-  if (!hasFit) {
-    // Find all shape definitions from catalog that can fit on board
+  // Pity Guarantee:
+  // For easy: ensure at least 2 pieces fit if board has room
+  // For normal & hard: ensure at least 1 piece fits
+  const minFittingCount = difficulty === 'easy' ? 2 : 1;
+  let fittingCount = batch.filter((piece) => hasAnyPlacement(board, piece)).length;
+
+  if (fittingCount < minFittingCount) {
     const fittingDefs: ShapeDefinition[] = [];
     for (const def of BLOCK_SHAPES) {
       const testPiece = instantiatePiece(def, rng);
@@ -114,10 +127,14 @@ export function generateBatch(board: CellState[][], rng: Rng): BlockPiece[] {
     }
 
     if (fittingDefs.length > 0) {
-      // Replace one of the pieces in batch with a fitting piece
-      const replaceIdx = rng.int(batch.length);
-      const chosenDef = fittingDefs[rng.int(fittingDefs.length)]!;
-      batch[replaceIdx] = instantiatePiece(chosenDef, rng);
+      for (let i = 0; i < batch.length && fittingCount < minFittingCount; i++) {
+        const curPiece = batch[i]!;
+        if (!hasAnyPlacement(board, curPiece)) {
+          const chosenDef = fittingDefs[rng.int(fittingDefs.length)]!;
+          batch[i] = instantiatePiece(chosenDef, rng);
+          fittingCount++;
+        }
+      }
     }
   }
 

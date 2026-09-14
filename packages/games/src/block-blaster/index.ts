@@ -8,6 +8,7 @@ import {
 import { makeLog, stampLogs, type GameEngine, type ReduceResult } from '../engine.js';
 import {
   createEmptyBoard,
+  createStartingBoard,
   generateBatch,
   applyPlacement,
   checkGameOver,
@@ -23,8 +24,11 @@ import type {
 export * from './state.js';
 export * from './rules.js';
 
-const DEFAULT_CONFIG: BlockBlasterConfig = { turnTimeLimitSec: 0 };
-
+const DEFAULT_CONFIG: BlockBlasterConfig = {
+  turnTimeLimitSec: 0,
+  difficulty: 'normal',
+  startingLayout: 'templated',
+};
 function clone(s: BlockBlasterState): BlockBlasterState {
   return structuredClone(s);
 }
@@ -52,10 +56,9 @@ function toPublic(p: BlockBlasterPlayerState): BlockBlasterPublicPlayer {
 function setup(playerIds: string[], seed: number, rawConfig: unknown): BlockBlasterState {
   const config = { ...DEFAULT_CONFIG, ...((rawConfig as object) ?? {}) };
   const rng = mulberry32(seed);
-
   const players: BlockBlasterPlayerState[] = playerIds.map((id, seat) => {
-    const board = createEmptyBoard();
-    const tray = generateBatch(board, rng);
+    const board = createStartingBoard(config.startingLayout, config.difficulty, seed + seat);
+    const tray = generateBatch(board, rng, config.difficulty);
     return {
       id,
       seat,
@@ -101,10 +104,15 @@ function reduce(
 
   const rng = rngFrom(s.rng);
   const logs: LogEntry[] = [];
-
   if (action.type === 'restart') {
-    p.board = createEmptyBoard();
-    p.tray = generateBatch(p.board, rng);
+    if (action.difficulty) {
+      s.config.difficulty = action.difficulty;
+    }
+    if (action.startingLayout) {
+      s.config.startingLayout = action.startingLayout;
+    }
+    p.board = createStartingBoard(s.config.startingLayout, s.config.difficulty, s.rng.calls + p.seat);
+    p.tray = generateBatch(p.board, rng, s.config.difficulty);
     p.score = 0;
     p.comboStreak = 0;
     p.linesCleared = 0;
@@ -174,7 +182,7 @@ function reduce(
 
     // Refill tray when all 3 slots are empty
     if (p.tray.every((slot) => slot === null)) {
-      p.tray = generateBatch(p.board, rng);
+      p.tray = generateBatch(p.board, rng, s.config.difficulty);
     }
 
     // Check if player has no more moves

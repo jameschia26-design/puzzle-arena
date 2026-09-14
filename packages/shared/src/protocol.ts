@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { botDifficultySchema, gameIdSchema } from './registry.js';
+import {
+  BLOCK_BLASTER_DIFFICULTIES,
+  BLOCK_BLASTER_LAYOUTS,
+} from './block-blaster.js';
 
 /* ------------------------------------------------------------------ */
 /* Per-game action unions                                              */
@@ -218,6 +222,8 @@ export const blockBlasterActionSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('restart'),
+    difficulty: z.enum(BLOCK_BLASTER_DIFFICULTIES).optional(),
+    startingLayout: z.enum(BLOCK_BLASTER_LAYOUTS).optional(),
   }),
 ]);
 export type BlockBlasterAction = z.infer<typeof blockBlasterActionSchema>;

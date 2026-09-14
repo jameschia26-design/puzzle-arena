@@ -2,7 +2,14 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Activity, BarChart2, Copy, Cpu, Link2, LoaderCircle, LogOut, Plus, Shield, Trash2, Users, XCircle } from 'lucide-react';
-import { GAME_IDS, GAME_REGISTRY, WORD_SEARCH_THEMES, type GameId } from '@puzzle-arena/shared';
+import {
+  GAME_IDS,
+  GAME_REGISTRY,
+  WORD_SEARCH_THEMES,
+  type GameId,
+  type BlockBlasterDifficulty,
+  type BlockBlasterLayout,
+} from '@puzzle-arena/shared';
 import {
   PixelBadge,
   PixelButton,
@@ -76,6 +83,8 @@ export default function AdminDashboard(): React.ReactElement {
   const [mmAttempts, setMmAttempts] = React.useState<number | string>(10);
   const [puzzleBubbleColors, setPuzzleBubbleColors] = React.useState('6');
   const [puzzleBubbleSpeed, setPuzzleBubbleSpeed] = React.useState<'slow' | 'normal' | 'fast'>('normal');
+  const [bbDifficulty, setBbDifficulty] = React.useState<BlockBlasterDifficulty>('normal');
+  const [bbLayout, setBbLayout] = React.useState<BlockBlasterLayout>('templated');
   const [rooms, setRooms] = React.useState<RoomRow[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -138,6 +147,10 @@ export default function AdminDashboard(): React.ReactElement {
       if (gameId === 'puzzle-bubble') {
         config['colors'] = Number(puzzleBubbleColors);
         config['speed'] = puzzleBubbleSpeed;
+      }
+      if (gameId === 'block-blaster') {
+        config['difficulty'] = bbDifficulty;
+        config['startingLayout'] = bbLayout;
       }
 
       const effectiveMinutes = Math.min(240, Math.max(1, Math.round(Number(minutes)) || 1));
@@ -289,6 +302,33 @@ export default function AdminDashboard(): React.ReactElement {
                   { value: 'slow', label: 'Slow · ceiling every 30s' },
                   { value: 'normal', label: 'Normal · ceiling every 20s' },
                   { value: 'fast', label: 'Fast · ceiling every 12s' },
+                ]}
+              />
+            </>
+          )}
+          {gameId === 'block-blaster' && (
+            <>
+              <PixelSelect
+                label="Difficulty"
+                value={bbDifficulty}
+                onValueChange={(v) => setBbDifficulty(v as BlockBlasterDifficulty)}
+                options={[
+                  { value: 'easy', label: 'Easy · Friendly pieces & generous pity' },
+                  { value: 'normal', label: 'Normal · Classic Block Blast balance' },
+                  { value: 'hard', label: 'Hard · Frequent large blocks & obstacles' },
+                ]}
+              />
+              <PixelSelect
+                label="Starting Board"
+                value={bbLayout}
+                onValueChange={(v) => setBbLayout(v as BlockBlasterLayout)}
+                options={[
+                  { value: 'templated', label: 'Templated · Dynamic based on difficulty' },
+                  { value: 'bait', label: 'Blast Bait · Ready for instant combos' },
+                  { value: 'corners', label: 'Four Corners · Corner defense' },
+                  { value: 'scattered', label: 'Scattered Gems · Anchor points' },
+                  { value: 'crossroads', label: 'Center Diamond · Tactical corridors' },
+                  { value: 'empty', label: 'Clean Slate · Completely empty' },
                 ]}
               />
             </>

@@ -94,7 +94,15 @@ describe('Block Blaster registry and configuration', () => {
   });
 
   it('parses config correctly', () => {
-    expect(blockBlasterConfigSchema.parse({})).toEqual({ turnTimeLimitSec: 0 });
-    expect(parseGameConfig('block-blaster', { turnTimeLimitSec: 60 })).toEqual({ turnTimeLimitSec: 60 });
+    expect(blockBlasterConfigSchema.parse({})).toEqual({
+      turnTimeLimitSec: 0,
+      difficulty: 'normal',
+      startingLayout: 'templated',
+    });
+    expect(parseGameConfig('block-blaster', { turnTimeLimitSec: 60, difficulty: 'easy', startingLayout: 'bait' })).toEqual({
+      turnTimeLimitSec: 60,
+      difficulty: 'easy',
+      startingLayout: 'bait',
+    });
   });
 });

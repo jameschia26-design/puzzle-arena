@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  BLOCK_BLASTER_DIFFICULTIES,
+  BLOCK_BLASTER_LAYOUTS,
+} from './block-blaster.js';
 
 export const GAME_IDS = [
   'sudoku',
@@ -151,6 +155,8 @@ export const puzzleBubbleConfigSchema = z.object({
 });
 export const blockBlasterConfigSchema = z.object({
   turnTimeLimitSec: z.number().int().min(0).max(300).default(0),
+  difficulty: z.enum(BLOCK_BLASTER_DIFFICULTIES).default('normal'),
+  startingLayout: z.enum(BLOCK_BLASTER_LAYOUTS).default('templated'),
 });
 export type BlockBlasterConfig = z.infer<typeof blockBlasterConfigSchema>;
 /**

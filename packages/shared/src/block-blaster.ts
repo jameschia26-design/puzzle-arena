@@ -14,6 +14,148 @@ export interface BlockPiece {
 
 export const BLOCK_BLASTER_BOARD_SIZE = 8;
 export const BLOCK_BLASTER_TRAY_SIZE = 3;
+export const BLOCK_BLASTER_DIFFICULTIES = ['easy', 'normal', 'hard'] as const;
+export type BlockBlasterDifficulty = (typeof BLOCK_BLASTER_DIFFICULTIES)[number];
+
+export const BLOCK_BLASTER_LAYOUTS = [
+  'empty',
+  'templated',
+  'bait',
+  'corners',
+  'scattered',
+  'crossroads',
+] as const;
+export type BlockBlasterLayout = (typeof BLOCK_BLASTER_LAYOUTS)[number];
+
+export interface StartingTemplate {
+  id: string;
+  name: string;
+  description: string;
+  blocks: [number, number, string][];
+}
+
+export const STARTING_TEMPLATES: Record<string, StartingTemplate> = {
+  empty: {
+    id: 'empty',
+    name: 'Clean Slate',
+    description: 'Completely empty 8×8 grid.',
+    blocks: [],
+  },
+  bait: {
+    id: 'bait',
+    name: 'Blast Bait',
+    description: 'Near-complete row and column set up for instant combo blasts.',
+    blocks: [
+      // Row 3 (cols 0, 1, 2, 5, 6, 7 filled, cols 3, 4 open)
+      [3, 0, '#38bdf8'],
+      [3, 1, '#38bdf8'],
+      [3, 2, '#06b6d4'],
+      [3, 5, '#10b981'],
+      [3, 6, '#38bdf8'],
+      [3, 7, '#38bdf8'],
+      // Col 4 (rows 0, 1, 5, 6, 7 filled, rows 2, 3, 4 open)
+      [0, 4, '#a855f7'],
+      [1, 4, '#a855f7'],
+      [5, 4, '#f97316'],
+      [6, 4, '#eab308'],
+      [7, 4, '#eab308'],
+    ],
+  },
+  corners: {
+    id: 'corners',
+    name: 'Four Corners',
+    description: 'L-corner clusters defending the 4 edges.',
+    blocks: [
+      // Top-Left
+      [0, 0, '#a855f7'],
+      [0, 1, '#a855f7'],
+      [1, 0, '#a855f7'],
+      // Top-Right
+      [0, 6, '#8b5cf6'],
+      [0, 7, '#8b5cf6'],
+      [1, 7, '#8b5cf6'],
+      // Bottom-Left
+      [6, 0, '#06b6d4'],
+      [7, 0, '#06b6d4'],
+      [7, 1, '#06b6d4'],
+      // Bottom-Right
+      [6, 7, '#f97316'],
+      [7, 6, '#f97316'],
+      [7, 7, '#f97316'],
+    ],
+  },
+  scattered: {
+    id: 'scattered',
+    name: 'Scattered Gems',
+    description: 'Anchor gems scattered across the board to plan combos around.',
+    blocks: [
+      [1, 2, '#38bdf8'],
+      [1, 5, '#eab308'],
+      [2, 2, '#10b981'],
+      [2, 5, '#ec4899'],
+      [5, 2, '#ec4899'],
+      [5, 5, '#10b981'],
+      [6, 2, '#eab308'],
+      [6, 5, '#38bdf8'],
+    ],
+  },
+  crossroads: {
+    id: 'crossroads',
+    name: 'Center Diamond',
+    description: 'Central diamond formation creating tactical corridors.',
+    blocks: [
+      [2, 3, '#f43f5e'],
+      [2, 4, '#f43f5e'],
+      [3, 2, '#3b82f6'],
+      [3, 5, '#3b82f6'],
+      [4, 2, '#3b82f6'],
+      [4, 5, '#3b82f6'],
+      [5, 3, '#f43f5e'],
+      [5, 4, '#f43f5e'],
+    ],
+  },
+};
+
+export function createEmptyBoard(): CellState[][] {
+  const board: CellState[][] = [];
+  for (let r = 0; r < BLOCK_BLASTER_BOARD_SIZE; r++) {
+    board.push(new Array<CellState>(BLOCK_BLASTER_BOARD_SIZE).fill(0));
+  }
+  return board;
+}
+
+export function createStartingBoard(
+  layout: BlockBlasterLayout = 'templated',
+  difficulty: BlockBlasterDifficulty = 'normal',
+  seedModifier = 0,
+): CellState[][] {
+  const board = createEmptyBoard();
+  let chosen = layout;
+
+  if (chosen === 'templated') {
+    if (difficulty === 'easy') {
+      chosen = 'bait';
+    } else if (difficulty === 'hard') {
+      chosen = seedModifier % 2 === 0 ? 'corners' : 'crossroads';
+    } else {
+      const pool: BlockBlasterLayout[] = ['bait', 'scattered', 'corners', 'crossroads'];
+      chosen = pool[Math.abs(seedModifier) % pool.length] ?? 'scattered';
+    }
+  }
+
+  const tmpl = STARTING_TEMPLATES[chosen] ?? STARTING_TEMPLATES.empty;
+  if (tmpl) {
+    for (const [r, c, color] of tmpl.blocks) {
+      const row = board[r];
+      if (row && c >= 0 && c < BLOCK_BLASTER_BOARD_SIZE) {
+        row[c] = color;
+      }
+    }
+  }
+
+  return board;
+}
+
 
 export interface ShapeDefinition {
   id: string;

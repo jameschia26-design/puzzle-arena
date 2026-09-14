@@ -6,13 +6,17 @@ import type {
 } from '@puzzle-arena/games';
 import {
   BLOCK_BLASTER_BOARD_SIZE,
+  BLOCK_BLASTER_DIFFICULTIES,
+  BLOCK_BLASTER_LAYOUTS,
   canPlacePiece,
   type BlockPiece,
+  type BlockBlasterDifficulty,
+  type BlockBlasterLayout,
 } from '@puzzle-arena/shared';
 import { PixelButton, PixelPanel } from '../ui/primitives.js';
 import { sfx, bgm } from '../ui/sound.js';
 import { useRoom } from '../net/socket.js';
-import { Flame, Trophy, RotateCcw, Zap } from 'lucide-react';
+import { Flame, Trophy, RotateCcw, Zap, Sparkles, SlidersHorizontal } from 'lucide-react';
 
 interface Particle {
   x: number;
@@ -73,25 +77,58 @@ export function BlockBlasterBoard({
   const boardRef = React.useRef<HTMLDivElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
 
-  // Selected piece from tray for click-to-place fallback
+  // Dynamic cell size in pixels
+  const [boardPixelSize, setBoardPixelSize] = React.useState<number>(360);
+  const cellSize = boardPixelSize / BLOCK_BLASTER_BOARD_SIZE;
+
+  // Track board size on resize
+  React.useEffect(() => {
+    const updateSize = () => {
+      if (boardRef.current) {
+        const rect = boardRef.current.getBoundingClientRect();
+        if (rect.width > 0) setBoardPixelSize(rect.width);
+      }
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
+  }, []);
+
+  // Selected piece from tray for click-to-place / keyboard controls
   const [selectedPieceIdx, setSelectedPieceIdx] = React.useState<number | null>(null);
 
   // Dragging state
-  const [draggedIdx, setDraggedIdx] = React.useState<number | null>(null);
+  const [dragInfo, setDragInfo] = React.useState<{
+    pieceIndex: number;
+    piece: BlockPiece;
+    isTouch: boolean;
+  } | null>(null);
   const [dragPointer, setDragPointer] = React.useState<{ x: number; y: number } | null>(null);
   const [hoverPos, setHoverPos] = React.useState<{ row: number; col: number; valid: boolean } | null>(null);
+
+  const hoverPosRef = React.useRef(hoverPos);
+  hoverPosRef.current = hoverPos;
+
+  // Track pointer start to distinguish click/tap from drag
+  const dragStartRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
+
+  // Difficulty & Layout controls menu
+  const [showConfigMenu, setShowConfigMenu] = React.useState(false);
+  const activeDifficulty: BlockBlasterDifficulty = view.config.difficulty ?? 'normal';
+  const activeLayout: BlockBlasterLayout = view.config.startingLayout ?? 'templated';
 
   // Particle & floating announcements state
   const particlesRef = React.useRef<Particle[]>([]);
   const [floatingAnnouncements, setFloatingAnnouncements] = React.useState<FloatingText[]>([]);
   const nextFloatId = React.useRef(1);
 
-  const prevClear = React.useRef<BlockBlasterClearEvent | null>(null);
+  // Blasting lines animation state
   const [blastingRows, setBlastingRows] = React.useState<number[]>([]);
   const [blastingCols, setBlastingCols] = React.useState<number[]>([]);
 
   // Track previous lines & lastClear for triggering FX
   const prevPiecesPlaced = React.useRef(you?.piecesPlaced ?? 0);
+  const prevClear = React.useRef<BlockBlasterClearEvent | null>(null);
 
   // Watch for clear events to spawn audio & particles
   React.useEffect(() => {
@@ -108,10 +145,9 @@ export function BlockBlasterBoard({
           setBlastingRows(rows);
           setBlastingCols(cols);
 
-          // Spawn particle bursts for each cleared cell
           if (boardRef.current) {
             const rect = boardRef.current.getBoundingClientRect();
-            const cellSize = rect.width / BLOCK_BLASTER_BOARD_SIZE;
+            const cs = rect.width / BLOCK_BLASTER_BOARD_SIZE;
 
             const clearedCells = new Set<string>();
             for (const r of rows) {
@@ -125,12 +161,12 @@ export function BlockBlasterBoard({
               const [rStr, cStr] = key.split(',');
               const r = Number(rStr);
               const c = Number(cStr);
-              const cx = c * cellSize + cellSize / 2;
-              const cy = r * cellSize + cellSize / 2;
+              const cx = c * cs + cs / 2;
+              const cy = r * cs + cs / 2;
 
-              for (let i = 0; i < 8; i++) {
+              for (let i = 0; i < 9; i++) {
                 const angle = Math.random() * Math.PI * 2;
-                const speed = 1.5 + Math.random() * 3.5;
+                const speed = 2 + Math.random() * 4;
                 particlesRef.current.push({
                   x: cx,
                   y: cy,
@@ -140,12 +176,11 @@ export function BlockBlasterBoard({
                   color: '#fbbf24',
                   alpha: 1,
                   life: 0,
-                  maxLife: 20 + Math.random() * 15,
+                  maxLife: 22 + Math.random() * 14,
                 });
               }
             });
 
-            // Add floating banner
             const comboInfo = getComboTitle(combo, totalLines);
             setFloatingAnnouncements((prev) => [
               ...prev,
@@ -186,7 +221,7 @@ export function BlockBlasterBoard({
         p.life++;
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.08; // gravity
+        p.vy += 0.09;
         p.alpha = Math.max(0, 1 - p.life / p.maxLife);
 
         if (p.life >= p.maxLife) {
@@ -220,9 +255,9 @@ export function BlockBlasterBoard({
     updateCanvas();
     window.addEventListener('resize', updateCanvas);
     return () => window.removeEventListener('resize', updateCanvas);
-  }, []);
+  }, [boardPixelSize]);
 
-  // Clear floating announcements after timeout
+  // Clear floating announcements
   React.useEffect(() => {
     if (floatingAnnouncements.length === 0) return;
     const timer = setTimeout(() => {
@@ -231,16 +266,203 @@ export function BlockBlasterBoard({
     return () => clearTimeout(timer);
   }, [floatingAnnouncements]);
 
-  // Active dragged piece
+  // Currently active piece (either being dragged or selected via tap)
   const activePiece: BlockPiece | null =
-    draggedIdx !== null ? (you?.tray[draggedIdx] ?? null) : selectedPieceIdx !== null ? (you?.tray[selectedPieceIdx] ?? null) : null;
+    dragInfo !== null
+      ? dragInfo.piece
+      : selectedPieceIdx !== null
+        ? (you?.tray[selectedPieceIdx] ?? null)
+        : null;
 
-  // Compute ghost placement and lines that would be completed
+  // Calculate coordinates on the board given pointer position
+  const computeTargetCoordinates = React.useCallback(
+    (clientX: number, clientY: number, piece: BlockPiece, isTouch: boolean) => {
+      if (!boardRef.current || !you) return null;
+      const rect = boardRef.current.getBoundingClientRect();
+
+      // Touch offset: finger sits 70px below visual piece
+      const touchOffsetY = isTouch ? -70 : 0;
+      const visualCenterX = clientX;
+      const visualCenterY = clientY + touchOffsetY;
+
+      const cs = rect.width / BLOCK_BLASTER_BOARD_SIZE;
+      const pieceTopLeftX = visualCenterX - (piece.width * cs) / 2;
+      const pieceTopLeftY = visualCenterY - (piece.height * cs) / 2;
+
+      const col = Math.round((pieceTopLeftX - rect.left) / cs);
+      const row = Math.round((pieceTopLeftY - rect.top) / cs);
+
+      const valid = canPlacePiece(you.board, piece, row, col);
+      return { row, col, valid };
+    },
+    [you],
+  );
+
+  // Global window drag event listeners
+  React.useEffect(() => {
+    if (!dragInfo) return;
+
+    const onWindowPointerMove = (e: PointerEvent) => {
+      setDragPointer({ x: e.clientX, y: e.clientY });
+      const target = computeTargetCoordinates(e.clientX, e.clientY, dragInfo.piece, dragInfo.isTouch);
+      setHoverPos(target);
+    };
+
+    const onWindowPointerUp = (e: PointerEvent) => {
+      const start = dragStartRef.current;
+      const dist = start ? Math.hypot(e.clientX - start.x, e.clientY - start.y) : 100;
+      const currentHover = hoverPosRef.current;
+
+      if (dist < 8) {
+        // Tap/click on piece: toggle selection
+        setSelectedPieceIdx((prev) => (prev === dragInfo.pieceIndex ? null : dragInfo.pieceIndex));
+        sfx.blip();
+        setHoverPos(null);
+      } else {
+        // Drag release
+        if (currentHover && currentHover.valid) {
+          sfx.blockPlace();
+          onAction({
+            type: 'place',
+            pieceIndex: dragInfo.pieceIndex,
+            row: currentHover.row,
+            col: currentHover.col,
+          });
+          setSelectedPieceIdx(null);
+          setHoverPos(null);
+        } else {
+          sfx.blockInvalid();
+          setHoverPos(null);
+        }
+      }
+
+      setDragInfo(null);
+      setDragPointer(null);
+      dragStartRef.current = null;
+    };
+
+    window.addEventListener('pointermove', onWindowPointerMove);
+    window.addEventListener('pointerup', onWindowPointerUp);
+    window.addEventListener('pointercancel', onWindowPointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerUp);
+      window.removeEventListener('pointercancel', onWindowPointerUp);
+    };
+  }, [dragInfo, computeTargetCoordinates, onAction]);
+
+  // Pointer down on tray piece
+  const handleTrayPiecePointerDown = (e: React.PointerEvent, idx: number) => {
+    if (paused || you?.gameOver) return;
+    const piece = you?.tray[idx];
+    if (!piece) return;
+
+    const isTouch = e.pointerType === 'touch';
+    dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+    setDragInfo({ pieceIndex: idx, piece, isTouch });
+    setDragPointer({ x: e.clientX, y: e.clientY });
+
+    const target = computeTargetCoordinates(e.clientX, e.clientY, piece, isTouch);
+    setHoverPos(target);
+  };
+
+  // Hovering over board cells in Click-to-Place mode
+  const handleBoardPointerMove = (e: React.PointerEvent) => {
+    if (dragInfo || selectedPieceIdx === null || !you) return;
+    const piece = you.tray[selectedPieceIdx];
+    if (!piece || !boardRef.current) return;
+
+    const rect = boardRef.current.getBoundingClientRect();
+    const cs = rect.width / BLOCK_BLASTER_BOARD_SIZE;
+    const col = Math.floor((e.clientX - rect.left) / cs);
+    const row = Math.floor((e.clientY - rect.top) / cs);
+
+    const valid = canPlacePiece(you.board, piece, row, col);
+    setHoverPos({ row, col, valid });
+  };
+
+  // Clicking a cell in Click-to-Place mode
+  const handleCellClick = (r: number, c: number) => {
+    if (paused || you?.gameOver) return;
+    if (selectedPieceIdx === null || !you) return;
+    const piece = you.tray[selectedPieceIdx];
+    if (!piece) return;
+
+    if (canPlacePiece(you.board, piece, r, c)) {
+      sfx.blockPlace();
+      onAction({
+        type: 'place',
+        pieceIndex: selectedPieceIdx,
+        row: r,
+        col: c,
+      });
+      setSelectedPieceIdx(null);
+      setHoverPos(null);
+    } else {
+      sfx.blockInvalid();
+    }
+  };
+
+  // Keyboard controls for full accessibility
+  React.useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (paused || you?.gameOver) return;
+      if (e.key === '1' || e.key === '2' || e.key === '3') {
+        const idx = Number(e.key) - 1;
+        if (you?.tray[idx]) {
+          setSelectedPieceIdx((prev) => (prev === idx ? null : idx));
+          sfx.blip();
+        }
+      } else if (e.key === 'Escape') {
+        setSelectedPieceIdx(null);
+        setHoverPos(null);
+      } else if (
+        (e.key === 'Enter' || e.key === ' ') &&
+        selectedPieceIdx !== null &&
+        hoverPosRef.current?.valid
+      ) {
+        e.preventDefault();
+        sfx.blockPlace();
+        onAction({
+          type: 'place',
+          pieceIndex: selectedPieceIdx,
+          row: hoverPosRef.current.row,
+          col: hoverPosRef.current.col,
+        });
+        setSelectedPieceIdx(null);
+        setHoverPos(null);
+      } else if (
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) &&
+        selectedPieceIdx !== null
+      ) {
+        e.preventDefault();
+        const piece = you?.tray[selectedPieceIdx];
+        if (!piece || !you) return;
+
+        setHoverPos((prev) => {
+          const curR = prev?.row ?? 0;
+          const curC = prev?.col ?? 0;
+          let nextR = curR;
+          let nextC = curC;
+          if (e.key === 'ArrowUp') nextR = Math.max(0, curR - 1);
+          if (e.key === 'ArrowDown') nextR = Math.min(BLOCK_BLASTER_BOARD_SIZE - piece.height, curR + 1);
+          if (e.key === 'ArrowLeft') nextC = Math.max(0, curC - 1);
+          if (e.key === 'ArrowRight') nextC = Math.min(BLOCK_BLASTER_BOARD_SIZE - piece.width, curC + 1);
+          return { row: nextR, col: nextC, valid: canPlacePiece(you.board, piece, nextR, nextC) };
+        });
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [paused, you, selectedPieceIdx, onAction]);
+
+  // Compute ghost preview and lines that would be completed
   const ghostPreview = React.useMemo(() => {
     if (!you || !activePiece || !hoverPos || !hoverPos.valid) return null;
     const { row, col } = hoverPos;
 
-    // Simulate placing piece on board to see what rows/cols complete
     const testBoard = you.board.map((r) => [...r]);
     for (let r = 0; r < activePiece.shape.length; r++) {
       const sRow = activePiece.shape[r];
@@ -281,124 +503,22 @@ export function BlockBlasterBoard({
     };
   }, [you, activePiece, hoverPos]);
 
-  // Pointer drag event handlers
-  const handlePointerDownPiece = (e: React.PointerEvent, idx: number) => {
-    if (paused || you?.gameOver) return;
-    const piece = you?.tray[idx];
-    if (!piece) return;
-
-    // Select for click-to-place
-    setSelectedPieceIdx(idx);
-
-    // Set drag
-    setDraggedIdx(idx);
-    setDragPointer({ x: e.clientX, y: e.clientY });
-
-    const target = e.currentTarget;
-    try {
-      target.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore if unsupported
-    }
-  };
-
-  const updateHoverCoordinates = (clientX: number, clientY: number, isTouch: boolean, piece: BlockPiece) => {
-    if (!boardRef.current) return;
-    const rect = boardRef.current.getBoundingClientRect();
-
-    // Mobile/touch offset: shift Y upward by -70px so thumb doesn't obscure placement
-    const touchOffsetY = isTouch ? -70 : 0;
-    const px = clientX - rect.left;
-    const py = clientY + touchOffsetY - rect.top;
-
-    const cellSize = rect.width / BLOCK_BLASTER_BOARD_SIZE;
-    const piecePixelW = piece.width * cellSize;
-    const piecePixelH = piece.height * cellSize;
-
-    // Center piece around pointer
-    const targetCol = Math.round((px - piecePixelW / 2) / cellSize);
-    const targetRow = Math.round((py - piecePixelH / 2) / cellSize);
-
-    if (you) {
-      const valid = canPlacePiece(you.board, piece, targetRow, targetCol);
-      setHoverPos({ row: targetRow, col: targetCol, valid });
-    }
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (draggedIdx === null || !you) return;
-    const piece = you.tray[draggedIdx];
-    if (!piece) return;
-
-    setDragPointer({ x: e.clientX, y: e.clientY });
-    const isTouch = e.pointerType === 'touch';
-    updateHoverCoordinates(e.clientX, e.clientY, isTouch, piece);
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-    if (draggedIdx === null || !you) return;
-    const pieceIdx = draggedIdx;
-    const piece = you.tray[pieceIdx];
-
-    setDraggedIdx(null);
-    setDragPointer(null);
-
-    if (piece && hoverPos && hoverPos.valid) {
-      // Commit placement
-      sfx.blockPlace();
-      onAction({
-        type: 'place',
-        pieceIndex: pieceIdx,
-        row: hoverPos.row,
-        col: hoverPos.col,
-      });
-      setSelectedPieceIdx(null);
-      setHoverPos(null);
-    } else {
-      if (hoverPos && !hoverPos.valid) {
-        sfx.blockInvalid();
-      }
-      setHoverPos(null);
-    }
-
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // Ignore
-    }
-  };
-
-  // Click-to-place tap on board cell
-  const handleCellClick = (r: number, c: number) => {
-    if (paused || you?.gameOver) return;
-    if (selectedPieceIdx === null || !you) return;
-    const piece = you.tray[selectedPieceIdx];
-    if (!piece) return;
-
-    if (canPlacePiece(you.board, piece, r, c)) {
-      sfx.blockPlace();
-      onAction({
-        type: 'place',
-        pieceIndex: selectedPieceIdx,
-        row: r,
-        col: c,
-      });
-      setSelectedPieceIdx(null);
-      setHoverPos(null);
-    } else {
-      sfx.blockInvalid();
-    }
+  const handleRestart = (diff?: BlockBlasterDifficulty, lay?: BlockBlasterLayout) => {
+    sfx.blip();
+    onAction({
+      type: 'restart',
+      difficulty: diff ?? activeDifficulty,
+      startingLayout: lay ?? activeLayout,
+    });
+    setSelectedPieceIdx(null);
+    setHoverPos(null);
+    setShowConfigMenu(false);
   };
 
   return (
-    <div
-      className="relative flex flex-col items-center justify-between w-full max-w-4xl mx-auto p-2 sm:p-4 select-none touch-none"
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-    >
+    <div className="relative flex flex-col items-center justify-between w-full max-w-4xl mx-auto p-2 sm:p-4 select-none touch-none">
       {/* Top Arcade HUD */}
-      <div className="w-full flex items-center justify-between gap-2 mb-3 px-2 sm:px-4 py-2 bg-pa-surface border-2 border-pa-border pa-shadow">
+      <div className="w-full flex items-center justify-between gap-2 mb-3 px-3 py-2 bg-pa-surface border-2 border-pa-border pa-shadow">
         <div className="flex items-center gap-4">
           <div className="flex flex-col">
             <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim">Score</span>
@@ -417,7 +537,19 @@ export function BlockBlasterBoard({
           </div>
         </div>
 
-        <div className="flex items-center gap-3 sm:gap-6">
+        <div className="flex items-center gap-2 sm:gap-4">
+          {/* Difficulty Badge */}
+          <button
+            type="button"
+            onClick={() => setShowConfigMenu((prev) => !prev)}
+            className="flex items-center gap-1 px-2 py-1 bg-pa-bg border border-pa-border rounded hover:border-pa-cyan cursor-pointer transition-colors"
+          >
+            <SlidersHorizontal size={12} className="text-pa-cyan" />
+            <span className="font-display text-[9px] uppercase text-pa-cyan font-bold">
+              {activeDifficulty}
+            </span>
+          </button>
+
           {/* Combo Streak Indicator */}
           <div className="flex items-center gap-1.5 px-2.5 py-1 bg-pa-bg border border-pa-border rounded">
             <Flame
@@ -436,7 +568,7 @@ export function BlockBlasterBoard({
             </div>
           </div>
 
-          <div className="flex flex-col items-end">
+          <div className="hidden xs:flex flex-col items-end">
             <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim flex items-center gap-1">
               <Zap size={10} className="text-pa-cyan" /> Blasted
             </span>
@@ -447,14 +579,76 @@ export function BlockBlasterBoard({
         </div>
       </div>
 
+      {/* Difficulty & Starting Template Menu Dropdown */}
+      {showConfigMenu && (
+        <div className="w-full mb-3 p-3 bg-pa-surface border-2 border-pa-cyan pa-shadow rounded-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-display text-xs text-pa-cyan font-bold flex items-center gap-1">
+              <Sparkles size={13} /> SELECT DIFFICULTY &amp; STARTING BOARD
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowConfigMenu(false)}
+              className="text-xs text-pa-ink-dim hover:text-white px-2 py-0.5 border border-pa-border rounded"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <span className="font-display text-[9px] uppercase text-pa-ink-dim mb-1 block">Difficulty</span>
+              <div className="flex gap-1.5">
+                {BLOCK_BLASTER_DIFFICULTIES.map((d: BlockBlasterDifficulty) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => handleRestart(d, activeLayout)}
+                    className={`flex-1 py-1.5 px-2 text-xs font-display uppercase tracking-wider border rounded cursor-pointer ${
+                      activeDifficulty === d
+                        ? 'bg-pa-cyan text-black border-pa-cyan font-bold'
+                        : 'bg-pa-bg text-pa-ink border-pa-border hover:border-pa-cyan'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-2">
+              <span className="font-display text-[9px] uppercase text-pa-ink-dim mb-1 block">Starting Board</span>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                {BLOCK_BLASTER_LAYOUTS.map((lay: BlockBlasterLayout) => (
+                  <button
+                    key={lay}
+                    type="button"
+                    onClick={() => handleRestart(activeDifficulty, lay)}
+                    className={`py-1.5 px-1 text-[10px] font-display uppercase tracking-tight border rounded cursor-pointer truncate ${
+                      activeLayout === lay
+                        ? 'bg-pa-cyan text-black border-pa-cyan font-bold'
+                        : 'bg-pa-bg text-pa-ink border-pa-border hover:border-pa-cyan'
+                    }`}
+                    title={lay}
+                  >
+                    {lay}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-4 w-full">
         {/* Main 8x8 Board Container */}
         <div className="relative flex flex-col items-center">
           <div
             ref={boardRef}
+            onPointerMove={handleBoardPointerMove}
             className="relative grid grid-cols-8 grid-rows-8 gap-1 p-2 sm:p-2.5 bg-slate-950 border-4 border-pa-border pa-shadow rounded-sm w-[320px] h-[320px] xs:w-[350px] xs:h-[350px] sm:w-[410px] sm:h-[410px]"
             style={{
-              boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.5)',
+              boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8), 0 0 12px rgba(0,0,0,0.5)',
             }}
           >
             {/* 8x8 Cells */}
@@ -491,30 +685,29 @@ export function BlockBlasterBoard({
                   <div
                     key={`${r}-${c}`}
                     onClick={() => handleCellClick(r, c)}
-                    className={`relative rounded-sm transition-all duration-75 cursor-pointer flex items-center justify-center ${
+                    className={`relative rounded-xs transition-all duration-75 flex items-center justify-center ${
                       isOccupied
                         ? 'pa-press'
-                        : 'bg-slate-900/90 border border-slate-800/80 hover:border-slate-600/60'
+                        : 'bg-slate-900/90 border border-slate-800/80 hover:border-slate-500'
                     } ${
                       (isRowGlowing || isColGlowing) && !isOccupied
-                        ? 'ring-2 ring-yellow-400 bg-yellow-400/25 animate-pulse'
+                        ? 'ring-2 ring-yellow-400 bg-yellow-400/30 animate-pulse'
                         : ''
-                    } ${isBlasting ? 'scale-75 opacity-50 brightness-150' : ''}`}
+                    } ${isBlasting ? 'scale-75 opacity-40 brightness-150' : ''}`}
                     style={{
                       backgroundColor: isOccupied
                         ? (cellVal as string)
                         : isGhost
                           ? ghostColor
                           : undefined,
-                      opacity: isGhost ? 0.6 : 1,
+                      opacity: isGhost ? 0.65 : 1,
                       boxShadow: isOccupied
-                        ? 'inset 2px 2px 0px rgba(255,255,255,0.4), inset -2px -2px 0px rgba(0,0,0,0.45)'
+                        ? 'inset 2px 2px 0px rgba(255,255,255,0.45), inset -2px -2px 0px rgba(0,0,0,0.5)'
                         : isGhost
-                          ? `0 0 8px ${ghostColor}`
+                          ? `0 0 10px ${ghostColor}, inset 1px 1px 0px rgba(255,255,255,0.4)`
                           : undefined,
                     }}
                   >
-                    {/* Retro inner highlight reflection on occupied blocks */}
                     {isOccupied && (
                       <div className="absolute top-0.5 left-0.5 w-1.5 h-1.5 bg-white/40 rounded-xs pointer-events-none" />
                     )}
@@ -524,10 +717,7 @@ export function BlockBlasterBoard({
             )}
 
             {/* Particle canvas overlay */}
-            <canvas
-              ref={canvasRef}
-              className="absolute inset-0 pointer-events-none z-10"
-            />
+            <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-10" />
 
             {/* Floating combo announcements */}
             {floatingAnnouncements.map((ann) => (
@@ -540,7 +730,7 @@ export function BlockBlasterBoard({
                 }}
               >
                 <span
-                  className="font-display text-xl sm:text-2xl font-black drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-wider px-3 py-1 bg-black/80 border-2 border-white rounded-md"
+                  className="font-display text-xl sm:text-2xl font-black drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] tracking-wider px-3 py-1 bg-black/85 border-2 border-white rounded-md"
                   style={{ color: ann.color }}
                 >
                   {ann.text}
@@ -565,16 +755,14 @@ export function BlockBlasterBoard({
 
                 <div className="flex flex-col items-center my-3 gap-1">
                   <span className="font-display text-sm text-pa-ink-dim uppercase">Final Score</span>
-                  <span className="font-display text-3xl font-bold text-pa-cyan">
-                    {you.score}
-                  </span>
+                  <span className="font-display text-3xl font-bold text-pa-cyan">{you.score}</span>
                 </div>
 
                 <PixelButton
                   size="md"
                   variant="primary"
                   className="mt-2"
-                  onClick={() => onAction({ type: 'restart' })}
+                  onClick={() => handleRestart(activeDifficulty, activeLayout)}
                 >
                   <RotateCcw size={14} className="mr-1" />
                   PLAY AGAIN
@@ -587,20 +775,20 @@ export function BlockBlasterBoard({
           <div className="flex items-center justify-center gap-3 sm:gap-6 mt-4 w-full">
             {you?.tray.map((piece, idx) => {
               const isSelected = selectedPieceIdx === idx;
-              const isDraggingThis = draggedIdx === idx;
+              const isDraggingThis = dragInfo?.pieceIndex === idx;
               const hasMoves = piece && !canPlacePiece(you.board, piece, 0, 0) ? false : true;
 
               return (
                 <div
                   key={piece?.id ?? `empty-${idx}`}
-                  onPointerDown={(e) => handlePointerDownPiece(e, idx)}
+                  onPointerDown={(e) => handleTrayPiecePointerDown(e, idx)}
                   className={`relative flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 bg-pa-surface border-2 rounded-sm pa-shadow cursor-grab active:cursor-grabbing transition-transform select-none ${
-                    isSelected ? 'border-pa-cyan ring-2 ring-pa-cyan/50 scale-105' : 'border-pa-border'
+                    isSelected ? 'border-pa-cyan ring-4 ring-pa-cyan/60 scale-105 shadow-[0_0_12px_rgba(34,211,238,0.5)]' : 'border-pa-border'
                   } ${
                     you?.gameOver && piece && !hasMoves
                       ? 'border-red-500 ring-2 ring-red-500/80 animate-pulse'
                       : ''
-                  } ${isDraggingThis ? 'opacity-30' : 'hover:border-pa-cyan/70'}`}
+                  } ${isDraggingThis ? 'opacity-20' : 'hover:border-pa-cyan/70'}`}
                 >
                   {piece ? (
                     <div
@@ -619,7 +807,7 @@ export function BlockBlasterBoard({
                               backgroundColor: val === 1 ? piece.color : 'transparent',
                               boxShadow:
                                 val === 1
-                                  ? 'inset 1px 1px 0px rgba(255,255,255,0.4), inset -1px -1px 0px rgba(0,0,0,0.4)'
+                                  ? 'inset 1px 1px 0px rgba(255,255,255,0.45), inset -1px -1px 0px rgba(0,0,0,0.45)'
                                   : undefined,
                             }}
                           />
@@ -627,8 +815,12 @@ export function BlockBlasterBoard({
                       )}
                     </div>
                   ) : (
-                    <span className="font-display text-[9px] text-pa-ink-dim/40 uppercase">
-                      Empty
+                    <span className="font-display text-[9px] text-pa-ink-dim/40 uppercase">Empty</span>
+                  )}
+
+                  {isSelected && (
+                    <span className="absolute -bottom-2 text-[8px] font-display bg-pa-cyan text-black px-1 rounded uppercase font-bold tracking-tight">
+                      Selected
                     </span>
                   )}
                 </div>
@@ -636,9 +828,11 @@ export function BlockBlasterBoard({
             })}
           </div>
 
-          <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim/70 mt-2">
-            Drag piece to grid or tap to select
-          </span>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim/70">
+              Drag piece to grid, tap to select, or press 1 / 2 / 3
+            </span>
+          </div>
         </div>
 
         {/* Multiplayer Opponent Spectator Boards */}
@@ -700,17 +894,17 @@ export function BlockBlasterBoard({
         )}
       </div>
 
-      {/* Floating Dragged Piece following cursor/finger */}
-      {draggedIdx !== null && dragPointer && activePiece && (
+      {/* Floating Dragged Piece matching exact board cell scale */}
+      {dragInfo !== null && dragPointer && activePiece && (
         <div
           className="fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 transition-opacity"
           style={{
             left: `${dragPointer.x}px`,
-            top: `${dragPointer.y - 70}px`, // -70px touch offset so piece hovers above touch point
+            top: `${dragPointer.y + (dragInfo.isTouch ? -70 : 0)}px`,
           }}
         >
           <div
-            className="grid gap-1 p-1 bg-slate-900/60 rounded border border-white/20 shadow-2xl backdrop-blur-xs scale-110"
+            className="grid gap-1 p-1 bg-slate-900/80 rounded-sm border-2 border-pa-cyan shadow-2xl backdrop-blur-xs"
             style={{
               gridTemplateRows: `repeat(${activePiece.height}, minmax(0, 1fr))`,
               gridTemplateColumns: `repeat(${activePiece.width}, minmax(0, 1fr))`,
@@ -720,8 +914,10 @@ export function BlockBlasterBoard({
               row.map((val, c) => (
                 <div
                   key={`drag-${r}-${c}`}
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-xs"
+                  className="rounded-xs"
                   style={{
+                    width: `${cellSize}px`,
+                    height: `${cellSize}px`,
                     backgroundColor: val === 1 ? activePiece.color : 'transparent',
                     boxShadow:
                       val === 1
