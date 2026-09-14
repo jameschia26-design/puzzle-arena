@@ -665,18 +665,22 @@ These are the only Puzzle Bubble game settings:
 | Setting | Values | Default | Effect |
 |---|---|---|---|
 | Bubble colours | integer **3–8** | **6** | Size of the colour palette used for generated boards and upcoming bubbles |
-| Speed | `slow` / `normal` / `fast` | **`normal`** | Pressure pace and shot animation pace |
+| Speed | `slow` / `normal` / `fast` | **`normal`** | Ceiling descent, miss-pressure, and shot animation pace |
 | Room time limit | no limit, or **1–240 minutes** | **no limit** | Existing room-level setting, not part of the game config |
 
 Speed maps to fixed values:
 
-| Speed | Non-clearing shots before pressure row | Shot travel animation |
-|---|---:|---:|
-| Slow | 8 | 520 ms |
-| Normal | 6 | 360 ms |
-| Fast | 4 | 240 ms |
+| Speed | Automatic ceiling descent | Non-clearing shots before pressure row | Shot travel animation |
+|---|---:|---:|---:|
+| Slow | 30 s | 8 | 520 ms |
+| Normal | 20 s | 6 | 360 ms |
+| Fast | 12 s | 4 | 240 ms |
 
 The pressure counter is visible. A shot that pops at least one matched bubble resets it to the full allowance; a shot that only attaches decrements it. Reaching zero inserts a ceiling row and resets the counter. This is simpler and more legible than copying the original's hidden colour-dependent drop schedule.
+An authoritative runtime timer also descends every active board at the interval
+above, including in no-time-limit rooms. Pausing freezes the remaining interval;
+resuming continues it rather than granting a fresh interval. The runtime exposes
+the next deadline as `pressureEndsAtMs` for the HUD countdown.
 
 ### Assist shadow
 
@@ -803,8 +807,8 @@ Desktop shows the player's full board and the opponent's small live board. Mobil
 
 Controls:
 
-- keyboard: Left/Right aim, Space shoots, G toggles assist;
-- pointer: move or drag above the launcher to aim, release/tap FIRE to shoot;
+- keyboard: Left/Right aim, Space shoots, G toggles and persists assist;
+- pointer: move or drag above the launcher to aim; only the separate FIRE button shoots;
 - touch: large Left, Fire, Right buttons below the board;
 - disable repeat firing until the current shot animation resolves locally.
 
@@ -869,7 +873,7 @@ This also makes optional timers work consistently for Tetris, Pac-Man, Space Inv
 5. Build the canvas board and local assist shadow from the shared trajectory helper.
 6. Add host settings, room routing, opponent preview, audio, and results detail.
 7. Smoke-test solo, bot, two-browser competition, time expiry, pause/resume, reconnect, and crash replay.
-8. Remove any temporary harnesses or generated research captures.
+8. Remove throwaway scripts and research captures; keep `/dev/bubble` as the dev-only proof surface.
 
 ### Verification
 

@@ -8,6 +8,7 @@ import {
   type PuzzleBubbleView,
 } from '@puzzle-arena/games';
 import { bgm, sfx } from '../ui/sound.js';
+import { useReducedMotion } from '../ui/motion.js';
 
 const rules = puzzleBubbleRules;
 
@@ -117,6 +118,7 @@ type VisualState = {
 type Orientation = 'portrait' | 'landscape';
 /** 'auto' follows the detected viewport; the other two are a manual pin. */
 type LayoutPref = 'auto' | Orientation;
+type ActionAck = { accepted: boolean; error?: string };
 
 /**
  * Portrait for phones, landscape for laptops or a rotated phone: the board
@@ -158,6 +160,52 @@ function aimAngle(x: number, y: number): number {
   return clampAngle(Math.round(Math.atan2(x - SHOOTER.x, Math.max(1, SHOOTER.y - y)) * (180 / Math.PI)));
 }
 
+function drawBubbleGlyph(
+  ctx: CanvasRenderingContext2D,
+  color: BubbleColor,
+  palette: (typeof COLOR)[BubbleColor],
+): void {
+  ctx.fillStyle = palette.rim;
+  if (color === 'coral') {
+    ctx.fillRect(-3, -4, 6, 2);
+    ctx.fillRect(-3, 2, 6, 2);
+    ctx.fillRect(-4, -3, 2, 6);
+    ctx.fillRect(2, -3, 2, 6);
+  } else if (color === 'gold') {
+    ctx.fillRect(-1, -5, 2, 10);
+    ctx.fillRect(-5, -1, 10, 2);
+    ctx.fillRect(-3, -3, 6, 6);
+  } else if (color === 'leaf') {
+    ctx.fillRect(-4, 0, 2, 3);
+    ctx.fillRect(-2, -2, 2, 5);
+    ctx.fillRect(0, -4, 3, 6);
+    ctx.fillRect(2, -2, 2, 2);
+  } else if (color === 'sky') {
+    ctx.fillRect(-3, -4, 4, 3);
+    ctx.fillRect(-1, -1, 4, 3);
+    ctx.fillRect(-3, 2, 4, 3);
+  } else if (color === 'violet') {
+    ctx.fillRect(-1, -5, 2, 2);
+    ctx.fillRect(-3, -3, 6, 2);
+    ctx.fillRect(-5, -1, 10, 2);
+    ctx.fillRect(-3, 1, 6, 2);
+    ctx.fillRect(-1, 3, 2, 2);
+  } else if (color === 'rose') {
+    ctx.fillRect(-4, -4, 5, 8);
+    ctx.fillRect(-2, -5, 3, 2);
+    ctx.fillStyle = palette.body;
+    ctx.fillRect(-1, -4, 4, 6);
+  } else if (color === 'mint') {
+    ctx.fillRect(-5, -1, 10, 3);
+    ctx.fillRect(-1, -5, 3, 10);
+  } else {
+    ctx.fillRect(-5, -3, 2, 4);
+    ctx.fillRect(-1, -5, 2, 6);
+    ctx.fillRect(3, -3, 2, 4);
+    ctx.fillRect(-5, 1, 10, 4);
+  }
+}
+
 function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, color: BubbleColor, scale = 1, alpha = 1): void {
   const palette = COLOR[color];
   ctx.save();
@@ -187,10 +235,7 @@ function drawBubble(ctx: CanvasRenderingContext2D, x: number, y: number, color: 
   ctx.fillRect(-9, -6, 3, 5);
   ctx.fillRect(-6, -9, 5, 2);
   ctx.fillRect(-4, -7, 2, 2);
-  ctx.fillStyle = palette.rim;
-  ctx.fillRect(-1, -1, 3, 3);
-  ctx.fillStyle = palette.spec;
-  ctx.fillRect(0, 0, 1, 1);
+  drawBubbleGlyph(ctx, color, palette);
   ctx.restore();
 }
 
@@ -241,10 +286,9 @@ function drawBackground(ctx: CanvasRenderingContext2D): void {
 }
 
 function drawDangerLine(ctx: CanvasRenderingContext2D, danger: boolean, now: number): void {
-  const pulse = danger ? 0.45 + 0.55 * Math.sin(now / 180) ** 2 : 0.7;
+  const alertFrame = Math.floor(now / 180) % 2 === 0;
   ctx.save();
-  ctx.globalAlpha = pulse;
-  ctx.strokeStyle = danger ? '#ff4052' : '#f7bf50';
+  ctx.strokeStyle = danger ? (alertFrame ? '#ff4052' : '#ffea6c') : '#f7bf50';
   ctx.lineWidth = danger ? 3 : 2;
   ctx.setLineDash([5, 4]);
   ctx.beginPath();
@@ -409,31 +453,43 @@ function buildFlight(shot: Shot, before: Snapshot, fired: BubbleColor, durationM
   };
 }
 
+function MiniField({ player }: { player: PuzzleBubblePublicPlayer }): React.ReactElement {
+  const minY = rules.CEILING_Y;
+  const maxY = rules.bubblePoint({ row: rules.DANGER_ROW, col: 0 }, player.rowParity).y + rules.BUBBLE_RADIUS;
+  const outer = rules.BUBBLE_RADIUS * 0.84;
+  const inner = outer * 0.72;
+  return (
+    <svg
+      viewBox={`0 ${minY} ${rules.BOARD_WIDTH} ${maxY - minY}`}
+      preserveAspectRatio="xMidYMin meet"
+      shapeRendering="crispEdges"
+      role="img"
+      aria-label="Opponent bubble field"
+      className="block h-24 w-full border border-[#31558a] bg-[#263e68]"
+    >
+      {player.board.filter((cell) => cell.row <= rules.DANGER_ROW).map((cell) => {
+        const point = rules.bubblePoint(cell, player.rowParity);
+        const palette = COLOR[cell.color];
+        return (
+          <g key={`${cell.row}:${cell.col}`}>
+            <rect x={point.x - outer / 2} y={point.y - outer} width={outer} height={outer * 2} fill={palette.outline} />
+            <rect x={point.x - outer} y={point.y - outer / 2} width={outer * 2} height={outer} fill={palette.outline} />
+            <rect x={point.x - inner / 2} y={point.y - inner} width={inner} height={inner * 2} fill={palette.body} />
+            <rect x={point.x - inner} y={point.y - inner / 2} width={inner * 2} height={inner} fill={palette.body} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function MiniBoard({ player }: { player: PuzzleBubblePublicPlayer }): React.ReactElement {
   return (
-    <div className="border-2 border-pa-border bg-[#15213d] p-2 min-w-0">
+    <div className="min-w-0 border-2 border-pa-border bg-[#15213d] p-2">
       <div className="flex items-baseline justify-between gap-2 font-display text-[9px] text-pa-ink-dim">
         <span>OPPONENT</span><span className="text-pa-amber">{player.score.toLocaleString()}</span>
       </div>
-      <div className="relative mt-2 h-24 overflow-hidden border border-[#31558a] bg-[#263e68]">
-        {player.board.filter((cell) => cell.row <= rules.DANGER_ROW).map((cell) => {
-          const longRow = (cell.row + player.rowParity) % 2 === 0;
-          const left = longRow ? cell.col * 12.5 : cell.col * 12.5 + 6.25;
-          return (
-            <span
-              key={`${cell.row}:${cell.col}`}
-              className="absolute rounded-full border border-[#15213d]"
-              style={{
-                left: `${left}%`,
-                top: `${(cell.row * 100) / (rules.DANGER_ROW + 1)}%`,
-                width: '12.5%',
-                height: `${100 / (rules.DANGER_ROW + 1)}%`,
-                backgroundColor: COLOR[cell.color].body,
-              }}
-            />
-          );
-        })}
-      </div>
+      <div className="mt-2"><MiniField player={player} /></div>
       <div className="mt-1 text-right font-display text-[8px] text-pa-ink-dim">WAVE {player.wave}{player.gameOver ? ' · OUT' : ''}</div>
     </div>
   );
@@ -449,9 +505,10 @@ export function PuzzleBubbleBoard({
   youId: string | null;
   legalActions: string[];
   turnEndsAt: number | null;
-  onAction: (action: PuzzleBubbleAction) => void;
+  onAction: (action: PuzzleBubbleAction) => void | Promise<ActionAck>;
 }): React.ReactElement {
   const you = view.you;
+  const reduced = useReducedMotion();
   const detectedOrientation = useOrientation();
   const [layoutPref, setLayoutPref] = React.useState<LayoutPref>(() => {
     try {
@@ -462,6 +519,7 @@ export function PuzzleBubbleBoard({
     }
   });
   const orientation: Orientation = layoutPref === 'auto' ? detectedOrientation : layoutPref;
+  const [opponentExpanded, setOpponentExpanded] = React.useState(false);
   const [angle, setAngle] = React.useState(0);
   const [assist, setAssist] = React.useState(() => {
     try {
@@ -472,10 +530,12 @@ export function PuzzleBubbleBoard({
   });
   const [locked, setLocked] = React.useState(false);
   const lockTimer = React.useRef<number | null>(null);
+  const lockedRef = React.useRef(false);
   const aimHoldDelay = React.useRef<number | null>(null);
   const aimHoldInterval = React.useRef<number | null>(null);
   const angleRef = React.useRef(angle);
   const assistRef = React.useRef(assist);
+  const reducedRef = React.useRef(reduced);
   const playerRef = React.useRef(you);
   const fxRef = React.useRef<VisualState>({
     ready: false,
@@ -501,6 +561,23 @@ export function PuzzleBubbleBoard({
   angleRef.current = angle;
   assistRef.current = assist;
   playerRef.current = you;
+  reducedRef.current = reduced;
+
+  const unlockShot = React.useCallback(() => {
+    lockedRef.current = false;
+    setLocked(false);
+    if (lockTimer.current !== null) {
+      window.clearTimeout(lockTimer.current);
+      lockTimer.current = null;
+    }
+  }, []);
+
+  const lockShot = React.useCallback((delayMs: number) => {
+    lockedRef.current = true;
+    setLocked(true);
+    if (lockTimer.current !== null) window.clearTimeout(lockTimer.current);
+    lockTimer.current = window.setTimeout(unlockShot, delayMs);
+  }, [unlockShot]);
 
   /** Swap the drawn board to the newest server truth and release its held-back effects. */
   const commit = React.useCallback((burst: Burst | null) => {
@@ -509,41 +586,44 @@ export function PuzzleBubbleBoard({
     fx.view = fx.latest;
     setShown(fx.latest.player);
     if (burst) {
-      for (const pop of burst.pops) {
-        fx.particles.push({ kind: 'ring', x: pop.x, y: pop.y, vx: 0, vy: 0, color: pop.color, life: 0, maxLife: 16 });
-        for (let shard = 0; shard < 6; shard += 1) {
-          const radians = (shard * Math.PI) / 3;
-          fx.particles.push({
-            kind: 'spark',
-            x: pop.x,
-            y: pop.y,
-            vx: Math.cos(radians) * 2,
-            vy: Math.sin(radians) * 2,
-            color: pop.color,
-            life: 0,
-            maxLife: 20,
-          });
+      if (burst.pops.length > 0) sfx.pop();
+      else sfx.chip();
+      if (!reducedRef.current) {
+        for (const pop of burst.pops) {
+          fx.particles.push({ kind: 'ring', x: pop.x, y: pop.y, vx: 0, vy: 0, color: pop.color, life: 0, maxLife: 16 });
+          for (let shard = 0; shard < 6; shard += 1) {
+            const radians = (shard * Math.PI) / 3;
+            fx.particles.push({
+              kind: 'spark',
+              x: pop.x,
+              y: pop.y,
+              vx: Math.cos(radians) * 2,
+              vy: Math.sin(radians) * 2,
+              color: pop.color,
+              life: 0,
+              maxLife: 20,
+            });
+          }
         }
-      }
-      for (const drop of burst.drops) {
-        fx.particles.push({ kind: 'drop', x: drop.x, y: drop.y, vx: ((drop.x % 3) - 1) * 0.6, vy: -1.8, color: drop.color, life: 0, maxLife: 90 });
-      }
-      if (burst.pops.length > 0) {
-        const first = burst.pops[0]!;
-        fx.particles.push({ kind: 'score', x: first.x - 9, y: first.y - 8, vx: 0, vy: -0.5, color: first.color, life: 0, maxLife: 42, text: `+${burst.score}` });
-        sfx.pop();
-      } else {
-        sfx.chip();
-      }
-      if (burst.pressureAdded) {
-        fx.shake = 3.5;
-        fx.descentOffset = -14;
+        for (const drop of burst.drops) {
+          fx.particles.push({ kind: 'drop', x: drop.x, y: drop.y, vx: ((drop.x % 3) - 1) * 0.6, vy: -1.8, color: drop.color, life: 0, maxLife: 90 });
+        }
+        if (burst.pops.length > 0) {
+          const first = burst.pops[0]!;
+          fx.particles.push({ kind: 'score', x: first.x - 9, y: first.y - 8, vx: 0, vy: -0.5, color: first.color, life: 0, maxLife: 42, text: `+${burst.score}` });
+        }
+        if (burst.pressureAdded) {
+          fx.shake = 3.5;
+          fx.descentOffset = -14;
+        }
       }
     }
     if (fx.queuedDescent) {
       fx.queuedDescent = false;
-      fx.shake = 3.5;
-      fx.descentOffset = -14;
+      if (!reducedRef.current) {
+        fx.shake = 3.5;
+        fx.descentOffset = -14;
+      }
     }
   }, []);
 
@@ -556,6 +636,22 @@ export function PuzzleBubbleBoard({
     if (aimHoldDelay.current !== null) window.clearTimeout(aimHoldDelay.current);
     if (aimHoldInterval.current !== null) window.clearInterval(aimHoldInterval.current);
   }, []);
+
+  React.useEffect(() => {
+    if (!reduced) return;
+    const fx = fxRef.current;
+    fx.particles.length = 0;
+    fx.recoil = 0;
+    fx.recoilVelocity = 0;
+    fx.shake = 0;
+    fx.descentOffset = 0;
+    if (fx.flight) {
+      const burst = fx.flight.burst;
+      fx.flight = null;
+      commit(burst);
+      unlockShot();
+    }
+  }, [commit, reduced, unlockShot]);
 
   /**
    * A callback ref, not `useRef` + a mount-only effect: the portrait and
@@ -661,12 +757,21 @@ export function PuzzleBubbleBoard({
         fx.flight = null;
         commit(pending);
       }
-      fx.flight = buildFlight(shot, before, fx.loaded ?? you.current, rules.shotAnimationMs(view.config.speed));
-      fx.recoil = 5;
+      const fired = fx.loaded ?? you.current;
+      if (reduced) {
+        commit(buildBurst(shot, before, fired));
+        unlockShot();
+      } else {
+        const duration = rules.shotAnimationMs(view.config.speed);
+        lockShot(duration);
+        fx.flight = buildFlight(shot, before, fired, duration);
+        fx.recoil = 5;
+      }
+    } else if (!fx.flight) {
+      commit(null);
     }
-    if (!fx.flight) commit(null);
     fx.loaded = you.current;
-  }, [commit, view.config.speed, you]);
+  }, [commit, lockShot, reduced, unlockShot, view.config.speed, you]);
 
   React.useEffect(() => {
     const interval = window.setInterval(() => setClockNow(Date.now()), 250);
@@ -674,16 +779,20 @@ export function PuzzleBubbleBoard({
   }, []);
 
   const fire = React.useCallback((angleDeg = angle) => {
-    if (!you || locked || you.gameOver || view.phase === 'game_over') return;
-    onAction({ type: 'shoot', angleDeg });
+    if (!you || lockedRef.current || you.gameOver || view.phase === 'game_over') return;
+    // Lock synchronously, before React can render the disabled button, so
+    // keyboard repeats and simultaneous pointer input cannot double-submit.
+    // The server acknowledgement releases rejected shots; an accepted state
+    // update below re-arms this through the full client-side flight.
+    lockShot(5_000);
+    const pending = onAction({ type: 'shoot', angleDeg });
+    if (pending) {
+      void pending.then((ack) => {
+        if (!ack.accepted) unlockShot();
+      }, unlockShot);
+    }
     sfx.tembak();
-    setLocked(true);
-    if (lockTimer.current !== null) window.clearTimeout(lockTimer.current);
-    lockTimer.current = window.setTimeout(() => {
-      lockTimer.current = null;
-      setLocked(false);
-    }, rules.shotAnimationMs(view.config.speed));
-  }, [angle, locked, onAction, view.config.speed, view.phase, you]);
+  }, [angle, lockShot, onAction, unlockShot, view.phase, you]);
 
   const nudgeAim = React.useCallback((delta: number) => {
     setAngle((value) => clampAngle(value + delta));
@@ -711,6 +820,18 @@ export function PuzzleBubbleBoard({
     }, 260);
   }, [nudgeAim, stopAimHold]);
 
+  const toggleAssist = React.useCallback(() => {
+    setAssist((value) => {
+      const next = !value;
+      try {
+        localStorage.setItem(ASSIST_STORAGE_KEY, String(next));
+      } catch {
+        // Private browsing can block persistence; the current session still works.
+      }
+      return next;
+    });
+  }, []);
+
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -726,24 +847,13 @@ export function PuzzleBubbleBoard({
         fire();
       } else if (event.key.toLowerCase() === 'g') {
         event.preventDefault();
-        setAssist((value) => !value);
+        if (!event.repeat) toggleAssist();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [fire, nudgeAim]);
+  }, [fire, nudgeAim, toggleAssist]);
 
-  const toggleAssist = () => {
-    setAssist((value) => {
-      const next = !value;
-      try {
-        localStorage.setItem(ASSIST_STORAGE_KEY, String(next));
-      } catch {
-        // Private browsing can block persistence; the current session still works.
-      }
-      return next;
-    });
-  };
 
   const cycleLayout = () => {
     setLayoutPref((value) => {
@@ -782,10 +892,25 @@ export function PuzzleBubbleBoard({
       <div className="font-display text-[9px] text-pa-ink-dim">WAVE {hud.wave} · {view.config.speed.toUpperCase()}</div>
       <div className="font-display text-[9px] text-pa-ink-dim">CEILING {String(Math.floor(descentSeconds / 60)).padStart(2, '0')}:{String(descentSeconds % 60).padStart(2, '0')}</div>
       <div className="font-display text-[9px] text-pa-ink-dim">PRESSURE {hud.pressureRemaining}/{pressure}</div>
-      <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span className="h-5 w-5 rounded-full border-2 border-[#15213d]" style={{ backgroundColor: COLOR[hud.next].body }} aria-label={`Next ${hud.next} bubble`} /></div>
+      <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span role="img" className="h-5 w-5 rounded-full border-2 border-[#15213d]" style={{ backgroundColor: COLOR[hud.next].body }} aria-label={`Next ${hud.next} bubble`} /></div>
     </div>
   );
   const opponentBoard = opponent ? <MiniBoard player={opponent} /> : null;
+  const portraitOpponent = opponent ? (
+    <div className="min-w-0 border-2 border-pa-border bg-[#15213d] p-2">
+      <div className="flex min-h-11 flex-wrap items-center gap-2 font-display text-[9px] text-pa-ink-dim">
+        <span>OPPONENT</span>
+        <span className="text-pa-amber">{opponent.score.toLocaleString()} · WAVE {opponent.wave}{opponent.gameOver ? ' · OUT' : ''}</span>
+        <button
+          type="button"
+          aria-expanded={opponentExpanded}
+          onClick={() => setOpponentExpanded((value) => !value)}
+          className="ml-auto min-h-11 border-2 border-pa-border bg-pa-surface px-2 font-display text-[8px] text-pa-cyan"
+        >{opponentExpanded ? 'HIDE BOARD' : 'SHOW BOARD'}</button>
+      </div>
+      {opponentExpanded && <div className="mt-2"><MiniField player={opponent} /></div>}
+    </div>
+  ) : null;
   const canvasEl = (
     <canvas
       ref={attachCanvas}
@@ -860,7 +985,7 @@ export function PuzzleBubbleBoard({
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 p-2 sm:p-4">
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
         {hudStats}
-        {opponentBoard}
+        {portraitOpponent}
       </div>
       <div className="flex w-full justify-center">{canvasEl}</div>
       {controls}

@@ -553,7 +553,9 @@ export default function RoomPage(): React.ReactElement {
           className={cn(
             'flex-1 min-w-0',
             mobileTab !== 'board' && 'hidden lg:block',
-            isGameFullscreen && 'h-full overflow-hidden flex flex-col',
+            isGameFullscreen && (gameId === 'puzzle-bubble'
+              ? 'h-full overflow-x-hidden overflow-y-auto flex flex-col'
+              : 'h-full overflow-hidden flex flex-col'),
           )}
         >
           {room.status === 'lobby' && (
@@ -872,11 +874,10 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
       },
     );
   };
-  const gameAction = async (action: unknown): Promise<void> => {
+  const gameAction = async (action: unknown): Promise<{ accepted: boolean; error?: string }> => {
     const isTick = typeof action === 'object' && action !== null && 'type' in action && action.type === 'tick';
     const res = await emit<{ accepted: boolean; error?: string }>(EV.gameAction, action);
-    if (isTick) return;
-    if (!res.accepted && res.error) {
+    if (!isTick && !res.accepted && res.error) {
       const silentErrors = [
         'Blocked',
         'Illegal move',
@@ -889,6 +890,7 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
       ];
       if (!silentErrors.includes(res.error)) toast(res.error);
     }
+    return res;
   };
 
   if (gameId === 'sudoku' || gameId === 'killer-sudoku') {
@@ -1293,7 +1295,7 @@ function GameSurface({ gameId }: { gameId: GameId }): React.ReactElement {
         youId={store.you?.playerId ?? null}
         legalActions={store.legalActions}
         turnEndsAt={store.turnEndsAt}
-        onAction={(a) => void gameAction(a)}
+        onAction={(a) => gameAction(a)}
       />
     );
   }

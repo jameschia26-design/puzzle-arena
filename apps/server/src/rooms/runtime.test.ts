@@ -366,7 +366,44 @@ describe('concurrent arcade games wiring (space-invaders, bomberman & Puzzle Bub
       expect(applySpy).toHaveBeenNthCalledWith(1, 'p1', { type: 'descent' });
       expect(applySpy).toHaveBeenNthCalledWith(2, 'p2', { type: 'descent' });
     } finally {
-      clearInterval(internals(room).puzzleBubblePressureTimer);
+      clearTimeout(internals(room).puzzleBubblePressureTimer);
+      vi.useRealTimers();
+    }
+  });
+
+  it('resumes a paused Puzzle Bubble ceiling timer with only its remaining time', () => {
+    const room = new LiveRoom({
+      id: 'pb-pause',
+      code: 'PBPAUS',
+      gameId: 'puzzle-bubble',
+      config: { colors: 6, speed: 'fast' },
+      timeLimitSec: 0,
+      status: 'lobby',
+      startedAt: null,
+      endsAt: null,
+    });
+    room.players = [makePlayer('p1', { seat: 0, isHost: true })];
+    room.gameState = room.engine().setup(['p1'], 42, room.config);
+    room.status = 'running';
+
+    vi.useFakeTimers();
+    try {
+      const applySpy = vi.spyOn(room, 'applyGameAction').mockReturnValue({ accepted: true });
+      room.armPuzzleBubblePressureTimer();
+      vi.advanceTimersByTime(9_000);
+      room.pause();
+      vi.advanceTimersByTime(20_000);
+      expect(applySpy).not.toHaveBeenCalled();
+
+      room.resume();
+      vi.advanceTimersByTime(2_999);
+      expect(applySpy).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(applySpy).toHaveBeenCalledOnce();
+      expect(applySpy).toHaveBeenCalledWith('p1', { type: 'descent' });
+    } finally {
+      clearTimeout(internals(room).puzzleBubblePressureTimer);
+      stopBots(room.id);
       vi.useRealTimers();
     }
   });
@@ -843,14 +880,16 @@ describe('chess-clock increment recovery (Fix E)', () => {
     // p1 bank should not exceed 300,000
     expect(room.clocks.get('p1')!).toBeLessThanOrEqual(300_000);
 
-    // Replay with resign event
+    // Replay with a resign event at fixed timestamps. Taking two separate
+    // Date.now() readings makes this assertion fail by 1 ms under load.
+    const replayStartedAt = 1_000_000;
     const events = [
-      { actorPlayerId: 'p1', action: { type: 'resign' }, at: new Date(Date.now() + 5000) },
+      { actorPlayerId: 'p1', action: { type: 'resign' }, at: new Date(replayStartedAt + 5_000) },
     ];
     const rehydrated = rehydrateChessClocks(
-      room.config as any,
+      room.config as unknown as { clockMinutes?: number; incrementSec?: number },
       room.players,
-      new Date(),
+      new Date(replayStartedAt),
       events,
       null,
     );

@@ -111,7 +111,10 @@ real Postgres. It needs `docker compose up -d` first.
   the air. The component holds a drawn snapshot (board + HUD + loaded bubble)
   and commits it — with the pop/drop particles — only when the flight along
   `lastShot.path` reaches the landing slot. `/dev/bubble` is the harness for
-  checking this without a server, like `/dev/pacman`.
+  checking this without a server, like `/dev/pacman`. The input lock is
+  ref-backed and re-arms when the authoritative shot arrives; starting one
+  state-only timer when the action is sent unlocks early by the network
+  round-trip and allows overlapping shots.
 - **Puzzle Bubble has separate portrait/landscape JSX trees, so the
   `<canvas>` remounts on orientation flip.** `PuzzleBubbleBoard.tsx` picks a
   layout from actual `innerWidth`/`innerHeight` (`useOrientation`), not a CSS
@@ -121,6 +124,10 @@ real Postgres. It needs `docker compose up -d` first.
   callback ref (`attachCanvas`), not `useRef` + a mount-only effect: a
   `[commit]`-only effect only runs once and would keep animating a detached
   canvas after the first orientation change, leaving the new one blank.
+- **Puzzle Bubble's ceiling timer must preserve its remaining interval across
+  pause/resume.** `runtime.ts` owns both the deadline sent as
+  `pressureEndsAtMs` and the recursive timeout. Resetting it to a full interval
+  on resume lets a host postpone every descent by repeatedly pausing.
 
 ## AI providers
 

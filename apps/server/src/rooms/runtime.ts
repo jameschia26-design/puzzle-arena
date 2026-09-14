@@ -155,6 +155,8 @@ export class LiveRoom {
   private arcadeTickTimer: NodeJS.Timeout | null = null;
   private puzzleBubblePressureTimer: NodeJS.Timeout | null = null;
   private puzzleBubblePressureEndsAt: number | null = null;
+  /** Time left on the current ceiling interval while the room is paused. */
+  private puzzleBubblePressureRemainingMs: number | null = null;
   private playerLastActionMs = new Map<string, number>();
   private idleStrikes = 0;
   constructor(row: {
@@ -367,7 +369,11 @@ export class LiveRoom {
       clearInterval(this.arcadeTickTimer);
       this.arcadeTickTimer = null;
     }
+    const pressureRemaining = this.puzzleBubblePressureEndsAt === null
+      ? null
+      : Math.max(0, this.puzzleBubblePressureEndsAt - Date.now());
     this.clearPuzzleBubblePressureTimer();
+    this.puzzleBubblePressureRemainingMs = pressureRemaining;
     stopBots(this.id);
     this.pushLog('Game paused by host');
     this.io?.to(this.id).emit(EV.roomPaused, { paused: true });
@@ -377,6 +383,7 @@ export class LiveRoom {
   resume(): void {
     if (this.status !== 'running' || !this.paused) return;
     this.paused = false;
+    const pressureDelay = this.puzzleBubblePressureRemainingMs;
     if (this.remainingEndMs !== null) {
       this.endsAt = Date.now() + this.remainingEndMs;
       this.armEndTimer();
@@ -398,7 +405,7 @@ export class LiveRoom {
       this.scheduleStartCountdown(remaining);
     } else if (this.kind === 'board') {
       this.armArcadeTickWatchdog();
-      this.armPuzzleBubblePressureTimer();
+      this.armPuzzleBubblePressureTimer(pressureDelay ?? undefined);
       scheduleBots(this);
     } else if (this.kind === 'puzzle') {
       schedulePuzzleBots(this);
@@ -581,24 +588,25 @@ export class LiveRoom {
 
   private clearPuzzleBubblePressureTimer(): void {
     if (this.puzzleBubblePressureTimer) {
-      clearInterval(this.puzzleBubblePressureTimer);
+      clearTimeout(this.puzzleBubblePressureTimer);
       this.puzzleBubblePressureTimer = null;
     }
     this.puzzleBubblePressureEndsAt = null;
+    this.puzzleBubblePressureRemainingMs = null;
   }
 
-  /** Runs the authoritative, difficulty-scaled ceiling timer for Puzzle Bubble. */
-  armPuzzleBubblePressureTimer(): void {
-    this.clearPuzzleBubblePressureTimer();
-    if (this.kind !== 'board' || this.gameId !== 'puzzle-bubble' || this.status !== 'running' || this.paused || !this.gameState) {
-      return;
-    }
-    const state = this.gameState as { config?: { speed?: 'slow' | 'normal' | 'fast' } };
-    const interval = puzzleBubbleRules.descentIntervalMs(state.config?.speed ?? 'normal');
-    this.puzzleBubblePressureEndsAt = Date.now() + interval;
-    this.puzzleBubblePressureTimer = setInterval(() => {
-      if (this.status !== 'running' || this.paused || !this.gameState) return;
-      this.puzzleBubblePressureEndsAt = Date.now() + interval;
+  private schedulePuzzleBubblePressureTick(delay: number, interval: number): void {
+    this.puzzleBubblePressureEndsAt = Date.now() + delay;
+    this.puzzleBubblePressureTimer = setTimeout(() => {
+      this.puzzleBubblePressureTimer = null;
+      if (this.status !== 'running' || this.paused || !this.gameState) {
+        this.puzzleBubblePressureEndsAt = null;
+        return;
+      }
+
+      // Arm first: every state broadcast produced below carries the next
+      // deadline, and finish() can still clear the newly armed timer.
+      this.schedulePuzzleBubblePressureTick(interval, interval);
       for (const player of this.players) {
         if (player.left) continue;
         const view = this.engine().view(this.gameState as never, player.id) as { you: { gameOver?: boolean } | null };
@@ -609,7 +617,19 @@ export class LiveRoom {
         }
         if (this.status !== 'running') break;
       }
-    }, interval);
+    }, delay);
+  }
+
+  /** Runs the authoritative, difficulty-scaled ceiling timer for Puzzle Bubble. */
+  armPuzzleBubblePressureTimer(delayMs?: number): void {
+    this.clearPuzzleBubblePressureTimer();
+    if (this.kind !== 'board' || this.gameId !== 'puzzle-bubble' || this.status !== 'running' || this.paused || !this.gameState) {
+      return;
+    }
+    const state = this.gameState as { config?: { speed?: 'slow' | 'normal' | 'fast' } };
+    const interval = puzzleBubbleRules.descentIntervalMs(state.config?.speed ?? 'normal');
+    const delay = Math.max(0, Math.min(interval, delayMs ?? interval));
+    this.schedulePuzzleBubblePressureTick(delay, interval);
   }
 
   /**

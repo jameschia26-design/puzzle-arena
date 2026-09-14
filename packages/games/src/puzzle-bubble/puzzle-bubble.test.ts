@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '@puzzle-arena/shared';
 import { puzzleBubble } from './index.js';
+import { puzzleBubbleBot } from './bot.js';
 import {
   BOARD_WIDTH,
   BUBBLE_RADIUS,
@@ -155,5 +156,40 @@ describe('puzzle bubble engine', () => {
     const state = puzzleBubble.setup(['p1'], 1, {});
     expect(puzzleBubble.reduce(state, 'p1', { type: 'shoot', angleDeg: 80.5 }).ok).toBe(false);
     expect(puzzleBubble.reduce(state, 'p1', { type: 'shoot', angleDeg: 81 }).ok).toBe(false);
+  });
+
+  it('waits for every board to top out before choosing the score leader', () => {
+    const state = puzzleBubble.setup(['p1', 'p2'], 7, { colors: 3, speed: 'fast' });
+    state.players[0]!.board = [{ row: BUBBLE_ROWS - 2, col: 0, color: 'coral' }];
+    state.players[1]!.board = [{ row: BUBBLE_ROWS - 2, col: 0, color: 'coral' }];
+    state.players[0]!.score = 100;
+    state.players[1]!.score = 50;
+
+    const first = puzzleBubble.reduce(state, 'p1', { type: 'descent' });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.state.phase).toBe('playing');
+    expect(first.state.players[0]!.gameOver).toBe(true);
+    expect(first.state.players[1]!.gameOver).toBe(false);
+
+    const second = puzzleBubble.reduce(first.state, 'p2', { type: 'descent' });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.state.phase).toBe('game_over');
+    expect(second.state.winner).toBe('p1');
+  });
+
+  it('gives every bot tier only a public view and accepts its integer shot', () => {
+    const state = puzzleBubble.setup(['bot'], 42, { colors: 5, speed: 'normal' });
+    const view = puzzleBubble.view(state, 'bot');
+    expect(JSON.stringify(view)).not.toContain('"rng"');
+
+    for (const difficulty of ['easy', 'normal', 'hard'] as const) {
+      const action = puzzleBubbleBot.chooseAction(view, 'bot', mulberry32(99), difficulty);
+      expect(Number.isInteger(action.angleDeg)).toBe(true);
+      expect(action.angleDeg).toBeGreaterThanOrEqual(-80);
+      expect(action.angleDeg).toBeLessThanOrEqual(80);
+      expect(puzzleBubble.reduce(state, 'bot', action).ok).toBe(true);
+    }
   });
 });
