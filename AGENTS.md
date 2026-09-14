@@ -112,6 +112,15 @@ real Postgres. It needs `docker compose up -d` first.
   and commits it — with the pop/drop particles — only when the flight along
   `lastShot.path` reaches the landing slot. `/dev/bubble` is the harness for
   checking this without a server, like `/dev/pacman`.
+- **Puzzle Bubble has separate portrait/landscape JSX trees, so the
+  `<canvas>` remounts on orientation flip.** `PuzzleBubbleBoard.tsx` picks a
+  layout from actual `innerWidth`/`innerHeight` (`useOrientation`), not a CSS
+  breakpoint, so a rotated phone gets the landscape layout too — but that
+  means the two branches are different DOM trees and React remounts the
+  canvas when the branch changes. The render loop attaches through a
+  callback ref (`attachCanvas`), not `useRef` + a mount-only effect: a
+  `[commit]`-only effect only runs once and would keep animating a detached
+  canvas after the first orientation change, leaving the new one blank.
 
 ## AI providers
 

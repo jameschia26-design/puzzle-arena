@@ -759,6 +759,17 @@ hand-tuned — so the drawn walls, ceiling, danger line and launcher always sit 
 where the trajectory helper thinks they are. The canvas scales by height
 (`min(62vh, 620px, 142vw)`), so it stays inside short viewports and 360px-wide phones.
 
+The board itself always keeps that portrait hex-grid shape — that is the genre,
+and it's what the geometry above is built for. What changes with the viewport is
+whether the HUD and opponent board stack above the board or sit beside it:
+`PuzzleBubbleBoard.tsx` picks `portrait` or `landscape` from actual
+`innerWidth`/`innerHeight` (`useOrientation`, mirroring `useCellSize` in
+`TetrisBoard.tsx`), not a CSS breakpoint, so a phone rotated to landscape gets the
+wider layout too, and the canvas is allowed a taller `min(80vh, 720px)` on
+landscape instead of `min(62vh, 620px, 142vw)`. The two orientations render as
+separate JSX trees, which remounts the `<canvas>` on a flip; the render loop
+attaches through a callback ref for exactly that reason (see `AGENTS.md`).
+
 Art direction: **Sky Pop Workshop**—a cheerful floating-island repair shop with checker-cloud horizons, brass launcher parts, striped awnings, and two original round mechanic mascots. It keeps the original game's cute, bright, toy-like energy without using bubble dragons or Taito silhouettes.
 
 Visual rules:
@@ -805,11 +816,15 @@ Create `packages/games/src/puzzle-bubble/`:
 - `bot.ts` — view-only policy;
 - `puzzle-bubble.test.ts` — durable behavioural tests.
 
-Bot policy evaluates legal angles against only `view.you`:
+Bot policy evaluates legal angles against only `view.you`, simulating each
+candidate shot's placement, pop and detach with the same rules the reducer uses
+(`simulate()`). Every tier needs a real aim wobble — a tier with none plays every
+shot at its theoretical best and is not meaningfully weaker than the tier above
+it, which is not what "normal" should feel like against a human:
 
-- easy: sample coarse angles and add seeded aim error;
-- normal: choose the best immediate `score gained - resulting board height`;
-- hard: evaluate every 2 degrees and prefer large detached drops, with one-bubble lookahead using the visible next bubble;
+- easy: 14° angle steps, weak stack awareness, and a wide ±16° aim wobble — frequent misses, dies quickly;
+- normal: 9° angle steps and a ±7° aim wobble — clears bubbles but reliably loses to a decent human, clearly weaker than hard;
+- hard: 2° angle steps, no aim wobble, prefers large detached drops, with one-bubble lookahead using the visible next bubble;
 - all levels use the speed setting only for scheduler delay, never for hidden information.
 
 `bot.ts` must not import `PuzzleBubbleState`. `autoAction()` shoots straight up as a guaranteed valid fallback. Add the bot to the existing concurrent scheduler; Puzzle Bubble needs no arcade tick watchdog because a shot resolves atomically.

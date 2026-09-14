@@ -113,6 +113,37 @@ type VisualState = {
   assistLanding: Pixel | null;
 };
 
+/**
+ * Portrait for phones, landscape for laptops or a rotated phone: the board
+ * itself always stays the tall hex-grid shape (that is the genre, and the
+ * canvas geometry above is fixed to it) — what actually changes is whether
+ * the HUD and opponent board stack above it or sit beside it, and how much
+ * vertical space the canvas is allowed to claim. Driven by real viewport
+ * dimensions rather than a CSS breakpoint so a phone rotated to landscape
+ * gets the landscape layout too, matching `useCellSize` in TetrisBoard.tsx.
+ */
+function useOrientation(): 'portrait' | 'landscape' {
+  const calc = React.useCallback((): 'portrait' | 'landscape' => {
+    if (typeof window === 'undefined') return 'portrait';
+    const w = window.innerWidth;
+    const h = window.visualViewport?.height ?? window.innerHeight;
+    return w > h ? 'landscape' : 'portrait';
+  }, []);
+  const [orientation, setOrientation] = React.useState(calc);
+  React.useEffect(() => {
+    const onResize = () => setOrientation(calc());
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    window.visualViewport?.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
+    };
+  }, [calc]);
+  return orientation;
+}
+
 function clampAngle(angle: number): number {
   return Math.max(-MAX_ANGLE, Math.min(MAX_ANGLE, angle));
 }
@@ -415,7 +446,7 @@ export function PuzzleBubbleBoard({
   onAction: (action: PuzzleBubbleAction) => void;
 }): React.ReactElement {
   const you = view.you;
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const orientation = useOrientation();
   const [angle, setAngle] = React.useState(0);
   const [assist, setAssist] = React.useState(() => {
     try {
@@ -511,13 +542,24 @@ export function PuzzleBubbleBoard({
     if (aimHoldInterval.current !== null) window.clearInterval(aimHoldInterval.current);
   }, []);
 
-  React.useEffect(() => {
-    const canvas = canvasRef.current;
+  /**
+   * A callback ref, not `useRef` + a mount-only effect: the portrait and
+   * landscape branches below are separate JSX trees, so flipping orientation
+   * unmounts one `<canvas>` and mounts a new one. A `[commit]`-only effect
+   * would attach once to the first canvas and silently keep drawing to a
+   * detached node after that; this reattaches the loop to whichever canvas
+   * is actually on screen.
+   */
+  const rafRef = React.useRef<number | null>(null);
+  const attachCanvas = React.useCallback((canvas: HTMLCanvasElement | null) => {
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.imageSmoothingEnabled = false;
-    let frame = 0;
     let previous = performance.now();
     const render = (now: number) => {
       const delta = Math.min(50, now - previous);
@@ -566,11 +608,13 @@ export function PuzzleBubbleBoard({
         drawParticles(ctx, fx.particles);
       }
       ctx.restore();
-      frame = window.requestAnimationFrame(render);
+      rafRef.current = window.requestAnimationFrame(render);
     };
-    frame = window.requestAnimationFrame(render);
-    return () => window.cancelAnimationFrame(frame);
+    rafRef.current = window.requestAnimationFrame(render);
   }, [commit]);
+  React.useEffect(() => () => {
+    if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
+  }, []);
 
   React.useEffect(() => {
     if (!you) return;
@@ -701,55 +745,90 @@ export function PuzzleBubbleBoard({
     : Math.max(0, view.pressureEndsAtMs - clockNow);
   const descentSeconds = Math.ceil(descentMs / 1_000);
 
+  const hudStats = (
+    <div
+      className={`flex border-2 border-pa-border bg-pa-surface p-2 pa-shadow ${
+        orientation === 'landscape' ? 'flex-col items-start gap-1.5' : 'flex-wrap items-center justify-between gap-2'
+      }`}
+    >
+      <div><span className="font-display text-[9px] text-pa-ink-dim">SCORE </span><span className="font-display text-[18px] text-pa-amber tabular-nums">{hud.score.toLocaleString()}</span></div>
+      <div className="font-display text-[9px] text-pa-ink-dim">WAVE {hud.wave} · {view.config.speed.toUpperCase()}</div>
+      <div className="font-display text-[9px] text-pa-ink-dim">CEILING {String(Math.floor(descentSeconds / 60)).padStart(2, '0')}:{String(descentSeconds % 60).padStart(2, '0')}</div>
+      <div className="font-display text-[9px] text-pa-ink-dim">PRESSURE {hud.pressureRemaining}/{pressure}</div>
+      <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span className="h-5 w-5 rounded-full border-2 border-[#15213d]" style={{ backgroundColor: COLOR[hud.next].body }} aria-label={`Next ${hud.next} bubble`} /></div>
+    </div>
+  );
+  const opponentBoard = opponent ? <MiniBoard player={opponent} /> : null;
+  const canvasEl = (
+    <canvas
+      ref={attachCanvas}
+      width={CANVAS_W}
+      height={CANVAS_H}
+      className="block border-4 border-[#15213d] bg-[#091126] pa-shadow touch-none select-none"
+      style={{ imageRendering: 'pixelated', height: orientation === 'landscape' ? 'min(80vh, 720px)' : 'min(62vh, 620px, 142vw)', width: 'auto' }}
+      onPointerMove={aimFromPointer}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        aimFromPointer(event);
+      }}
+      aria-label="Puzzle Bubble playfield. Drag to aim, then press Fire to shoot."
+    />
+  );
+  const controls = (
+    <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 sm:mx-auto sm:w-[min(100%,420px)]">
+      <button
+        type="button"
+        className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
+        onPointerDown={(event) => startAimHold(event, -3)}
+        onPointerUp={stopAimHold}
+        onPointerCancel={stopAimHold}
+        onLostPointerCapture={stopAimHold}
+        onClick={(event) => { if (event.detail === 0) nudgeAim(-3); }}
+      >LEFT</button>
+      <button type="button" className="min-h-11 select-none border-2 border-pa-amber bg-pa-amber font-display text-[12px] text-pa-shadow pa-shadow disabled:opacity-45" disabled={locked || you.gameOver || view.phase === 'game_over'} onClick={() => fire()}>{you.gameOver ? 'OUT' : locked ? 'AIMING…' : 'FIRE'}</button>
+      <button
+        type="button"
+        className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
+        onPointerDown={(event) => startAimHold(event, 3)}
+        onPointerUp={stopAimHold}
+        onPointerCancel={stopAimHold}
+        onLostPointerCapture={stopAimHold}
+        onClick={(event) => { if (event.detail === 0) nudgeAim(3); }}
+      >RIGHT</button>
+    </div>
+  );
+  const assistButton = (
+    <button type="button" className="self-center border-2 border-pa-border bg-pa-surface px-3 py-2 font-display text-[9px] text-pa-ink-dim pa-shadow" onClick={toggleAssist}>ASSIST: {assist ? 'ON' : 'OFF'} · G</button>
+  );
+
+  // Laptops and rotated phones: HUD and opponent board sit beside the board
+  // instead of stacking above it, using the extra width a landscape viewport
+  // has instead of the extra height a portrait one has.
+  if (orientation === 'landscape') {
+    return (
+      <div className="mx-auto flex w-full max-w-6xl flex-row items-start justify-center gap-6 p-2 sm:p-4">
+        <div className="flex flex-col items-center gap-3">
+          {canvasEl}
+          {controls}
+        </div>
+        <div className="flex w-64 flex-shrink-0 flex-col gap-2">
+          {hudStats}
+          {opponentBoard}
+          {assistButton}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 p-2 sm:p-4">
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-2 border-pa-border bg-pa-surface p-2 pa-shadow">
-          <div><span className="font-display text-[9px] text-pa-ink-dim">SCORE </span><span className="font-display text-[18px] text-pa-amber tabular-nums">{hud.score.toLocaleString()}</span></div>
-          <div className="font-display text-[9px] text-pa-ink-dim">WAVE {hud.wave} · {view.config.speed.toUpperCase()}</div>
-          <div className="font-display text-[9px] text-pa-ink-dim">CEILING {String(Math.floor(descentSeconds / 60)).padStart(2, '0')}:{String(descentSeconds % 60).padStart(2, '0')}</div>
-          <div className="font-display text-[9px] text-pa-ink-dim">PRESSURE {hud.pressureRemaining}/{pressure}</div>
-          <div className="flex items-center gap-1"><span className="text-[11px] text-pa-ink-dim">NEXT</span><span className="h-5 w-5 rounded-full border-2 border-[#15213d]" style={{ backgroundColor: COLOR[hud.next].body }} aria-label={`Next ${hud.next} bubble`} /></div>
-        </div>
-        {opponent && <MiniBoard player={opponent} />}
+        {hudStats}
+        {opponentBoard}
       </div>
-      <div className="flex w-full justify-center">
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_W}
-          height={CANVAS_H}
-          className="block border-4 border-[#15213d] bg-[#091126] pa-shadow touch-none select-none"
-          style={{ imageRendering: 'pixelated', height: 'min(62vh, 620px, 142vw)', width: 'auto' }}
-          onPointerMove={aimFromPointer}
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId);
-            aimFromPointer(event);
-          }}
-          aria-label="Puzzle Bubble playfield. Drag to aim, then press Fire to shoot."
-        />
-      </div>
-      <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2 sm:mx-auto sm:w-[min(100%,420px)]">
-        <button
-          type="button"
-          className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
-          onPointerDown={(event) => startAimHold(event, -3)}
-          onPointerUp={stopAimHold}
-          onPointerCancel={stopAimHold}
-          onLostPointerCapture={stopAimHold}
-          onClick={(event) => { if (event.detail === 0) nudgeAim(-3); }}
-        >LEFT</button>
-        <button type="button" className="min-h-11 select-none border-2 border-pa-amber bg-pa-amber font-display text-[12px] text-pa-shadow pa-shadow disabled:opacity-45" disabled={locked || you.gameOver || view.phase === 'game_over'} onClick={() => fire()}>{you.gameOver ? 'OUT' : locked ? 'AIMING…' : 'FIRE'}</button>
-        <button
-          type="button"
-          className="min-h-11 touch-none select-none border-2 border-pa-border bg-pa-surface font-display text-[12px] text-pa-cyan pa-shadow active:translate-y-0.5"
-          onPointerDown={(event) => startAimHold(event, 3)}
-          onPointerUp={stopAimHold}
-          onPointerCancel={stopAimHold}
-          onLostPointerCapture={stopAimHold}
-          onClick={(event) => { if (event.detail === 0) nudgeAim(3); }}
-        >RIGHT</button>
-      </div>
-      <button type="button" className="self-center border-2 border-pa-border bg-pa-surface px-3 py-2 font-display text-[9px] text-pa-ink-dim pa-shadow" onClick={toggleAssist}>ASSIST: {assist ? 'ON' : 'OFF'} · G</button>
+      <div className="flex w-full justify-center">{canvasEl}</div>
+      {controls}
+      {assistButton}
     </div>
   );
 }

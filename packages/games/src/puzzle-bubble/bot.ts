@@ -100,19 +100,22 @@ export const puzzleBubbleBot: BotPolicy<PuzzleBubbleBotView, PuzzleBubbleBotActi
     if (!you || you.gameOver) return { type: 'shoot', angleDeg: 0 };
 
     if (difficulty === 'easy') {
-      // Coarse sampling plus seeded aim error: plausible shots, frequent misses.
-      const coarse = outcomes(you.board, you.rowParity, you.current, 16);
-      const aim = pickBest(coarse.map((outcome) => ({ angle: outcome.angle, value: immediateValue(outcome, 10, 8) })));
-      return { type: 'shoot', angleDeg: clampAngle(aim + rng.int(25) - 12) };
+      // Coarse sampling, weak stack awareness, and a wide aim wobble: frequent misses.
+      const coarse = outcomes(you.board, you.rowParity, you.current, 14);
+      const aim = pickBest(coarse.map((outcome) => ({ angle: outcome.angle, value: immediateValue(outcome, 8, 10) })));
+      return { type: 'shoot', angleDeg: clampAngle(aim + rng.int(33) - 16) };
     }
 
     if (difficulty === 'normal') {
-      const found = outcomes(you.board, you.rowParity, you.current, 4);
-      return { type: 'shoot', angleDeg: pickBest(found.map((outcome) => ({ angle: outcome.angle, value: outcome.gained - outcome.height }))) };
+      // A club player, not a machine: coarser sampling than hard and a real
+      // aim wobble, so it clears bubbles but reliably loses to a decent human.
+      const found = outcomes(you.board, you.rowParity, you.current, 9);
+      const aim = pickBest(found.map((outcome) => ({ angle: outcome.angle, value: immediateValue(outcome, 15, 5) })));
+      return { type: 'shoot', angleDeg: clampAngle(aim + rng.int(15) - 7) };
     }
 
     // Hard: every two degrees, weighted towards detaching whole hanging clusters,
-    // with one-bubble lookahead using the visible next colour.
+    // with one-bubble lookahead using the visible next colour, and no aim error.
     const found = outcomes(you.board, you.rowParity, you.current, 2);
     const ranked = found
       .map((outcome) => ({ outcome, value: immediateValue(outcome, 30, 2) }))
