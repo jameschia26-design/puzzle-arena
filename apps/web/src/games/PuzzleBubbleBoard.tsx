@@ -27,6 +27,7 @@ const CEILING_PX = 24;
 const FLOOR_Y = 392;
 const CANVAS_H = 416;
 const ASSIST_STORAGE_KEY = 'pa:puzzle-bubble-assist';
+const LAYOUT_STORAGE_KEY = 'pa:puzzle-bubble-layout';
 const MAX_ANGLE = 80;
 
 const COLOR: Record<BubbleColor, { outline: string; shade: string; body: string; rim: string; spec: string }> = {
@@ -113,6 +114,10 @@ type VisualState = {
   assistLanding: Pixel | null;
 };
 
+type Orientation = 'portrait' | 'landscape';
+/** 'auto' follows the detected viewport; the other two are a manual pin. */
+type LayoutPref = 'auto' | Orientation;
+
 /**
  * Portrait for phones, landscape for laptops or a rotated phone: the board
  * itself always stays the tall hex-grid shape (that is the genre, and the
@@ -121,8 +126,9 @@ type VisualState = {
  * vertical space the canvas is allowed to claim. Driven by real viewport
  * dimensions rather than a CSS breakpoint so a phone rotated to landscape
  * gets the landscape layout too, matching `useCellSize` in TetrisBoard.tsx.
+ * A player can override this detection with the LAYOUT button below.
  */
-function useOrientation(): 'portrait' | 'landscape' {
+function useOrientation(): Orientation {
   const calc = React.useCallback((): 'portrait' | 'landscape' => {
     if (typeof window === 'undefined') return 'portrait';
     const w = window.innerWidth;
@@ -446,7 +452,16 @@ export function PuzzleBubbleBoard({
   onAction: (action: PuzzleBubbleAction) => void;
 }): React.ReactElement {
   const you = view.you;
-  const orientation = useOrientation();
+  const detectedOrientation = useOrientation();
+  const [layoutPref, setLayoutPref] = React.useState<LayoutPref>(() => {
+    try {
+      const stored = localStorage.getItem(LAYOUT_STORAGE_KEY);
+      return stored === 'portrait' || stored === 'landscape' ? stored : 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+  const orientation: Orientation = layoutPref === 'auto' ? detectedOrientation : layoutPref;
   const [angle, setAngle] = React.useState(0);
   const [assist, setAssist] = React.useState(() => {
     try {
@@ -730,6 +745,18 @@ export function PuzzleBubbleBoard({
     });
   };
 
+  const cycleLayout = () => {
+    setLayoutPref((value) => {
+      const next = value === 'auto' ? 'portrait' : value === 'portrait' ? 'landscape' : 'auto';
+      try {
+        localStorage.setItem(LAYOUT_STORAGE_KEY, next);
+      } catch {
+        // Private browsing can block persistence; the current session still works.
+      }
+      return next;
+    });
+  };
+
   const aimFromPointer = (event: React.PointerEvent<HTMLCanvasElement>): void => {
     const rect = event.currentTarget.getBoundingClientRect();
     setAngle(aimAngle(((event.clientX - rect.left) / rect.width) * CANVAS_W, ((event.clientY - rect.top) / rect.height) * CANVAS_H));
@@ -800,6 +827,15 @@ export function PuzzleBubbleBoard({
   const assistButton = (
     <button type="button" className="self-center border-2 border-pa-border bg-pa-surface px-3 py-2 font-display text-[9px] text-pa-ink-dim pa-shadow" onClick={toggleAssist}>ASSIST: {assist ? 'ON' : 'OFF'} · G</button>
   );
+  const layoutButton = (
+    <button type="button" className="self-center border-2 border-pa-border bg-pa-surface px-3 py-2 font-display text-[9px] text-pa-ink-dim pa-shadow" onClick={cycleLayout}>LAYOUT: {layoutPref.toUpperCase()}</button>
+  );
+  const footerButtons = (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {assistButton}
+      {layoutButton}
+    </div>
+  );
 
   // Laptops and rotated phones: HUD and opponent board sit beside the board
   // instead of stacking above it, using the extra width a landscape viewport
@@ -814,7 +850,7 @@ export function PuzzleBubbleBoard({
         <div className="flex w-64 flex-shrink-0 flex-col gap-2">
           {hudStats}
           {opponentBoard}
-          {assistButton}
+          {footerButtons}
         </div>
       </div>
     );
@@ -828,7 +864,7 @@ export function PuzzleBubbleBoard({
       </div>
       <div className="flex w-full justify-center">{canvasEl}</div>
       {controls}
-      {assistButton}
+      {footerButtons}
     </div>
   );
 }

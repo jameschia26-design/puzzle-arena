@@ -769,6 +769,10 @@ wider layout too, and the canvas is allowed a taller `min(80vh, 720px)` on
 landscape instead of `min(62vh, 620px, 142vw)`. The two orientations render as
 separate JSX trees, which remounts the `<canvas>` on a flip; the render loop
 attaches through a callback ref for exactly that reason (see `AGENTS.md`).
+A `LAYOUT` button (`pa:puzzle-bubble-layout` in `localStorage`, next to `ASSIST`)
+lets a player pin `portrait` or `landscape` instead of following detection,
+cycling auto → portrait → landscape → auto; the forced value wins over the
+viewport until switched back to auto.
 
 Art direction: **Sky Pop Workshop**—a cheerful floating-island repair shop with checker-cloud horizons, brass launcher parts, striped awnings, and two original round mechanic mascots. It keeps the original game's cute, bright, toy-like energy without using bubble dragons or Taito silhouettes.
 
