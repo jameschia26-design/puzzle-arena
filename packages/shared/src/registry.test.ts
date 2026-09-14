@@ -3,6 +3,7 @@ import {
   GAME_REGISTRY,
   mastermindConfigSchema,
   puzzleBubbleConfigSchema,
+  blockBlasterConfigSchema,
   parseGameConfig,
 } from './registry.js';
 
@@ -75,5 +76,25 @@ describe('Puzzle Bubble registry and configuration', () => {
     expect(puzzleBubbleConfigSchema.parse({})).toEqual({ colors: 6, speed: 'normal' });
     expect(parseGameConfig('puzzle-bubble', { colors: 3, speed: 'fast' })).toEqual({ colors: 3, speed: 'fast' });
     expect(() => puzzleBubbleConfigSchema.parse({ colors: 9 })).toThrow();
+  });
+});
+
+describe('Block Blaster registry and configuration', () => {
+  it('registers Block Blaster as a concurrent board game without bots', () => {
+    const meta = GAME_REGISTRY['block-blaster'];
+
+    expect(meta).toMatchObject({
+      id: 'block-blaster',
+      kind: 'board',
+      minPlayers: 1,
+      maxPlayers: 8,
+      supportsBots: false,
+      defaultTimeLimitSec: 0,
+    });
+  });
+
+  it('parses config correctly', () => {
+    expect(blockBlasterConfigSchema.parse({})).toEqual({ turnTimeLimitSec: 0 });
+    expect(parseGameConfig('block-blaster', { turnTimeLimitSec: 60 })).toEqual({ turnTimeLimitSec: 60 });
   });
 });

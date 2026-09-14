@@ -52,6 +52,7 @@ import {
   xiangqiRules,
   puzzleBubble,
   puzzleBubbleRules,
+  blockBlaster,
 } from '@puzzle-arena/games';
 import { mastermind } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
@@ -313,6 +314,7 @@ export class LiveRoom {
     if (this.gameId === 'space-invaders') return spaceInvaders as unknown as typeof propertyTycoon;
     if (this.gameId === 'bomberman') return bomberman as unknown as typeof propertyTycoon;
     if (this.gameId === 'puzzle-bubble') return puzzleBubble as unknown as typeof propertyTycoon;
+    if (this.gameId === 'block-blaster') return blockBlaster as unknown as typeof propertyTycoon;
     return manorMystery as unknown as typeof propertyTycoon;
   }
 
@@ -333,6 +335,7 @@ export class LiveRoom {
     if (this.gameId === 'space-invaders') return null; // concurrent — no turn
     if (this.gameId === 'bomberman') return null; // concurrent — no turn
     if (this.gameId === 'puzzle-bubble') return null; // concurrent — no turn
+    if (this.gameId === 'block-blaster') return null; // concurrent — no turn
     if (this.gameId === 'animal-chess') return animalChessRules.actorToAct(this.gameState as never);
     return manorMysteryRules.actorToAct(this.gameState as never);
   }
@@ -1072,6 +1075,7 @@ export class LiveRoom {
             this.gameId === 'space-invaders' ||
             this.gameId === 'bomberman' ||
             this.gameId === 'puzzle-bubble' ||
+            this.gameId === 'block-blaster' ||
             this.gameId === 'mastermind') &&
           input.assetValue !== undefined;
         const score = usesAssetValue

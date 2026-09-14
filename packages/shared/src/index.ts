@@ -3,3 +3,4 @@ export * from './rng.js';
 export * from './registry.js';
 export * from './protocol.js';
 export * from './scrabble.js';
+export * from './block-blaster.js';

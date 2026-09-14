@@ -14,6 +14,7 @@ import ResultsPage from './routes/ResultsPage.js';
 import UiGallery from './routes/UiGallery.js';
 import PacmanHarness from './routes/PacmanHarness.js';
 import PuzzleBubbleHarness from './routes/PuzzleBubbleHarness.js';
+import BlockBlasterHarness from './routes/BlockBlasterHarness.js';
 
 /** A route that already claimed focus (autoFocus on the code input) wins. */
 function RouteFocus(): null {
@@ -48,6 +49,7 @@ function App() {
         {import.meta.env.DEV && <Route path="/ui" element={<UiGallery />} />}
         {import.meta.env.DEV && <Route path="/dev/pacman" element={<PacmanHarness />} />}
         {import.meta.env.DEV && <Route path="/dev/bubble" element={<PuzzleBubbleHarness />} />}
+        {import.meta.env.DEV && <Route path="/dev/block-blaster" element={<BlockBlasterHarness />} />}
         <Route path="*" element={<Landing />} />
       </Routes>
     </BrowserRouter>

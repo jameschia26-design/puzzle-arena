@@ -340,6 +340,33 @@ describe('concurrent arcade games wiring (space-invaders, bomberman & Puzzle Bub
       vi.useRealTimers();
     }
   });
+  it('wires Block Blaster as a concurrent score game without turns or tick watchdog', () => {
+    const room = new LiveRoom({
+      id: 'bb-room',
+      code: 'BB1234',
+      gameId: 'block-blaster',
+      config: { turnTimeLimitSec: 0 },
+      timeLimitSec: 0,
+      status: 'lobby',
+      startedAt: null,
+      endsAt: null,
+    });
+    room.players = [makePlayer('p1', { seat: 0, isHost: true })];
+    room.gameState = room.engine().setup(['p1'], 42, room.config);
+    room.status = 'running';
+
+    expect(room.actorToAct()).toBeNull();
+    expect(room.engine().id).toBe('block-blaster');
+    expect(room.scoreInputFor(room.players[0]!).assetValue).toBe(0);
+
+    // Applying a placement action updates game state and score
+    const view = room.engine().view(room.gameState as never, 'p1') as { you: { tray: ({ cellCount: number } | null)[] } };
+    const piece = view.you.tray[0]!;
+    const res = room.applyGameAction('p1', { type: 'place', pieceIndex: 0, row: 0, col: 0 });
+    expect(res.accepted).toBe(true);
+    expect(room.scoreInputFor(room.players[0]!).assetValue).toBe(piece.cellCount);
+  });
+
 
   it('descends every active Puzzle Bubble board on its difficulty timer', () => {
     const room = new LiveRoom({

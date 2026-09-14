@@ -23,6 +23,7 @@ export const GAME_IDS = [
   'space-invaders',
   'bomberman',
   'puzzle-bubble',
+  'block-blaster',
 ] as const;
 export type GameId = (typeof GAME_IDS)[number];
 
@@ -148,6 +149,10 @@ export const puzzleBubbleConfigSchema = z.object({
   colors: z.number().int().min(3).max(8).default(6),
   speed: z.enum(['slow', 'normal', 'fast']).default('normal'),
 });
+export const blockBlasterConfigSchema = z.object({
+  turnTimeLimitSec: z.number().int().min(0).max(300).default(0),
+});
+export type BlockBlasterConfig = z.infer<typeof blockBlasterConfigSchema>;
 /**
  * Chess and Xiangqi are the only two board games that use a real chess-clock
  * (total time bank per player) instead of `turnTimeLimitSec`. The runtime
@@ -177,7 +182,7 @@ export interface GameMeta {
   minPlayers: number;
   maxPlayers: number;
   defaultTimeLimitSec: number;
-  supportsBots: true;
+  supportsBots: boolean;
   configSchema: z.ZodType;
   blurb: string;
 }
@@ -424,6 +429,17 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
     supportsBots: true,
     configSchema: puzzleBubbleConfigSchema,
     blurb: 'Bank shots, match three, and drop hanging bubbles before your own board reaches the line.',
+  },
+  'block-blaster': {
+    id: 'block-blaster',
+    title: 'Block Blaster',
+    kind: 'board',
+    minPlayers: 1,
+    maxPlayers: 8,
+    defaultTimeLimitSec: 0,
+    supportsBots: false,
+    configSchema: blockBlasterConfigSchema,
+    blurb: 'Drop retro block shapes into the 8×8 grid, blast full rows and columns, chain combo streaks and chase high scores.',
   },
 };
 

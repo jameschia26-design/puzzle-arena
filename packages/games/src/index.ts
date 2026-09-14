@@ -212,6 +212,17 @@ export type {
   BubblePoint,
   PuzzleBubbleShot,
 } from './puzzle-bubble/state.js';
+export { blockBlaster } from './block-blaster/index.js';
+export * as blockBlasterRules from './block-blaster/rules.js';
+export type {
+  BlockBlasterState,
+  BlockBlasterPlayerState,
+  BlockBlasterConfig,
+  BlockBlasterAction,
+  BlockBlasterView,
+  BlockBlasterPublicPlayer,
+  ClearEvent as BlockBlasterClearEvent,
+} from './block-blaster/state.js';
 
 import type { GameId } from '@puzzle-arena/shared';
 import { propertyTycoon } from './property-tycoon/index.js';
@@ -230,6 +241,7 @@ import { pacman } from './pacman/index.js';
 import { spaceInvaders } from './space-invaders/index.js';
 import { bomberman } from './bomberman/index.js';
 import { puzzleBubble } from './puzzle-bubble/index.js';
+import { blockBlaster } from './block-blaster/index.js';
 import type { GameEngine } from './engine.js';
 
 /** Board-game engines by id. Puzzles are handled by packages/puzzles. */
@@ -250,4 +262,5 @@ export const BOARD_ENGINES: Partial<Record<GameId, GameEngine<never, never>>> = 
   'space-invaders': spaceInvaders as unknown as GameEngine<never, never>,
   bomberman: bomberman as unknown as GameEngine<never, never>,
   'puzzle-bubble': puzzleBubble as unknown as GameEngine<never, never>,
+  'block-blaster': blockBlaster as unknown as GameEngine<never, never>,
 };

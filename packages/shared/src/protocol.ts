@@ -209,6 +209,18 @@ export const puzzleBubbleActionSchema = z.object({
   angleDeg: z.number().int().min(-80).max(80),
 });
 export type PuzzleBubbleAction = z.infer<typeof puzzleBubbleActionSchema>;
+export const blockBlasterActionSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('place'),
+    pieceIndex: z.number().int().min(0).max(2),
+    row: z.number().int().min(0).max(7),
+    col: z.number().int().min(0).max(7),
+  }),
+  z.object({
+    type: z.literal('restart'),
+  }),
+]);
+export type BlockBlasterAction = z.infer<typeof blockBlasterActionSchema>;
 
 export const gameActionSchema = z.union([
   propertyTycoonActionSchema,
@@ -226,6 +238,7 @@ export const gameActionSchema = z.union([
   spaceInvadersActionSchema,
   bombermanActionSchema,
   puzzleBubbleActionSchema,
+  blockBlasterActionSchema,
 ]);
 export type GameAction =
   | PropertyTycoonAction
@@ -242,7 +255,8 @@ export type GameAction =
   | PacmanAction
   | SpaceInvadersAction
   | BombermanAction
-  | PuzzleBubbleAction;
+  | PuzzleBubbleAction
+  | BlockBlasterAction;
 
 /**
  * `forfeit` is deliberately NOT part of `gameActionSchema` — it is produced

@@ -282,6 +282,9 @@ export function registerRoomRoutes(app: FastifyInstance): void {
     if (!room) return reply.code(404).send({ error: 'No such room' });
 
     const meta = GAME_REGISTRY[room.gameId];
+    if (!meta.supportsBots) {
+      return reply.code(409).send({ error: `${meta.title} does not support computer players` });
+    }
     const seated = room.players.filter((p) => !p.left);
     if (seated.length >= meta.maxPlayers) {
       return reply.code(409).send({ error: `${meta.title} seats at most ${meta.maxPlayers}` });

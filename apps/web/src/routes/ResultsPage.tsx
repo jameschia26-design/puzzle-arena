@@ -1,12 +1,14 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import type { ResultRow } from '@puzzle-arena/shared';
+import { RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
+import { EV, type ResultRow } from '@puzzle-arena/shared';
 import { PixelButton, PixelPanel } from '../ui/primitives.js';
 import { SeatAvatar } from '../ui/game-bits.js';
 import { PODIUM_STEP_MS, RESULT_ROW_MS, stepTransition, useReducedMotion } from '../ui/motion.js';
 import { seatColor } from '../ui/seat.js';
-import { api, useRoom } from '../net/socket.js';
+import { api, emit, useRoom } from '../net/socket.js';
 import { MastermindSecretReveal } from '../games/MastermindBoard.js';
 /** The shape of `RoomStore.state` this page actually reads — a live game's
  * public state carries a lot more, but the reveal only ever needs these two. */
@@ -20,6 +22,7 @@ export default function ResultsPage(): React.ReactElement {
   const navigate = useNavigate();
   const [results, setResults] = React.useState<ResultRow[] | null>(null);
   const [notFound, setNotFound] = React.useState(false);
+  const [rematching, setRematching] = React.useState(false);
 
   React.useEffect(() => {
     void (async () => {
@@ -42,11 +45,32 @@ export default function ResultsPage(): React.ReactElement {
     })();
   }, [code]);
 
+
   const store = useRoom();
   const roomMatches = store.room?.code === code.toUpperCase();
   const state = roomMatches ? (store.state as MastermindRevealState | null) : null;
   const isMastermind =
     (roomMatches && store.room?.gameId === 'mastermind') || results?.some((r) => getMastermindDetail(r.detail) !== null);
+  const isHost = roomMatches && store.you?.isHost === true;
+  React.useEffect(() => {
+    if (roomMatches && store.room?.status === 'lobby' && store.results === null) {
+      navigate(`/r/${code.toUpperCase()}${store.you?.isHost ? '?host=1' : ''}`, { replace: true });
+    }
+  }, [code, navigate, roomMatches, store.results, store.room?.status, store.you?.isHost]);
+
+  const playAgain = async (): Promise<void> => {
+    if (!isHost || rematching) return;
+    setRematching(true);
+    const res = await emit<{ ok?: boolean; error?: string }>(EV.roomRestart);
+    if (res.error || !res.ok) {
+      toast(res.error ?? 'Could not start the rematch');
+      setRematching(false);
+      return;
+    }
+    useRoom.getState().reset();
+    navigate(`/r/${code.toUpperCase()}?host=1`);
+  };
+
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-4xl mx-auto flex flex-col gap-6">
@@ -73,7 +97,30 @@ export default function ResultsPage(): React.ReactElement {
           />
         </PixelPanel>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {roomMatches && !isHost && (
+          <p className="text-[12px] text-pa-ink-dim">
+            Waiting for the host to start another round.
+          </p>
+        )}
+        {isHost && (
+          <div>
+            <PixelButton
+              className="self-start"
+              onClick={() => void playAgain()}
+              disabled={rematching}
+              aria-busy={rematching}
+            >
+              <RotateCcw size={14} strokeWidth={3} className={rematching ? 'lucide animate-spin' : 'lucide'} />
+              {rematching ? 'Starting rematch…' : 'Play Again'}
+            </PixelButton>
+            {rematching && (
+              <p role="status" className="mt-2 text-[12px] text-pa-ink-dim">
+                Setting up the same game again…
+              </p>
+            )}
+          </div>
+        )}
         <PixelButton
           className="self-start"
           onClick={() => {

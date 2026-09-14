@@ -774,6 +774,62 @@ export const sfx = {
     osc.start(t);
     osc.stop(t + 0.13);
   },
+  blockPlace() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.005;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(320, t);
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.06);
+    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.07);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.08);
+  },
+  blockInvalid() {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime + 0.005;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.linearRampToValueAtTime(110, t + 0.1);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.linearRampToValueAtTime(0.001, t + 0.12);
+    osc.connect(gain);
+    gain.connect(sfxGain);
+    osc.start(t);
+    osc.stop(t + 0.13);
+  },
+  blockBlastClear(comboStreak = 1) {
+    const ctx = getAudioContext();
+    if (!ctx || !sfxEnabled || !sfxGain) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t0 = ctx.currentTime + 0.005;
+    const semitones = Math.min(16, Math.max(0, comboStreak - 1));
+    const pitchMultiplier = Math.pow(2, semitones / 12);
+    const baseNotes = [440, 554.37, 659.25, 880];
+    baseNotes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const noteTime = t0 + idx * 0.055;
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq * pitchMultiplier, noteTime);
+      gain.gain.setValueAtTime(0.32, noteTime);
+      gain.gain.linearRampToValueAtTime(0.001, noteTime + 0.14);
+      osc.connect(gain);
+      gain.connect(sfxGain!);
+      osc.start(noteTime);
+      osc.stop(noteTime + 0.15);
+    });
+  },
 };
 
 /* ------------------------------------------------------------------ */
