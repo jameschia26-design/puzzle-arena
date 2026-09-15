@@ -216,6 +216,7 @@ export type PuzzleBubbleAction = z.infer<typeof puzzleBubbleActionSchema>;
 export const blockBlasterActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('place'),
+    pieceIndex: z.number().int().min(0).max(2),
     row: z.number().int().min(0).max(7),
     col: z.number().int().min(0).max(7),
   }),

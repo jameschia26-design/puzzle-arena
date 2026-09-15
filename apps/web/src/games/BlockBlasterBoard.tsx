@@ -147,12 +147,13 @@ export function BlockBlasterBoard({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Whether the current piece is selected for click-to-place / keyboard controls
-  const [selected, setSelected] = React.useState(false);
+  // Selected piece from tray for click-to-place / keyboard controls
+  const [selectedPieceIdx, setSelectedPieceIdx] = React.useState<number | null>(null);
   const [isDraggingOverBoard, setIsDraggingOverBoard] = React.useState(false);
 
   // Dragging state
   const [dragInfo, setDragInfo] = React.useState<{
+    pieceIndex: number;
     piece: BlockPiece;
   } | null>(null);
   const [dragPointer, setDragPointer] = React.useState<{ x: number; y: number } | null>(null);
@@ -317,10 +318,9 @@ export function BlockBlasterBoard({
     }, 1200);
     return () => clearTimeout(timer);
   }, [floatingAnnouncements]);
-
   // Currently active piece (either being dragged or selected via tap)
   const activePiece: BlockPiece | null =
-    dragInfo !== null ? dragInfo.piece : selected ? (you?.current ?? null) : null;
+    dragInfo !== null ? dragInfo.piece : selectedPieceIdx !== null ? (you?.tray[selectedPieceIdx] ?? null) : null;
 
   // Calculate coordinates on the board given pointer position. Reads the
   // latest `you` via ref so its identity stays stable across renders - it
@@ -382,27 +382,25 @@ export function BlockBlasterBoard({
       const currentHover = hoverPosRef.current;
 
       if (dist < 8) {
-        // Tap/click on piece: toggle selection
-        setSelected((prev) => !prev);
+        setSelectedPieceIdx((prev) => (prev === dragInfo.pieceIndex ? null : dragInfo.pieceIndex));
         sfx.blip();
-        setHoverPos(null);
+      } else if (
+        isFloatingPieceOverBoard(e.clientX, e.clientY, dragInfo.piece) &&
+        currentHover?.valid
+      ) {
+        sfx.blockPlace();
+        onActionRef.current({
+          type: 'place',
+          pieceIndex: dragInfo.pieceIndex,
+          row: currentHover.row,
+          col: currentHover.col,
+        });
+        setSelectedPieceIdx(null);
       } else {
-        // Drag release
-        if (currentHover && currentHover.valid) {
-          sfx.blockPlace();
-          onActionRef.current({
-            type: 'place',
-            row: currentHover.row,
-            col: currentHover.col,
-          });
-          setSelected(false);
-          setHoverPos(null);
-        } else {
-          sfx.blockInvalid();
-          setHoverPos(null);
-        }
+        sfx.blockInvalid();
       }
 
+      setHoverPos(null);
       setDragInfo(null);
       setDragPointer(null);
       setIsDraggingOverBoard(false);
@@ -420,85 +418,79 @@ export function BlockBlasterBoard({
     };
   }, [dragInfo, computeTargetCoordinates, isFloatingPieceOverBoard]);
 
-  // Pointer down on the current piece
-  const handleCurrentPiecePointerDown = (e: React.PointerEvent) => {
+  // Pointer down on a tray piece
+  const handleTrayPiecePointerDown = (e: React.PointerEvent, idx: number) => {
     if (paused || you?.gameOver) return;
-    const piece = you?.current;
+    const piece = you?.tray[idx];
     if (!piece) return;
 
     dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-    setDragInfo({ piece });
+    setDragInfo({ pieceIndex: idx, piece });
     setDragPointer({ x: e.clientX, y: e.clientY });
     setIsDraggingOverBoard(isFloatingPieceOverBoard(e.clientX, e.clientY, piece));
-    const target = computeTargetCoordinates(e.clientX, e.clientY, piece);
-    setHoverPos(target);
+    setHoverPos(computeTargetCoordinates(e.clientX, e.clientY, piece));
   };
 
   // Hovering over board cells in Click-to-Place mode
   const handleBoardPointerMove = (e: React.PointerEvent) => {
-    if (dragInfo || !selected || !you) return;
-    const piece = you.current;
+    if (dragInfo || selectedPieceIdx === null || !you) return;
+    const piece = you.tray[selectedPieceIdx];
     if (!piece || !boardRef.current) return;
 
     const rect = boardRef.current.getBoundingClientRect();
     const cs = rect.width / BLOCK_BLASTER_BOARD_SIZE;
     const col = Math.floor((e.clientX - rect.left) / cs);
     const row = Math.floor((e.clientY - rect.top) / cs);
-
-    const valid = canPlacePiece(you.board, piece, row, col);
-    setHoverPos({ row, col, valid });
+    setHoverPos({ row, col, valid: canPlacePiece(you.board, piece, row, col) });
   };
 
   // Clicking a cell in Click-to-Place mode
   const handleCellClick = (r: number, c: number) => {
-    if (paused || you?.gameOver) return;
-    if (!selected || !you) return;
-    const piece = you.current;
+    if (paused || you?.gameOver || selectedPieceIdx === null || !you) return;
+    const piece = you.tray[selectedPieceIdx];
     if (!piece) return;
 
     if (canPlacePiece(you.board, piece, r, c)) {
       sfx.blockPlace();
-      onActionRef.current({
-        type: 'place',
-        row: r,
-        col: c,
-      });
-      setSelected(false);
+      onActionRef.current({ type: 'place', pieceIndex: selectedPieceIdx, row: r, col: c });
+      setSelectedPieceIdx(null);
       setHoverPos(null);
     } else {
       sfx.blockInvalid();
     }
   };
+
   // Keyboard controls for full accessibility
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const currentYou = youRef.current;
       if (pausedRef.current || currentYou?.gameOver) return;
-      if (e.key === 'Escape') {
-        setSelected(false);
+      if (e.key === '1' || e.key === '2' || e.key === '3') {
+        const idx = Number(e.key) - 1;
+        if (currentYou?.tray[idx]) {
+          setSelectedPieceIdx((prev) => (prev === idx ? null : idx));
+          sfx.blip();
+        }
+      } else if (e.key === 'Escape') {
+        setSelectedPieceIdx(null);
         setHoverPos(null);
-      } else if (e.key === 'Enter' || e.key === ' ') {
+      } else if ((e.key === 'Enter' || e.key === ' ') && selectedPieceIdx !== null) {
         e.preventDefault();
-        if (!selected) {
-          if (currentYou?.current) {
-            setSelected(true);
-            sfx.blip();
-          }
-        } else if (hoverPosRef.current?.valid) {
+        if (hoverPosRef.current?.valid) {
           sfx.blockPlace();
           onActionRef.current({
             type: 'place',
+            pieceIndex: selectedPieceIdx,
             row: hoverPosRef.current.row,
             col: hoverPosRef.current.col,
           });
-          setSelected(false);
+          setSelectedPieceIdx(null);
           setHoverPos(null);
         }
-      } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selected) {
+      } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedPieceIdx !== null) {
         e.preventDefault();
-        const piece = currentYou?.current;
+        const piece = currentYou?.tray[selectedPieceIdx];
         if (!piece || !currentYou) return;
-
         setHoverPos((prev) => {
           const curR = prev?.row ?? 0;
           const curC = prev?.col ?? 0;
@@ -512,14 +504,13 @@ export function BlockBlasterBoard({
         });
       }
     };
-
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selected]);
+  }, [selectedPieceIdx]);
 
   // Compute ghost preview and lines that would be completed
   const ghostPreview = React.useMemo(() => {
-    if (!you || !activePiece || !hoverPos || !hoverPos.valid) return null;
+    if (!you || !activePiece || !hoverPos || !hoverPos.valid || !isDraggingOverBoard) return null;
     const { row, col } = hoverPos;
 
     const testBoard = you.board.map((r) => [...r]);
@@ -560,7 +551,7 @@ export function BlockBlasterBoard({
       shape: activePiece.shape,
       color: activePiece.color,
     };
-  }, [you, activePiece, hoverPos]);
+  }, [you, activePiece, hoverPos, isDraggingOverBoard]);
 
   const handleRestart = (diff?: BlockBlasterDifficulty, lay?: BlockBlasterLayout) => {
     sfx.blip();
@@ -569,7 +560,7 @@ export function BlockBlasterBoard({
       difficulty: diff ?? activeDifficulty,
       startingLayout: lay ?? activeLayout,
     });
-    setSelected(false);
+    setSelectedPieceIdx(null);
     setHoverPos(null);
     setShowConfigMenu(false);
   };
@@ -830,83 +821,61 @@ export function BlockBlasterBoard({
             )}
           </div>
 
-          {/* Current piece to place, with a smaller preview of what's next below it */}
-          <div className={`flex flex-col items-center gap-2 mt-4 w-full ${isDesktop ? 'lg:col-start-2 lg:row-start-1 lg:mt-0' : ''}`}>
-            {you?.current && (() => {
-              const piece = you.current;
+          {/* Three-slot piece tray */}
+          <div className={`flex items-center justify-center gap-3 sm:gap-6 mt-4 w-full ${isDesktop ? 'lg:col-start-2 lg:row-start-1 lg:mt-0' : ''}`}>
+            {you?.tray.map((piece, idx) => {
+              const isSelected = selectedPieceIdx === idx;
+              const isDraggingThis = dragInfo?.pieceIndex === idx;
               return (
                 <div
-                  onPointerDown={handleCurrentPiecePointerDown}
-                  className={`relative flex items-center justify-center w-28 h-28 sm:w-32 sm:h-32 bg-pa-surface border-2 rounded-sm pa-shadow cursor-grab active:cursor-grabbing transition-transform select-none ${
-                    selected
-                      ? 'border-pa-cyan ring-4 ring-pa-cyan/60 scale-105 shadow-[0_0_12px_rgba(34,211,238,0.5)]'
-                      : 'border-pa-border'
-                  } ${
-                    you.gameOver ? 'border-red-500 ring-2 ring-red-500/80 animate-pulse' : ''
-                  } ${dragInfo !== null ? 'opacity-20' : 'hover:border-pa-cyan/70'}`}
+                  key={piece?.id ?? `empty-${idx}`}
+                  onPointerDown={(e) => handleTrayPiecePointerDown(e, idx)}
+                  className={`relative flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 bg-pa-surface border-2 rounded-sm pa-shadow cursor-grab active:cursor-grabbing transition-transform select-none ${
+                    isSelected ? 'border-pa-cyan ring-4 ring-pa-cyan/60 scale-105 shadow-[0_0_12px_rgba(34,211,238,0.5)]' : 'border-pa-border'
+                  } ${you.gameOver ? 'border-red-500 ring-2 ring-red-500/80 animate-pulse' : ''} ${
+                    isDraggingThis ? 'opacity-20' : 'hover:border-pa-cyan/70'
+                  }`}
                 >
-                  <div
-                    className="grid gap-0.5"
-                    style={{
-                      gridTemplateRows: `repeat(${piece.height}, minmax(0, 1fr))`,
-                      gridTemplateColumns: `repeat(${piece.width}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {piece.shape.map((row, r) =>
-                      row.map((val, c) => (
-                        <div
-                          key={`${r}-${c}`}
-                          className="w-5 h-5 sm:w-6 sm:h-6 rounded-xs"
-                          style={{
-                            backgroundColor: val === 1 ? piece.color : 'transparent',
-                            boxShadow:
-                              val === 1
-                                ? 'inset 1px 1px 0px rgba(255,255,255,0.45), inset -1px -1px 0px rgba(0,0,0,0.45)'
-                                : undefined,
-                          }}
-                        />
-                      )),
-                    )}
-                  </div>
-
-                  {selected && (
+                  {piece ? (
+                    <div
+                      className="grid gap-0.5"
+                      style={{
+                        gridTemplateRows: `repeat(${piece.height}, minmax(0, 1fr))`,
+                        gridTemplateColumns: `repeat(${piece.width}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {piece.shape.map((row, r) =>
+                        row.map((val, c) => (
+                          <div
+                            key={`${r}-${c}`}
+                            className="w-4 h-4 sm:w-5 sm:h-5 rounded-xs"
+                            style={{
+                              backgroundColor: val === 1 ? piece.color : 'transparent',
+                              boxShadow:
+                                val === 1
+                                  ? 'inset 1px 1px 0px rgba(255,255,255,0.45), inset -1px -1px 0px rgba(0,0,0,0.45)'
+                                  : undefined,
+                            }}
+                          />
+                        )),
+                      )}
+                    </div>
+                  ) : (
+                    <span className="font-display text-[9px] text-pa-ink-dim/40 uppercase">Empty</span>
+                  )}
+                  {isSelected && (
                     <span className="absolute -bottom-2 text-[8px] font-display bg-pa-cyan text-black px-1 rounded uppercase font-bold tracking-tight">
                       Selected
                     </span>
                   )}
                 </div>
               );
-            })()}
-
-            <div className="flex flex-col items-center gap-1">
-              <span className="font-display text-[8px] uppercase tracking-wider text-pa-ink-dim/70">Next</span>
-              {you?.next && (
-                <div className="relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-pa-surface/60 border-2 border-pa-border rounded-sm opacity-70 select-none">
-                  <div
-                    className="grid gap-0.5"
-                    style={{
-                      gridTemplateRows: `repeat(${you.next.height}, minmax(0, 1fr))`,
-                      gridTemplateColumns: `repeat(${you.next.width}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {you.next.shape.map((row, r) =>
-                      row.map((val, c) => (
-                        <div
-                          key={`${r}-${c}`}
-                          className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-xs"
-                          style={{ backgroundColor: val === 1 ? you.next.color : 'transparent' }}
-                        />
-                      )),
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            })}
           </div>
 
           <div className={`flex items-center gap-2 mt-2 ${isDesktop ? 'lg:col-start-2 lg:row-start-2 lg:mt-3' : ''}`}>
             <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim/70">
-              Drag piece to grid, tap to select, or press Enter
+              Drag piece to grid, tap to select, or press 1 / 2 / 3
             </span>
           </div>
         </div>

@@ -9,7 +9,7 @@ import { makeLog, stampLogs, type GameEngine, type ReduceResult } from '../engin
 import {
   createEmptyBoard,
   createStartingBoard,
-  generatePiece,
+  generateBatch,
   applyPlacement,
   checkGameOver,
 } from './rules.js';
@@ -42,8 +42,7 @@ function toPublic(p: BlockBlasterPlayerState): BlockBlasterPublicPlayer {
     id: p.id,
     seat: p.seat,
     board: p.board,
-    current: p.current,
-    next: p.next,
+    tray: p.tray,
     score: p.score,
     highScore: p.highScore,
     comboStreak: p.comboStreak,
@@ -59,14 +58,12 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): BlockBlas
   const rng = mulberry32(seed);
   const players: BlockBlasterPlayerState[] = playerIds.map((id, seat) => {
     const board = createStartingBoard(config.startingLayout, config.difficulty, seed + seat);
-    const current = generatePiece(board, rng, config.difficulty);
-    const next = generatePiece(board, rng, config.difficulty);
+    const tray = generateBatch(board, rng, config.difficulty);
     return {
       id,
       seat,
       board,
-      current,
-      next,
+      tray,
       score: 0,
       highScore: 0,
       comboStreak: 0,
@@ -115,8 +112,7 @@ function reduce(
       s.config.startingLayout = action.startingLayout;
     }
     p.board = createStartingBoard(s.config.startingLayout, s.config.difficulty, s.rng.calls + p.seat);
-    p.current = generatePiece(p.board, rng, s.config.difficulty);
-    p.next = generatePiece(p.board, rng, s.config.difficulty);
+    p.tray = generateBatch(p.board, rng, s.config.difficulty);
     p.score = 0;
     p.comboStreak = 0;
     p.linesCleared = 0;
@@ -148,10 +144,10 @@ function reduce(
       return { ok: false, error: 'Game over for this player' };
     }
 
-    const piece = p.current;
+    const piece = p.tray[action.pieceIndex];
     if (!piece) {
       p.penalties++;
-      return { ok: false, error: 'No active piece' };
+      return { ok: false, error: 'No piece in that tray slot' };
     }
 
     const result = applyPlacement(p.board, piece, action.row, action.col, p.comboStreak);
@@ -181,12 +177,16 @@ function reduce(
       );
     }
 
-    // The placed piece becomes the next one; roll a fresh preview.
-    p.current = p.next;
-    p.next = generatePiece(p.board, rng, s.config.difficulty);
+    // Clear placed piece from tray
+    p.tray[action.pieceIndex] = null;
+
+    // Refill tray when all 3 slots are empty
+    if (p.tray.every((slot) => slot === null)) {
+      p.tray = generateBatch(p.board, rng, s.config.difficulty);
+    }
 
     // Check if player has no more moves
-    if (checkGameOver(p.board, p.current)) {
+    if (checkGameOver(p.board, p.tray)) {
       p.gameOver = true;
       logs.push(makeLog(`Player ${p.seat + 1} ran out of moves! Final score: ${p.score}`, playerId));
     }
@@ -216,11 +216,15 @@ function autoAction(s: BlockBlasterState, playerId: string): BlockBlasterAction 
   const p = playerById(s, playerId);
   if (!p || p.gameOver) return { type: 'restart' };
 
-  const piece = p.current;
-  for (let r = 0; r <= BLOCK_BLASTER_BOARD_SIZE - piece.height; r++) {
-    for (let c = 0; c <= BLOCK_BLASTER_BOARD_SIZE - piece.width; c++) {
-      if (canPlacePiece(p.board, piece, r, c)) {
-        return { type: 'place', row: r, col: c };
+  for (let i = 0; i < p.tray.length; i++) {
+    const piece = p.tray[i];
+    if (!piece) continue;
+
+    for (let r = 0; r <= BLOCK_BLASTER_BOARD_SIZE - piece.height; r++) {
+      for (let c = 0; c <= BLOCK_BLASTER_BOARD_SIZE - piece.width; c++) {
+        if (canPlacePiece(p.board, piece, r, c)) {
+          return { type: 'place', pieceIndex: i, row: r, col: c };
+        }
       }
     }
   }
