@@ -976,6 +976,10 @@ export function BlockBlasterBoard({
           className={`fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 transition-opacity ${
             isDraggingOverBoard ? 'opacity-0' : 'opacity-90'
           }`}
+          style={{
+            left: `${dragPointer.x}px`,
+            top: `${dragPointer.y + DRAG_VISUAL_OFFSET_Y}px`,
+          }}
         >
           <div
             className="grid gap-1 p-1 bg-slate-900/80 rounded-sm border-2 border-pa-cyan shadow-2xl backdrop-blur-xs"
