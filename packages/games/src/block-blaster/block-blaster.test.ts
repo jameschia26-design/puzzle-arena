@@ -285,6 +285,50 @@ describe('block-blaster: starting templates & difficulty scales', () => {
     expect(largeHard).toBeGreaterThan(5); // hard has multiple large pieces
   });
 
+  it('escalates piece difficulty as score climbs, for every difficulty setting', () => {
+    const board = createEmptyBoard();
+
+    for (const difficulty of ['easy', 'normal', 'hard'] as const) {
+      const rngLow = mulberry32(7);
+      let smallLow = 0;
+      let largeLow = 0;
+      for (let i = 0; i < 40; i++) {
+        const batch = generateBatch(board, rngLow, difficulty, 0);
+        smallLow += batch.filter((p) => p.category === 'small').length;
+        largeLow += batch.filter((p) => p.category === 'large').length;
+      }
+
+      const rngHigh = mulberry32(7);
+      let smallHigh = 0;
+      let largeHigh = 0;
+      for (let i = 0; i < 40; i++) {
+        const batch = generateBatch(board, rngHigh, difficulty, 6000);
+        smallHigh += batch.filter((p) => p.category === 'small').length;
+        largeHigh += batch.filter((p) => p.category === 'large').length;
+      }
+
+      // A high-score batch skews toward fewer small pieces and more large ones
+      // than the same difficulty's opening batches - the mix isn't frozen at
+      // whatever the player picked at setup for the whole run.
+      expect(smallHigh).toBeLessThan(smallLow);
+      expect(largeHigh).toBeGreaterThan(largeLow);
+    }
+  });
+
+  it('allows more than one large piece per batch at a high escalation tier', () => {
+    const board = createEmptyBoard();
+    const rng = mulberry32(99);
+    let sawMultipleLarge = false;
+    for (let i = 0; i < 60; i++) {
+      const batch = generateBatch(board, rng, 'normal', 6000);
+      if (batch.filter((p) => p.category === 'large').length > 1) {
+        sawMultipleLarge = true;
+        break;
+      }
+    }
+    expect(sawMultipleLarge).toBe(true);
+  });
+
   it('allows restart with different difficulty and layout', () => {
     const s = blockBlaster.setup(['p1'], 1, { difficulty: 'easy', startingLayout: 'empty' });
     expect(s.config.difficulty).toBe('easy');
