@@ -67,6 +67,18 @@ export function BlockBlasterBoard({
   const you = view.you;
   const paused = useRoom((s) => s.paused);
 
+  // Refs mirroring the latest props/derived values so drag/keyboard listeners
+  // never need to tear down and reattach mid-gesture just because a parent
+  // re-render (bot tick, leaderboard broadcast, socket reconnect) produced a
+  // new `onAction`/`view` reference. Only real gesture start/stop (dragInfo)
+  // or genuine input changes should resubscribe.
+  const youRef = React.useRef(you);
+  youRef.current = you;
+  const onActionRef = React.useRef(onAction);
+  onActionRef.current = onAction;
+  const pausedRef = React.useRef(paused);
+  pausedRef.current = paused;
+
   // Play arcade BGM on mount
   React.useEffect(() => {
     bgm.play('arcade');
@@ -274,10 +286,13 @@ export function BlockBlasterBoard({
         ? (you?.tray[selectedPieceIdx] ?? null)
         : null;
 
-  // Calculate coordinates on the board given pointer position
+  // Calculate coordinates on the board given pointer position. Reads the
+  // latest `you` via ref so its identity stays stable across renders - it
+  // must NOT be a dependency of the drag-tracking effect below.
   const computeTargetCoordinates = React.useCallback(
     (clientX: number, clientY: number, piece: BlockPiece, isTouch: boolean) => {
-      if (!boardRef.current || !you) return null;
+      const currentYou = youRef.current;
+      if (!boardRef.current || !currentYou) return null;
       const rect = boardRef.current.getBoundingClientRect();
 
       // Touch offset: finger sits 70px below visual piece
@@ -292,10 +307,10 @@ export function BlockBlasterBoard({
       const col = Math.round((pieceTopLeftX - rect.left) / cs);
       const row = Math.round((pieceTopLeftY - rect.top) / cs);
 
-      const valid = canPlacePiece(you.board, piece, row, col);
+      const valid = canPlacePiece(currentYou.board, piece, row, col);
       return { row, col, valid };
     },
-    [you],
+    [],
   );
 
   // Global window drag event listeners
@@ -322,7 +337,7 @@ export function BlockBlasterBoard({
         // Drag release
         if (currentHover && currentHover.valid) {
           sfx.blockPlace();
-          onAction({
+          onActionRef.current({
             type: 'place',
             pieceIndex: dragInfo.pieceIndex,
             row: currentHover.row,
@@ -350,7 +365,7 @@ export function BlockBlasterBoard({
       window.removeEventListener('pointerup', onWindowPointerUp);
       window.removeEventListener('pointercancel', onWindowPointerUp);
     };
-  }, [dragInfo, computeTargetCoordinates, onAction]);
+  }, [dragInfo, computeTargetCoordinates]);
 
   // Pointer down on tray piece
   const handleTrayPiecePointerDown = (e: React.PointerEvent, idx: number) => {
@@ -391,7 +406,7 @@ export function BlockBlasterBoard({
 
     if (canPlacePiece(you.board, piece, r, c)) {
       sfx.blockPlace();
-      onAction({
+      onActionRef.current({
         type: 'place',
         pieceIndex: selectedPieceIdx,
         row: r,
@@ -407,10 +422,11 @@ export function BlockBlasterBoard({
   // Keyboard controls for full accessibility
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (paused || you?.gameOver) return;
+      const currentYou = youRef.current;
+      if (pausedRef.current || currentYou?.gameOver) return;
       if (e.key === '1' || e.key === '2' || e.key === '3') {
         const idx = Number(e.key) - 1;
-        if (you?.tray[idx]) {
+        if (currentYou?.tray[idx]) {
           setSelectedPieceIdx((prev) => (prev === idx ? null : idx));
           sfx.blip();
         }
@@ -424,7 +440,7 @@ export function BlockBlasterBoard({
       ) {
         e.preventDefault();
         sfx.blockPlace();
-        onAction({
+        onActionRef.current({
           type: 'place',
           pieceIndex: selectedPieceIdx,
           row: hoverPosRef.current.row,
@@ -437,8 +453,8 @@ export function BlockBlasterBoard({
         selectedPieceIdx !== null
       ) {
         e.preventDefault();
-        const piece = you?.tray[selectedPieceIdx];
-        if (!piece || !you) return;
+        const piece = currentYou?.tray[selectedPieceIdx];
+        if (!piece || !currentYou) return;
 
         setHoverPos((prev) => {
           const curR = prev?.row ?? 0;
@@ -449,14 +465,14 @@ export function BlockBlasterBoard({
           if (e.key === 'ArrowDown') nextR = Math.min(BLOCK_BLASTER_BOARD_SIZE - piece.height, curR + 1);
           if (e.key === 'ArrowLeft') nextC = Math.max(0, curC - 1);
           if (e.key === 'ArrowRight') nextC = Math.min(BLOCK_BLASTER_BOARD_SIZE - piece.width, curC + 1);
-          return { row: nextR, col: nextC, valid: canPlacePiece(you.board, piece, nextR, nextC) };
+          return { row: nextR, col: nextC, valid: canPlacePiece(currentYou.board, piece, nextR, nextC) };
         });
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [paused, you, selectedPieceIdx, onAction]);
+  }, [selectedPieceIdx]);
 
   // Compute ghost preview and lines that would be completed
   const ghostPreview = React.useMemo(() => {

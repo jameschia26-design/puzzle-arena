@@ -23,7 +23,10 @@ export default function BlockBlasterHarness(): React.ReactElement {
   const [difficulty, setDifficulty] = React.useState<BlockBlasterDifficulty>('normal');
   const [layout, setLayout] = React.useState<BlockBlasterLayout>('templated');
   const [state, setState] = React.useState<BlockBlasterState>(() =>
-    blockBlaster.setup(['p1'], 20260914, { difficulty: 'normal', startingLayout: 'templated' }),
+    blockBlaster.setup(['p1'], (Date.now() ^ (Math.random() * 0xffffffff)) & 0xffffffff, {
+      difficulty: 'normal',
+      startingLayout: 'templated',
+    }),
   );
 
   const onAction = React.useCallback((action: unknown) => {
