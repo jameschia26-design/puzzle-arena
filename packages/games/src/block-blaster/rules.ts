@@ -63,24 +63,46 @@ export function instantiatePiece(def: ShapeDefinition, rng: Rng): BlockPiece {
   };
 }
 
+/** Score needed per escalation tier, and the highest tier reached. Tuned so
+ * the mix visibly shifts within the first couple of clears (~600-800 pts)
+ * and reaches its hardest mix by the time a run is going well (~4800+),
+ * while the pity guarantee below still keeps every batch playable. */
+const ESCALATION_SCORE_STEP = 800;
+const MAX_ESCALATION_TIER = 6;
+
 /**
  * Generates a batch of 3 pieces according to fairness and safety specifications:
- * 1. Bag Weighting: Small (~35%), Medium (~50%), Large (~15%).
- * 2. Safety Check: Maximum one Large piece per batch of 3.
+ * 1. Bag Weighting: Small (~35%), Medium (~50%), Large (~15%) at the difficulty's
+ *    base mix, shifted toward Medium/Large as `score` climbs (see escalation
+ *    tiers below) - otherwise every batch for the whole game looks like the
+ *    difficulty picked at setup, no matter how far the run has gone.
+ * 2. Safety Check: capped Large pieces per batch of 3, the cap itself rising
+ *    with the escalation tier.
  * 3. Pity Guarantee: At least one piece in the batch must have a valid placement on the board.
  */
 export function generateBatch(
   board: CellState[][],
   rng: Rng,
   difficulty: BlockBlasterDifficulty = 'normal',
+  score = 0,
 ): BlockPiece[] {
   const batch: BlockPiece[] = [];
   let largeCount = 0;
 
-  // Difficulty weighting thresholds
-  const smallThreshold = difficulty === 'easy' ? 50 : difficulty === 'hard' ? 20 : 35;
-  const mediumThreshold = difficulty === 'easy' ? 95 : difficulty === 'hard' ? 65 : 85;
-  const maxLargeAllowed = difficulty === 'easy' ? 0 : difficulty === 'hard' ? 2 : 1;
+  // Difficulty weighting thresholds (base mix, at score 0)
+  const baseSmallThreshold = difficulty === 'easy' ? 50 : difficulty === 'hard' ? 20 : 35;
+  const baseMediumThreshold = difficulty === 'easy' ? 95 : difficulty === 'hard' ? 65 : 85;
+  const baseMaxLargeAllowed = difficulty === 'easy' ? 0 : difficulty === 'hard' ? 2 : 1;
+
+  // Escalation: every ESCALATION_SCORE_STEP points shaves the "small" band
+  // and the "medium" band down, which grows the "large" band (100 - medium)
+  // and, every other tier, allows one more Large piece per batch. Applies on
+  // top of every difficulty, since "harder as you go" is a property of the
+  // run, not just of Hard mode.
+  const tier = Math.min(MAX_ESCALATION_TIER, Math.max(0, Math.floor(score / ESCALATION_SCORE_STEP)));
+  const smallThreshold = Math.max(8, baseSmallThreshold - tier * 4);
+  const mediumThreshold = Math.max(smallThreshold + 15, baseMediumThreshold - tier * 3);
+  const maxLargeAllowed = Math.min(BLOCK_BLASTER_TRAY_SIZE, baseMaxLargeAllowed + Math.floor(tier / 2));
 
   for (let i = 0; i < BLOCK_BLASTER_TRAY_SIZE; i++) {
     let category: PieceCategory;

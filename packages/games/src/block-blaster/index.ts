@@ -58,7 +58,7 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): BlockBlas
   const rng = mulberry32(seed);
   const players: BlockBlasterPlayerState[] = playerIds.map((id, seat) => {
     const board = createStartingBoard(config.startingLayout, config.difficulty, seed + seat);
-    const tray = generateBatch(board, rng, config.difficulty);
+    const tray = generateBatch(board, rng, config.difficulty, 0);
     return {
       id,
       seat,
@@ -112,7 +112,7 @@ function reduce(
       s.config.startingLayout = action.startingLayout;
     }
     p.board = createStartingBoard(s.config.startingLayout, s.config.difficulty, s.rng.calls + p.seat);
-    p.tray = generateBatch(p.board, rng, s.config.difficulty);
+    p.tray = generateBatch(p.board, rng, s.config.difficulty, 0);
     p.score = 0;
     p.comboStreak = 0;
     p.linesCleared = 0;
@@ -180,9 +180,10 @@ function reduce(
     // Clear placed piece from tray
     p.tray[action.pieceIndex] = null;
 
-    // Refill tray when all 3 slots are empty
+    // Refill tray when all 3 slots are empty. Pass the player's current score
+    // so the piece mix escalates as the run progresses (see generateBatch).
     if (p.tray.every((slot) => slot === null)) {
-      p.tray = generateBatch(p.board, rng, s.config.difficulty);
+      p.tray = generateBatch(p.board, rng, s.config.difficulty, p.score);
     }
 
     // Check if player has no more moves
