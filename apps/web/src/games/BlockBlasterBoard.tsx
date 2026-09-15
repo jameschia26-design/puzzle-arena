@@ -50,6 +50,38 @@ function getComboTitle(combo: number, lines: number): { title: string; sub: stri
 }
 
 /**
+ * Keep the board layout tied to the real viewport, rather than only to CSS
+ * breakpoints. Fullscreen game surfaces can be landscape on a phone/tablet,
+ * while desktop needs room for the board and piece tray side by side.
+ */
+type BlockBlasterViewport = 'desktop' | 'portrait' | 'landscape';
+
+function useBlockBlasterViewport(): BlockBlasterViewport {
+  const detect = React.useCallback((): BlockBlasterViewport => {
+    if (typeof window === 'undefined') return 'portrait';
+    const width = window.innerWidth;
+    const height = window.visualViewport?.height ?? window.innerHeight;
+    if (width >= 1024) return 'desktop';
+    return width > height ? 'landscape' : 'portrait';
+  }, []);
+  const [viewport, setViewport] = React.useState<BlockBlasterViewport>(detect);
+
+  React.useEffect(() => {
+    const update = () => setViewport(detect());
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    window.visualViewport?.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+      window.visualViewport?.removeEventListener('resize', update);
+    };
+  }, [detect]);
+
+  return viewport;
+}
+
+/**
  * Pixels the floating dragged piece is drawn above the pointer. Without this,
  * a multi-cell piece sits centered directly on top of the cells it's about
  * to land on, hiding the ghost preview underneath it - true for a mouse
@@ -74,7 +106,8 @@ export function BlockBlasterBoard({
 }): React.ReactElement {
   const you = view.you;
   const paused = useRoom((s) => s.paused);
-
+  const viewport = useBlockBlasterViewport();
+  const isDesktop = viewport === 'desktop';
   // Refs mirroring the latest props/derived values so drag/keyboard listeners
   // never need to tear down and reattach mid-gesture just because a parent
   // re-render (bot tick, leaderboard broadcast, socket reconnect) produced a
@@ -116,6 +149,7 @@ export function BlockBlasterBoard({
 
   // Whether the current piece is selected for click-to-place / keyboard controls
   const [selected, setSelected] = React.useState(false);
+  const [isDraggingOverBoard, setIsDraggingOverBoard] = React.useState(false);
 
   // Dragging state
   const [dragInfo, setDragInfo] = React.useState<{
@@ -291,26 +325,40 @@ export function BlockBlasterBoard({
   // Calculate coordinates on the board given pointer position. Reads the
   // latest `you` via ref so its identity stays stable across renders - it
   // must NOT be a dependency of the drag-tracking effect below.
+  const isFloatingPieceOverBoard = React.useCallback(
+    (clientX: number, clientY: number, piece: BlockPiece) => {
+      const boardRect = boardRef.current?.getBoundingClientRect();
+      if (!boardRect) return false;
+      const visualCenterY = clientY + DRAG_VISUAL_OFFSET_Y;
+      const visualWidth = piece.width * cellSize + 16;
+      const visualHeight = piece.height * cellSize + 16;
+      const visualLeft = clientX - visualWidth / 2;
+      const visualTop = visualCenterY - visualHeight / 2;
+      return (
+        visualLeft < boardRect.right &&
+        visualLeft + visualWidth > boardRect.left &&
+        visualTop < boardRect.bottom &&
+        visualTop + visualHeight > boardRect.top
+      );
+    },
+    [cellSize],
+  );
+
+  // Calculate coordinates on the board given pointer position. Reads the
+  // latest `you` via ref so its identity stays stable across renders - it
+  // must NOT be a dependency of the drag-tracking effect below.
   const computeTargetCoordinates = React.useCallback(
     (clientX: number, clientY: number, piece: BlockPiece) => {
       const currentYou = youRef.current;
       if (!boardRef.current || !currentYou) return null;
       const rect = boardRef.current.getBoundingClientRect();
-
-      // The floating piece is drawn above the pointer (see the render below)
-      // so it never covers the ghost preview on the cells it's about to
-      // land on - true for a finger and, just as much, for a mouse cursor
-      // when the piece itself spans several cells.
       const visualCenterX = clientX;
       const visualCenterY = clientY + DRAG_VISUAL_OFFSET_Y;
-
       const cs = rect.width / BLOCK_BLASTER_BOARD_SIZE;
       const pieceTopLeftX = visualCenterX - (piece.width * cs) / 2;
       const pieceTopLeftY = visualCenterY - (piece.height * cs) / 2;
-
       const col = Math.round((pieceTopLeftX - rect.left) / cs);
       const row = Math.round((pieceTopLeftY - rect.top) / cs);
-
       const valid = canPlacePiece(currentYou.board, piece, row, col);
       return { row, col, valid };
     },
@@ -323,6 +371,7 @@ export function BlockBlasterBoard({
 
     const onWindowPointerMove = (e: PointerEvent) => {
       setDragPointer({ x: e.clientX, y: e.clientY });
+      setIsDraggingOverBoard(isFloatingPieceOverBoard(e.clientX, e.clientY, dragInfo.piece));
       const target = computeTargetCoordinates(e.clientX, e.clientY, dragInfo.piece);
       setHoverPos(target);
     };
@@ -356,6 +405,7 @@ export function BlockBlasterBoard({
 
       setDragInfo(null);
       setDragPointer(null);
+      setIsDraggingOverBoard(false);
       dragStartRef.current = null;
     };
 
@@ -368,7 +418,7 @@ export function BlockBlasterBoard({
       window.removeEventListener('pointerup', onWindowPointerUp);
       window.removeEventListener('pointercancel', onWindowPointerUp);
     };
-  }, [dragInfo, computeTargetCoordinates]);
+  }, [dragInfo, computeTargetCoordinates, isFloatingPieceOverBoard]);
 
   // Pointer down on the current piece
   const handleCurrentPiecePointerDown = (e: React.PointerEvent) => {
@@ -379,7 +429,7 @@ export function BlockBlasterBoard({
     dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
     setDragInfo({ piece });
     setDragPointer({ x: e.clientX, y: e.clientY });
-
+    setIsDraggingOverBoard(isFloatingPieceOverBoard(e.clientX, e.clientY, piece));
     const target = computeTargetCoordinates(e.clientX, e.clientY, piece);
     setHoverPos(target);
   };
@@ -525,7 +575,7 @@ export function BlockBlasterBoard({
   };
 
   return (
-    <div className="relative flex flex-col items-center justify-between w-full max-w-4xl mx-auto p-2 sm:p-4 select-none touch-none">
+    <div className={`relative flex flex-col items-center justify-between w-full max-w-4xl mx-auto p-2 sm:p-4 select-none touch-none ${isDesktop ? 'pb-8' : ''}`}>
       {/* Top Arcade HUD */}
       <div className="w-full flex items-center justify-between gap-2 mb-3 px-3 py-2 bg-pa-surface border-2 border-pa-border pa-shadow">
         <div className="flex items-center gap-4">
@@ -649,9 +699,9 @@ export function BlockBlasterBoard({
         </div>
       )}
 
-      <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-4 w-full">
+      <div className={`flex flex-col lg:flex-row items-center lg:items-start justify-center gap-4 w-full ${isDesktop ? 'overflow-visible' : ''}`}>
         {/* Main 8x8 Board Container */}
-        <div className="relative flex flex-col items-center">
+        <div className={`relative flex flex-col items-center ${isDesktop ? 'lg:grid lg:grid-cols-[auto_170px] lg:items-start lg:gap-x-5' : ''}`}>
           <div
             ref={boardRef}
             onPointerMove={handleBoardPointerMove}
@@ -781,7 +831,7 @@ export function BlockBlasterBoard({
           </div>
 
           {/* Current piece to place, with a smaller preview of what's next below it */}
-          <div className="flex flex-col items-center gap-2 mt-4 w-full">
+          <div className={`flex flex-col items-center gap-2 mt-4 w-full ${isDesktop ? 'lg:col-start-2 lg:row-start-1 lg:mt-0' : ''}`}>
             {you?.current && (() => {
               const piece = you.current;
               return (
@@ -854,7 +904,7 @@ export function BlockBlasterBoard({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mt-2">
+          <div className={`flex items-center gap-2 mt-2 ${isDesktop ? 'lg:col-start-2 lg:row-start-2 lg:mt-3' : ''}`}>
             <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim/70">
               Drag piece to grid, tap to select, or press Enter
             </span>
@@ -923,11 +973,9 @@ export function BlockBlasterBoard({
       {/* Floating Dragged Piece matching exact board cell scale */}
       {dragInfo !== null && dragPointer && activePiece && (
         <div
-          className="fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 transition-opacity opacity-90"
-          style={{
-            left: `${dragPointer.x}px`,
-            top: `${dragPointer.y + DRAG_VISUAL_OFFSET_Y}px`,
-          }}
+          className={`fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 transition-opacity ${
+            isDraggingOverBoard ? 'opacity-0' : 'opacity-90'
+          }`}
         >
           <div
             className="grid gap-1 p-1 bg-slate-900/80 rounded-sm border-2 border-pa-cyan shadow-2xl backdrop-blur-xs"

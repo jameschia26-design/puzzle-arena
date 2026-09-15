@@ -554,7 +554,7 @@ export default function RoomPage(): React.ReactElement {
           className={cn(
             'flex-1 min-w-0',
             mobileTab !== 'board' && 'hidden lg:block',
-            isGameFullscreen && (gameId === 'puzzle-bubble'
+            isGameFullscreen && ((gameId === 'puzzle-bubble' || gameId === 'block-blaster')
               ? 'h-full overflow-x-hidden overflow-y-auto flex flex-col'
               : 'h-full overflow-hidden flex flex-col'),
           )}
