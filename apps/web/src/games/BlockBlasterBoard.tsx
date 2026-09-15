@@ -971,8 +971,12 @@ export function BlockBlasterBoard({
 
               {/* Snapped piece shadow - drawn ABOVE occupied cells so a
                   collision never hides the exact cells the player needs to
-                  see. Always visible while a piece is over the board;
-                  colour communicates legality instead of visibility. */}
+                  see. Always visible while a piece is over the board.
+                  Deliberately light/translucent (never the piece's own
+                  solid color) so the board underneath stays visible, and
+                  colour-coded green/red for legality instead of showing the
+                  piece's true color - that's the one signal that matters
+                  here, and it must read instantly. */}
               {shadowPreview && gridMetrics && (
                 <div className="absolute inset-0 pointer-events-none z-[15]">
                   {shadowPreview.shape.map((rowArr, r) =>
@@ -992,12 +996,15 @@ export function BlockBlasterBoard({
                             top: gr * gridMetrics.pitchY,
                             width: gridMetrics.cellW,
                             height: gridMetrics.cellH,
-                            backgroundColor: shadowPreview.valid ? shadowPreview.color : 'rgba(239, 68, 68, 0.55)',
-                            opacity: shadowPreview.valid ? 0.85 : 0.78,
-                            border: shadowPreview.valid ? `2px solid ${shadowPreview.color}` : '2px solid #ef4444',
+                            backgroundColor: shadowPreview.valid
+                              ? 'rgba(46, 230, 107, 0.28)'
+                              : 'rgba(255, 77, 77, 0.28)',
+                            border: shadowPreview.valid
+                              ? '2px solid rgba(46, 230, 107, 0.85)'
+                              : '2px solid rgba(255, 77, 77, 0.85)',
                             boxShadow: shadowPreview.valid
-                              ? `0 0 12px ${shadowPreview.color}, inset 1px 1px 0px rgba(255,255,255,0.5)`
-                              : '0 0 10px rgba(239,68,68,0.9), inset 1px 1px 0px rgba(255,255,255,0.25)',
+                              ? '0 0 8px rgba(46,230,107,0.45), inset 1px 1px 0px rgba(255,255,255,0.2)'
+                              : '0 0 8px rgba(255,77,77,0.45), inset 1px 1px 0px rgba(255,255,255,0.12)',
                           }}
                         />
                       );
@@ -1192,13 +1199,24 @@ export function BlockBlasterBoard({
       {/* Floating dragged piece, at true board cell scale. Only rendered
           while off the board - once the piece is over the board, the
           snapped shadow above IS the piece, so there is exactly one
-          representation on screen at all times, never zero. */}
+          representation on screen at all times, never zero. Deliberately
+          translucent (opacity on the wrapper, not solid per-cell colour):
+          this piece sits directly under the player's finger/cursor while
+          they carry it toward the board, so at full opacity it hides
+          exactly the thing they're trying to look at. It has no
+          valid/invalid state yet (that only exists once it's over the
+          board, in the shadow below) - see the past regressions in git
+          history for what NOT to do: solid opaque (blocks the view) and
+          fully hidden until it happens to land green (can't see what's
+          being dragged at all). Light and translucent is the middle
+          ground the player actually asked for. */}
       {dragInfo !== null && dragTopLeft && activePiece && !isDraggingOverBoard && (
         <div
           className="fixed pointer-events-none z-50"
           style={{
             left: `${dragTopLeft.x}px`,
             top: `${dragTopLeft.y}px`,
+            opacity: 0.6,
           }}
         >
           <div
