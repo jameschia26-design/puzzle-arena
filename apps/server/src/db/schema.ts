@@ -200,6 +200,34 @@ export const puzzleInstances = pgTable('puzzle_instances', {
   meta: jsonb('meta').notNull().default({}),
 });
 
+/**
+ * Global, cross-room high-score leaderboard for score-attack arcade games
+ * (pacman, tetris, block-blaster, space-invaders). One row per (game, host) —
+ * this is the host's personal best, not a log of every play. Only ever
+ * written for a room's host when they are also seated as a player (see
+ * runtime.ts#finish()); guest players never get an entry in this version.
+ */
+export const gameLeaderboardEntries = pgTable(
+  'game_leaderboard_entries',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    gameId: text('game_id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull(),
+    score: integer('score').notNull(),
+    roomId: uuid('room_id')
+      .notNull()
+      .references(() => rooms.id, { onDelete: 'cascade' }),
+    playedAt: timestamp('played_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique('game_leaderboard_entries_game_user').on(t.gameId, t.userId),
+    index('game_leaderboard_entries_rank_idx').on(t.gameId, t.score.desc()),
+  ],
+);
+
 /* ------------------------------------------------------------------ */
 /* AI provider configuration                                           */
 /* ------------------------------------------------------------------ */

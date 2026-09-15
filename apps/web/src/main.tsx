@@ -11,6 +11,7 @@ import AdminSignup from './routes/AdminSignup.js';
 import AdminDashboard from './routes/AdminDashboard.js';
 import RoomPage from './routes/RoomPage.js';
 import ResultsPage from './routes/ResultsPage.js';
+import LeaderboardPage from './routes/LeaderboardPage.js';
 import UiGallery from './routes/UiGallery.js';
 import PacmanHarness from './routes/PacmanHarness.js';
 import PuzzleBubbleHarness from './routes/PuzzleBubbleHarness.js';
@@ -45,6 +46,7 @@ function App() {
         <Route path="/admin" element={<AdminDashboard />} />
         <Route path="/r/:code" element={<RoomPage />} />
         <Route path="/r/:code/results" element={<ResultsPage />} />
+        <Route path="/leaderboard/:gameId" element={<LeaderboardPage />} />
         {/* The visual proof surface, dev only. */}
         {import.meta.env.DEV && <Route path="/ui" element={<UiGallery />} />}
         {import.meta.env.DEV && <Route path="/dev/pacman" element={<PacmanHarness />} />}

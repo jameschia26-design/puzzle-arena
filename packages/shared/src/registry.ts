@@ -31,6 +31,20 @@ export const GAME_IDS = [
 ] as const;
 export type GameId = (typeof GAME_IDS)[number];
 
+/**
+ * The global, cross-room high-score leaderboard covers only score-attack
+ * arcade games — a single seat racking up one number against the clock or
+ * against bots. Bomberman and Puzzle Bubble are versus/elimination games
+ * (win/lose against opponents), and every puzzle/board game already has its
+ * own room-scoped scoring; none of those are comparable across rooms the way
+ * an arcade high score is.
+ */
+export const LEADERBOARD_GAME_IDS = ['pacman', 'tetris', 'block-blaster', 'space-invaders'] as const;
+export type LeaderboardGameId = (typeof LEADERBOARD_GAME_IDS)[number];
+export function isLeaderboardGameId(id: string): id is LeaderboardGameId {
+  return (LEADERBOARD_GAME_IDS as readonly string[]).includes(id);
+}
+
 export const gameIdSchema = z.enum(GAME_IDS);
 
 export const DIFFICULTIES = ['easy', 'medium', 'hard', 'expert'] as const;

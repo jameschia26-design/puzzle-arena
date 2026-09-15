@@ -132,6 +132,7 @@ export function registerRoomRoutes(app: FastifyInstance): void {
           id: inserted.id,
           code: inserted.code,
           gameId: inserted.gameId,
+          hostUserId: inserted.hostUserId,
           config: inserted.config,
           timeLimitSec: inserted.timeLimitSec,
           status: inserted.status,

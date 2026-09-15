@@ -1,4 +1,4 @@
-import { and, asc, eq, gt } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import type { Server as IOServer } from 'socket.io';
 import {
   EV,
@@ -8,6 +8,7 @@ import {
   CHESS_MOVE_CAP_MS,
   CHESS_IDLE_PROMPT_MS,
   computeScore,
+  isLeaderboardGameId,
   mulberry32,
   rankResults,
   speedComponent,
@@ -57,6 +58,7 @@ import {
 import { mastermind } from '@puzzle-arena/puzzles';
 import { db } from '../db/index.js';
 import {
+  gameLeaderboardEntries,
   roomEvents,
   roomPlayers,
   roomResults,
@@ -112,6 +114,9 @@ export class LiveRoom {
   readonly code: string;
   readonly gameId: GameId;
   readonly kind: 'puzzle' | 'board';
+  /** The room's host account (a real Better Auth user). Used to attribute
+   * global leaderboard entries — see finish(). */
+  readonly hostUserId: string;
   config: RoomConfig;
   timeLimitSec: number;
   status: 'lobby' | 'running' | 'finished' | 'abandoned';
@@ -164,6 +169,9 @@ export class LiveRoom {
     id: string;
     code: string;
     gameId: string;
+    /** Optional only so existing unit tests that don't exercise the leaderboard
+     * write path need not pass it. Real rooms always pass the true host id. */
+    hostUserId?: string;
     config: unknown;
     timeLimitSec: number;
     seed?: number | null;
@@ -175,6 +183,7 @@ export class LiveRoom {
     this.code = row.code;
     this.gameId = row.gameId as GameId;
     this.kind = GAME_REGISTRY[this.gameId].kind;
+    this.hostUserId = row.hostUserId ?? '';
     this.config = (row.config ?? {}) as RoomConfig;
     this.timeLimitSec = row.timeLimitSec;
     this.seed = row.seed ?? null;
@@ -1123,6 +1132,18 @@ export class LiveRoom {
     const ranked = rankResults(rowsToRank);
     this.results = ranked as ResultRow[];
 
+    // Global leaderboard: only the room's host, only when seated as a player,
+    // only for the score-attack arcade games. One row per (game, host) — the
+    // host's personal best — kept only if this run beat it.
+    const hostPlayer = this.host;
+    const hostResult = hostPlayer ? ranked.find((r) => r.playerId === hostPlayer.id) : undefined;
+    const recordsLeaderboard =
+      this.hostUserId !== '' &&
+      hostPlayer !== undefined &&
+      !hostPlayer.isBot &&
+      hostResult !== undefined &&
+      isLeaderboardGameId(this.gameId);
+
     try {
       await db.transaction(async (tx) => {
         if (ranked.length > 0) {
@@ -1144,6 +1165,27 @@ export class LiveRoom {
               })),
             )
             .onConflictDoNothing();
+        }
+        if (recordsLeaderboard) {
+          await tx
+            .insert(gameLeaderboardEntries)
+            .values({
+              gameId: this.gameId,
+              userId: this.hostUserId,
+              displayName: hostPlayer!.displayName,
+              score: hostResult!.score,
+              roomId: this.id,
+            })
+            .onConflictDoUpdate({
+              target: [gameLeaderboardEntries.gameId, gameLeaderboardEntries.userId],
+              set: {
+                score: sql`excluded.score`,
+                displayName: sql`excluded.display_name`,
+                roomId: sql`excluded.room_id`,
+                playedAt: sql`now()`,
+              },
+              setWhere: sql`${gameLeaderboardEntries.score} < excluded.score`,
+            });
         }
         await tx
           .update(rooms)
@@ -1460,6 +1502,7 @@ export async function loadRoom(roomId: string, io: IOServer): Promise<LiveRoom |
     id: row.id,
     code: row.code,
     gameId: row.gameId,
+    hostUserId: row.hostUserId,
     config: row.config,
     timeLimitSec: row.timeLimitSec,
     seed: row.seed,

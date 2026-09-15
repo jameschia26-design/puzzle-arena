@@ -13,6 +13,7 @@ import { env } from './env.js';
 import { logger } from './logger.js';
 import { registerAdminRoutes, seedDefaultProvider } from './routes/admin.js';
 import { registerRoomRoutes } from './routes/rooms.js';
+import { registerLeaderboardRoutes } from './routes/leaderboard.js';
 import { getRoom, rehydrateRunningRooms } from './rooms/runtime.js';
 import { attachSocket, setRoomLookup } from './socket.js';
 
@@ -98,6 +99,7 @@ export async function buildServer() {
 
   registerAdminRoutes(app);
   registerRoomRoutes(app);
+  registerLeaderboardRoutes(app);
 
   // Serve the built SPA in production, with an index fallback for client routes.
   const webDist = env.webDist

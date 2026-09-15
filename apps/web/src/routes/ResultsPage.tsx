@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
-import { EV, type ResultRow } from '@puzzle-arena/shared';
+import { EV, isLeaderboardGameId, type ResultRow } from '@puzzle-arena/shared';
 import { PixelButton, PixelPanel } from '../ui/primitives.js';
 import { SeatAvatar } from '../ui/game-bits.js';
 import { PODIUM_STEP_MS, RESULT_ROW_MS, stepTransition, useReducedMotion } from '../ui/motion.js';
@@ -23,6 +23,7 @@ export default function ResultsPage(): React.ReactElement {
   const [results, setResults] = React.useState<ResultRow[] | null>(null);
   const [notFound, setNotFound] = React.useState(false);
   const [rematching, setRematching] = React.useState(false);
+  const [gameId, setGameId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     void (async () => {
@@ -31,11 +32,15 @@ export default function ResultsPage(): React.ReactElement {
       if (storeResults && storeResults.length > 0) {
         setResults(storeResults);
       }
-      const lookup = await api<{ id: string }>(`/api/rooms/${code.toUpperCase()}`);
+      if (cached.room?.code === code.toUpperCase() && cached.room.gameId) {
+        setGameId(cached.room.gameId);
+      }
+      const lookup = await api<{ id: string; gameId: string }>(`/api/rooms/${code.toUpperCase()}`);
       if (lookup.status !== 200) {
         if (!storeResults || storeResults.length === 0) setNotFound(true);
         return;
       }
+      setGameId(lookup.body.gameId);
       const res = await api<{ results: ResultRow[] }>(`/api/rooms/${lookup.body.id}/results`);
       if (res.status !== 200) {
         if (!storeResults || storeResults.length === 0) setNotFound(true);
@@ -44,6 +49,9 @@ export default function ResultsPage(): React.ReactElement {
       setResults(res.body.results ?? []);
     })();
   }, [code]);
+
+  const isLeaderboardGame = gameId !== null && isLeaderboardGameId(gameId);
+
 
 
   const store = useRoom();
@@ -130,6 +138,15 @@ export default function ResultsPage(): React.ReactElement {
         >
           Back to home
         </PixelButton>
+        {isLeaderboardGame && (
+          <PixelButton
+            variant="secondary"
+            onClick={() => navigate(`/leaderboard/${gameId}`)}
+          >
+            <Trophy size={14} strokeWidth={3} className="lucide" />
+            View Global Leaderboard
+          </PixelButton>
+        )}
         <PixelButton
           variant="secondary"
           onClick={() => {
