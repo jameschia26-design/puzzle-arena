@@ -13,7 +13,6 @@ export interface BlockPiece {
 }
 
 export const BLOCK_BLASTER_BOARD_SIZE = 8;
-export const BLOCK_BLASTER_TRAY_SIZE = 3;
 export const BLOCK_BLASTER_DIFFICULTIES = ['easy', 'normal', 'hard'] as const;
 export type BlockBlasterDifficulty = (typeof BLOCK_BLASTER_DIFFICULTIES)[number];
 
@@ -305,14 +304,7 @@ export function hasAnyPlacement(board: CellState[][], piece: BlockPiece): boolea
   return false;
 }
 
-export function checkGameOver(board: CellState[][], tray: (BlockPiece | null)[]): boolean {
-  const remainingPieces = tray.filter((p): p is BlockPiece => p !== null);
-  if (remainingPieces.length === 0) return false;
-
-  for (const piece of remainingPieces) {
-    if (hasAnyPlacement(board, piece)) {
-      return false;
-    }
-  }
-  return true;
+/** Game over the instant the one active piece has nowhere left to go. */
+export function checkGameOver(board: CellState[][], piece: BlockPiece): boolean {
+  return !hasAnyPlacement(board, piece);
 }

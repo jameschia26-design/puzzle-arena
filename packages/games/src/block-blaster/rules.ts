@@ -1,7 +1,6 @@
 import type { Rng } from '@puzzle-arena/shared';
 import {
   BLOCK_BLASTER_BOARD_SIZE,
-  BLOCK_BLASTER_TRAY_SIZE,
   BLOCK_SHAPES,
   SHAPES_BY_CATEGORY,
   canPlacePiece,
@@ -23,7 +22,6 @@ import type { ClearEvent } from './state.js';
 
 export {
   BLOCK_BLASTER_BOARD_SIZE,
-  BLOCK_BLASTER_TRAY_SIZE,
   BLOCK_SHAPES,
   SHAPES_BY_CATEGORY,
   canPlacePiece,
@@ -64,81 +62,51 @@ export function instantiatePiece(def: ShapeDefinition, rng: Rng): BlockPiece {
 }
 
 /**
- * Generates a batch of 3 pieces according to fairness and safety specifications:
- * 1. Bag Weighting: Small (~35%), Medium (~50%), Large (~15%).
- * 2. Safety Check: Maximum one Large piece per batch of 3.
- * 3. Pity Guarantee: At least one piece in the batch must have a valid placement on the board.
+ * Picks the next piece's category from the difficulty-weighted distribution:
+ * Small (~35%), Medium (~50%), Large (~15%) at 'normal', shifted lighter for
+ * 'easy' and heavier for 'hard'.
  */
-export function generateBatch(
+function pickCategory(rng: Rng, difficulty: BlockBlasterDifficulty): PieceCategory {
+  const smallThreshold = difficulty === 'easy' ? 50 : difficulty === 'hard' ? 20 : 35;
+  const mediumThreshold = difficulty === 'easy' ? 95 : difficulty === 'hard' ? 65 : 85;
+  const roll = rng.int(100);
+  let category: PieceCategory;
+  if (roll < smallThreshold) category = 'small';
+  else if (roll < mediumThreshold) category = 'medium';
+  else category = 'large';
+
+  // Easy never hands out a large piece at all - swap the rare 'large' roll
+  // for a coin flip between small and medium instead.
+  if (category === 'large' && difficulty === 'easy') {
+    category = rng.int(2) === 0 ? 'small' : 'medium';
+  }
+  return category;
+}
+
+/**
+ * Generates the single next piece. Pity guarantee: if the difficulty-weighted
+ * roll produces a piece with nowhere to go on the current board, but some
+ * other shape would fit, swap it for one that does - a lone unplayable piece
+ * would end the game on a technicality rather than genuine lack of space.
+ */
+export function generatePiece(
   board: CellState[][],
   rng: Rng,
   difficulty: BlockBlasterDifficulty = 'normal',
-): BlockPiece[] {
-  const batch: BlockPiece[] = [];
-  let largeCount = 0;
+): BlockPiece {
+  const category = pickCategory(rng, difficulty);
+  const pool = SHAPES_BY_CATEGORY[category];
+  const pickedDef = pool[rng.int(pool.length)] ?? BLOCK_SHAPES[0]!;
+  const piece = instantiatePiece(pickedDef, rng);
+  if (hasAnyPlacement(board, piece)) return piece;
 
-  // Difficulty weighting thresholds
-  const smallThreshold = difficulty === 'easy' ? 50 : difficulty === 'hard' ? 20 : 35;
-  const mediumThreshold = difficulty === 'easy' ? 95 : difficulty === 'hard' ? 65 : 85;
-  const maxLargeAllowed = difficulty === 'easy' ? 0 : difficulty === 'hard' ? 2 : 1;
-
-  for (let i = 0; i < BLOCK_BLASTER_TRAY_SIZE; i++) {
-    let category: PieceCategory;
-    const roll = rng.int(100);
-
-    if (roll < smallThreshold) {
-      category = 'small';
-    } else if (roll < mediumThreshold) {
-      category = 'medium';
-    } else {
-      category = 'large';
-    }
-
-    if (category === 'large') {
-      if (largeCount >= maxLargeAllowed) {
-        category = rng.int(2) === 0 ? 'small' : 'medium';
-      } else {
-        largeCount++;
-      }
-    }
-
-    const pool = SHAPES_BY_CATEGORY[category];
-    const pickedDef = pool[rng.int(pool.length)];
-    if (!pickedDef) {
-      batch.push(instantiatePiece(BLOCK_SHAPES[0]!, rng));
-    } else {
-      batch.push(instantiatePiece(pickedDef, rng));
-    }
+  for (const def of BLOCK_SHAPES) {
+    const candidate = instantiatePiece(def, rng);
+    if (hasAnyPlacement(board, candidate)) return candidate;
   }
-
-  // Pity Guarantee:
-  // For easy: ensure at least 2 pieces fit if board has room
-  // For normal & hard: ensure at least 1 piece fits
-  const minFittingCount = difficulty === 'easy' ? 2 : 1;
-  let fittingCount = batch.filter((piece) => hasAnyPlacement(board, piece)).length;
-
-  if (fittingCount < minFittingCount) {
-    const fittingDefs: ShapeDefinition[] = [];
-    for (const def of BLOCK_SHAPES) {
-      const testPiece = instantiatePiece(def, rng);
-      if (hasAnyPlacement(board, testPiece)) {
-        fittingDefs.push(def);
-      }
-    }
-
-    if (fittingDefs.length > 0) {
-      for (let i = 0; i < batch.length && fittingCount < minFittingCount; i++) {
-        const curPiece = batch[i]!;
-        if (!hasAnyPlacement(board, curPiece)) {
-          const chosenDef = fittingDefs[rng.int(fittingDefs.length)]!;
-          batch[i] = instantiatePiece(chosenDef, rng);
-          fittingCount++;
-        }
-      }
-    }
-  }
-
-  return batch;
+  // Board has no room for any shape at all - hand back the original roll;
+  // checkGameOver will end the game on the very next placement attempt.
+  return piece;
 }
 
 export interface PlacementResult {

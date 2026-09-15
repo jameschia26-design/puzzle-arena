@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { botDifficultySchema, gameIdSchema } from './registry.js';
+import { botDifficultySchema, gameIdSchema, type GameId } from './registry.js';
 import {
   BLOCK_BLASTER_DIFFICULTIES,
   BLOCK_BLASTER_LAYOUTS,
@@ -216,7 +216,6 @@ export type PuzzleBubbleAction = z.infer<typeof puzzleBubbleActionSchema>;
 export const blockBlasterActionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('place'),
-    pieceIndex: z.number().int().min(0).max(2),
     row: z.number().int().min(0).max(7),
     col: z.number().int().min(0).max(7),
   }),
@@ -246,6 +245,39 @@ export const gameActionSchema = z.union([
   puzzleBubbleActionSchema,
   blockBlasterActionSchema,
 ]);
+
+/**
+ * `gameActionSchema` is a plain `z.union`, not a `discriminatedUnion`, because
+ * several games reuse the same `type` literal with different (sometimes
+ * identical) shapes - e.g. Reversi's and Block Blaster's `place` actions are
+ * both exactly `{ type: 'place', row, col }`. A plain union tries schemas in
+ * array order and returns the first success, so whichever schema is listed
+ * earlier always wins for an ambiguous payload - Reversi's schema, listed
+ * earlier, was silently "validating" every Block Blaster placement, and
+ * (before the shapes converged) stripping the extra `pieceIndex` field
+ * `z.object` drops unknown keys by default - so the reducer rejected every
+ * placement with "No piece in that tray slot". Socket handlers MUST validate
+ * against the room's own game schema via this map instead of the generic
+ * union, which stays only as a fallback for any game id not listed here.
+ */
+export const GAME_ACTION_SCHEMAS: Partial<Record<GameId, z.ZodTypeAny>> = {
+  'property-tycoon': propertyTycoonActionSchema,
+  'manor-mystery': manorMysteryActionSchema,
+  scrabble: scrabbleActionSchema,
+  congkak: congkakActionSchema,
+  checkers: checkersActionSchema,
+  reversi: reversiActionSchema,
+  connect4: connect4ActionSchema,
+  'big-two': bigTwoActionSchema,
+  chess: chessActionSchema,
+  xiangqi: xiangqiActionSchema,
+  tetris: tetrisActionSchema,
+  pacman: pacmanActionSchema,
+  'space-invaders': spaceInvadersActionSchema,
+  bomberman: bombermanActionSchema,
+  'puzzle-bubble': puzzleBubbleActionSchema,
+  'block-blaster': blockBlasterActionSchema,
+};
 export type GameAction =
   | PropertyTycoonAction
   | ManorMysteryAction

@@ -4,6 +4,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import {
   EV,
+  GAME_ACTION_SCHEMAS,
   GAME_REGISTRY,
   chatSendSchema,
   gameActionSchema,
@@ -351,7 +352,13 @@ export function attachSocket(app: FastifyInstance): IOServer {
       const room = roomOf(socket);
       const playerId = socket.data.playerId as string | undefined;
       if (!room || !playerId) return respond(ack, { accepted: false, error: 'Not in a room' });
-      const parsed = gameActionSchema.safeParse(payload);
+      // Several games reuse the same action `type` literal with different
+      // shapes (e.g. Reversi's and Block Blaster's `place`) - the generic
+      // union can silently match the wrong one and strip fields. Validate
+      // against the room's own schema first; only fall back to the
+      // ambiguous union for game ids that don't have one registered.
+      const schema = GAME_ACTION_SCHEMAS[room.gameId] ?? gameActionSchema;
+      const parsed = schema.safeParse(payload);
       if (!parsed.success) return respond(ack, { accepted: false, error: 'Invalid action' });
       respond(ack, room.applyGameAction(playerId, parsed.data));
     });

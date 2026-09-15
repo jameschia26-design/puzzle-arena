@@ -360,9 +360,9 @@ describe('concurrent arcade games wiring (space-invaders, bomberman & Puzzle Bub
     expect(room.scoreInputFor(room.players[0]!).assetValue).toBe(0);
 
     // Applying a placement action updates game state and score
-    const view = room.engine().view(room.gameState as never, 'p1') as { you: { tray: ({ cellCount: number } | null)[] } };
-    const piece = view.you.tray[0]!;
-    const res = room.applyGameAction('p1', { type: 'place', pieceIndex: 0, row: 0, col: 0 });
+    const view = room.engine().view(room.gameState as never, 'p1') as { you: { current: { cellCount: number } } };
+    const piece = view.you.current;
+    const res = room.applyGameAction('p1', { type: 'place', row: 0, col: 0 });
     expect(res.accepted).toBe(true);
     expect(room.scoreInputFor(room.players[0]!).assetValue).toBe(piece.cellCount);
   });

@@ -18,7 +18,10 @@ export interface BlockBlasterPlayerState {
   id: string;
   seat: number;
   board: CellState[][];
-  tray: (BlockPiece | null)[];
+  /** The one piece you can currently place. */
+  current: BlockPiece;
+  /** Preview of the piece that becomes `current` after this one is placed. */
+  next: BlockPiece;
   score: number;
   highScore: number;
   comboStreak: number;
@@ -47,7 +50,8 @@ export interface BlockBlasterPublicPlayer {
   id: string;
   seat: number;
   board: CellState[][];
-  tray: (BlockPiece | null)[];
+  current: BlockPiece;
+  next: BlockPiece;
   score: number;
   highScore: number;
   comboStreak: number;
