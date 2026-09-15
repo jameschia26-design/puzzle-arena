@@ -333,7 +333,7 @@ export default function RoomPage(): React.ReactElement {
   const finished = room.status === 'finished';
 
   return (
-    <main className={cn('min-h-screen flex flex-col', isGameFullscreen && 'h-dvh max-h-dvh overflow-hidden')}>
+    <main className={cn('flex flex-col', isGameFullscreen ? 'h-dvh max-h-dvh overflow-hidden' : 'min-h-screen')}>
       {!store.connected && (
         <div
           role="status"
@@ -547,7 +547,7 @@ export default function RoomPage(): React.ReactElement {
       <div className={cn(
         'flex-1 flex flex-col lg:flex-row gap-4 p-4',
         gameId === 'pacman' && 'gap-2 p-0 lg:gap-4 lg:p-4',
-        isGameFullscreen && 'p-0 gap-0 h-full overflow-hidden',
+        isGameFullscreen && 'p-0 gap-0 h-full min-h-0 overflow-hidden',
       )}>
         {/* ------------------------------ main ------------------------------ */}
         <section
@@ -555,7 +555,7 @@ export default function RoomPage(): React.ReactElement {
             'flex-1 min-w-0',
             mobileTab !== 'board' && 'hidden lg:block',
             isGameFullscreen && ((gameId === 'puzzle-bubble' || gameId === 'block-blaster')
-              ? 'h-full overflow-x-hidden overflow-y-auto flex flex-col'
+              ? 'h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain flex flex-col'
               : 'h-full overflow-hidden flex flex-col'),
           )}
         >

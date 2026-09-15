@@ -128,6 +128,17 @@ real Postgres. It needs `docker compose up -d` first.
   pause/resume.** `runtime.ts` owns both the deadline sent as
   `pressureEndsAtMs` and the recursive timeout. Resetting it to a full interval
   on resume lets a host postpone every descent by repeatedly pausing.
+- **Block Blaster's board geometry is measured from real cell rects, never
+  `boardElement.width / 8`.** `measureGrid()` (`BlockBlasterBoard.tsx`) reads
+  cells `[0][0]`, `[0][1]`, `[1][0]` for origin and pitch; the border-box
+  shortcut ignores `border-4`, breakpoint padding and the grid `gap` and
+  drifts over a full cell by the far edge, desyncing the pointer, the
+  shadow, the floating piece and the particle canvas together.
+  `computeDragFrame()` is the single source of truth for the held piece's
+  top-left, board overlap and snapped cell, so the floating piece and its
+  shadow can never disagree — and the shadow stays drawn (piece-coloured
+  legal, red illegal) above the cells for the whole gesture, since hiding
+  it on an illegal position leaves the player holding nothing they can see.
 
 ## AI providers
 

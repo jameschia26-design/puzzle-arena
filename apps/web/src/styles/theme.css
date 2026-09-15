@@ -41,13 +41,27 @@
     border-radius: 0 !important;
   }
 
+  /* Kill pull-to-refresh and rubber-band bounce during gameplay. */
+  html,
+  body {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   html,
   body,
   #root {
     height: 100%;
   }
 
+  /* Ensure content fills dynamic viewport height when iOS URL bar collapses. */
+  #root {
+    min-height: 100dvh;
+  }
+
   body {
+    /* Remove 300ms double-tap delay and double-tap zoom while leaving pinch-zoom intact. */
+    touch-action: manipulation;
     background-color: var(--color-pa-bg);
     /* A static pixel lattice: a 1px grid line every 8px at 4% opacity. */
     background-image:
