@@ -832,34 +832,45 @@ export function BlockBlasterBoard({
           </div>
 
           {/* Three-slot piece tray */}
-          <div className={`flex items-center justify-center gap-3 sm:gap-6 mt-4 w-full ${isDesktop ? 'lg:col-start-2 lg:row-start-1 lg:mt-0' : ''}`}>
+          <div
+            className={`grid grid-cols-3 items-center justify-items-center gap-3 sm:gap-6 mt-4 w-full min-w-0 ${
+              isDesktop ? 'lg:col-start-2 lg:row-start-1 lg:mt-0 lg:flex lg:flex-col lg:gap-3' : ''
+            }`}
+          >
             {you?.tray.map((piece, idx) => {
               const isSelected = selectedPieceIdx === idx;
               const isDraggingThis = dragInfo?.pieceIndex === idx;
+              const previewCellSize = piece
+                ? `clamp(10px, min(calc((100cqw - ${(piece.width - 1) * 2}px) / ${piece.width}), calc((100cqw - ${(piece.height - 1) * 2}px) / ${piece.height})), 20px)`
+                : null;
               return (
                 <div
                   key={piece?.id ?? `empty-${idx}`}
                   onPointerDown={(e) => handleTrayPiecePointerDown(e, idx)}
-                  className={`relative flex items-center justify-center w-24 h-24 sm:w-28 sm:h-28 bg-pa-surface border-2 rounded-sm pa-shadow cursor-grab active:cursor-grabbing transition-transform select-none ${
+                  className={`relative flex aspect-square w-full max-w-28 min-w-0 shrink-0 items-center justify-center bg-pa-surface border-2 rounded-sm pa-shadow cursor-grab active:cursor-grabbing transition-transform select-none ${
                     isSelected ? 'border-pa-cyan ring-4 ring-pa-cyan/60 scale-105 shadow-[0_0_12px_rgba(34,211,238,0.5)]' : 'border-pa-border'
                   } ${you.gameOver ? 'border-red-500 ring-2 ring-red-500/80 animate-pulse' : ''} ${
                     isDraggingThis ? 'opacity-20' : 'hover:border-pa-cyan/70'
                   }`}
+                  style={{ containerType: 'inline-size' }}
                 >
                   {piece ? (
                     <div
                       className="grid gap-0.5"
                       style={{
-                        gridTemplateRows: `repeat(${piece.height}, minmax(0, 1fr))`,
-                        gridTemplateColumns: `repeat(${piece.width}, minmax(0, 1fr))`,
-                      }}
+                        '--block-preview-cell': previewCellSize!,
+                        gridTemplateRows: `repeat(${piece.height}, var(--block-preview-cell))`,
+                        gridTemplateColumns: `repeat(${piece.width}, var(--block-preview-cell))`,
+                      } as React.CSSProperties}
                     >
                       {piece.shape.map((row, r) =>
                         row.map((val, c) => (
                           <div
                             key={`${r}-${c}`}
-                            className="w-4 h-4 sm:w-5 sm:h-5 rounded-xs"
+                            className="rounded-xs"
                             style={{
+                              width: 'var(--block-preview-cell)',
+                              height: 'var(--block-preview-cell)',
                               backgroundColor: val === 1 ? piece.color : 'transparent',
                               boxShadow:
                                 val === 1
