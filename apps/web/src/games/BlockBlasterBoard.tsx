@@ -49,6 +49,14 @@ function getComboTitle(combo: number, lines: number): { title: string; sub: stri
   return { title: 'NICE!', sub: '+1 LINE', color: '#38bdf8' };
 }
 
+/**
+ * Pixels the floating dragged piece is drawn above the pointer. Without this,
+ * a multi-cell piece sits centered directly on top of the cells it's about
+ * to land on, hiding the ghost preview underneath it - true for a mouse
+ * cursor just as much as a finger, so it applies to both.
+ */
+const DRAG_VISUAL_OFFSET_Y = -70;
+
 export function BlockBlasterBoard({
   view,
   players: _allPlayers,
@@ -112,7 +120,6 @@ export function BlockBlasterBoard({
   // Dragging state
   const [dragInfo, setDragInfo] = React.useState<{
     piece: BlockPiece;
-    isTouch: boolean;
   } | null>(null);
   const [dragPointer, setDragPointer] = React.useState<{ x: number; y: number } | null>(null);
   const [hoverPos, setHoverPos] = React.useState<{ row: number; col: number; valid: boolean } | null>(null);
@@ -285,15 +292,17 @@ export function BlockBlasterBoard({
   // latest `you` via ref so its identity stays stable across renders - it
   // must NOT be a dependency of the drag-tracking effect below.
   const computeTargetCoordinates = React.useCallback(
-    (clientX: number, clientY: number, piece: BlockPiece, isTouch: boolean) => {
+    (clientX: number, clientY: number, piece: BlockPiece) => {
       const currentYou = youRef.current;
       if (!boardRef.current || !currentYou) return null;
       const rect = boardRef.current.getBoundingClientRect();
 
-      // Touch offset: finger sits 70px below visual piece
-      const touchOffsetY = isTouch ? -70 : 0;
+      // The floating piece is drawn above the pointer (see the render below)
+      // so it never covers the ghost preview on the cells it's about to
+      // land on - true for a finger and, just as much, for a mouse cursor
+      // when the piece itself spans several cells.
       const visualCenterX = clientX;
-      const visualCenterY = clientY + touchOffsetY;
+      const visualCenterY = clientY + DRAG_VISUAL_OFFSET_Y;
 
       const cs = rect.width / BLOCK_BLASTER_BOARD_SIZE;
       const pieceTopLeftX = visualCenterX - (piece.width * cs) / 2;
@@ -314,7 +323,7 @@ export function BlockBlasterBoard({
 
     const onWindowPointerMove = (e: PointerEvent) => {
       setDragPointer({ x: e.clientX, y: e.clientY });
-      const target = computeTargetCoordinates(e.clientX, e.clientY, dragInfo.piece, dragInfo.isTouch);
+      const target = computeTargetCoordinates(e.clientX, e.clientY, dragInfo.piece);
       setHoverPos(target);
     };
 
@@ -367,12 +376,11 @@ export function BlockBlasterBoard({
     const piece = you?.current;
     if (!piece) return;
 
-    const isTouch = e.pointerType === 'touch';
     dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-    setDragInfo({ piece, isTouch });
+    setDragInfo({ piece });
     setDragPointer({ x: e.clientX, y: e.clientY });
 
-    const target = computeTargetCoordinates(e.clientX, e.clientY, piece, isTouch);
+    const target = computeTargetCoordinates(e.clientX, e.clientY, piece);
     setHoverPos(target);
   };
 
@@ -772,33 +780,8 @@ export function BlockBlasterBoard({
             )}
           </div>
 
-          {/* Current piece to place + preview of what's coming next */}
-          <div className="flex items-end justify-center gap-6 sm:gap-8 mt-4 w-full">
-            <div className="flex flex-col items-center gap-1">
-              <span className="font-display text-[8px] uppercase tracking-wider text-pa-ink-dim/70">Next</span>
-              {you?.next && (
-                <div className="relative flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-pa-surface/60 border-2 border-pa-border rounded-sm opacity-70 select-none">
-                  <div
-                    className="grid gap-0.5"
-                    style={{
-                      gridTemplateRows: `repeat(${you.next.height}, minmax(0, 1fr))`,
-                      gridTemplateColumns: `repeat(${you.next.width}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {you.next.shape.map((row, r) =>
-                      row.map((val, c) => (
-                        <div
-                          key={`${r}-${c}`}
-                          className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-xs"
-                          style={{ backgroundColor: val === 1 ? you.next.color : 'transparent' }}
-                        />
-                      )),
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
+          {/* Current piece to place, with a smaller preview of what's next below it */}
+          <div className="flex flex-col items-center gap-2 mt-4 w-full">
             {you?.current && (() => {
               const piece = you.current;
               return (
@@ -844,6 +827,31 @@ export function BlockBlasterBoard({
                 </div>
               );
             })()}
+
+            <div className="flex flex-col items-center gap-1">
+              <span className="font-display text-[8px] uppercase tracking-wider text-pa-ink-dim/70">Next</span>
+              {you?.next && (
+                <div className="relative flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-pa-surface/60 border-2 border-pa-border rounded-sm opacity-70 select-none">
+                  <div
+                    className="grid gap-0.5"
+                    style={{
+                      gridTemplateRows: `repeat(${you.next.height}, minmax(0, 1fr))`,
+                      gridTemplateColumns: `repeat(${you.next.width}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {you.next.shape.map((row, r) =>
+                      row.map((val, c) => (
+                        <div
+                          key={`${r}-${c}`}
+                          className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-xs"
+                          style={{ backgroundColor: val === 1 ? you.next.color : 'transparent' }}
+                        />
+                      )),
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2 mt-2">
@@ -915,10 +923,10 @@ export function BlockBlasterBoard({
       {/* Floating Dragged Piece matching exact board cell scale */}
       {dragInfo !== null && dragPointer && activePiece && (
         <div
-          className="fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 transition-opacity"
+          className="fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2 transition-opacity opacity-90"
           style={{
             left: `${dragPointer.x}px`,
-            top: `${dragPointer.y + (dragInfo.isTouch ? -70 : 0)}px`,
+            top: `${dragPointer.y + DRAG_VISUAL_OFFSET_Y}px`,
           }}
         >
           <div
