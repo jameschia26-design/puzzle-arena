@@ -510,7 +510,14 @@ export function BlockBlasterBoard({
 
   // Compute ghost preview and lines that would be completed
   const ghostPreview = React.useMemo(() => {
-    if (!you || !activePiece || !hoverPos || !hoverPos.valid || !isDraggingOverBoard) return null;
+    if (
+      !you ||
+      !activePiece ||
+      !hoverPos ||
+      !hoverPos.valid ||
+      (dragInfo !== null && !isDraggingOverBoard)
+    )
+      return null;
     const { row, col } = hoverPos;
 
     const testBoard = you.board.map((r) => [...r]);
@@ -551,7 +558,7 @@ export function BlockBlasterBoard({
       shape: activePiece.shape,
       color: activePiece.color,
     };
-  }, [you, activePiece, hoverPos, isDraggingOverBoard]);
+  }, [you, activePiece, hoverPos, dragInfo, isDraggingOverBoard]);
 
   const handleRestart = (diff?: BlockBlasterDifficulty, lay?: BlockBlasterLayout) => {
     sfx.blip();
@@ -696,6 +703,9 @@ export function BlockBlasterBoard({
           <div
             ref={boardRef}
             onPointerMove={handleBoardPointerMove}
+            onPointerLeave={() => {
+              if (dragInfo === null && selectedPieceIdx !== null) setHoverPos(null);
+            }}
             className="relative grid grid-cols-8 grid-rows-8 gap-1 p-2 sm:p-2.5 bg-slate-950 border-4 border-pa-border pa-shadow rounded-sm w-[320px] h-[320px] xs:w-[350px] xs:h-[350px] sm:w-[410px] sm:h-[410px]"
             style={{
               boxShadow: 'inset 0 0 20px rgba(0,0,0,0.8), 0 0 12px rgba(0,0,0,0.5)',
