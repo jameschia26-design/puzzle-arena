@@ -18,6 +18,14 @@ import {
   type ShapeDefinition,
   type BlockBlasterDifficulty,
   type BlockBlasterLayout,
+  type BombType,
+  type BonusBomb,
+  type DetonationResult,
+  BOMB_COLORS,
+  getClusterBombCells,
+  getCrossBombCells,
+  applyDetonation,
+  canBombsSavePlayer,
 } from '@puzzle-arena/shared';
 import type { ClearEvent } from './state.js';
 
@@ -34,6 +42,14 @@ export {
   STARTING_TEMPLATES,
   BLOCK_BLASTER_DIFFICULTIES,
   BLOCK_BLASTER_LAYOUTS,
+  BOMB_COLORS,
+  getClusterBombCells,
+  getCrossBombCells,
+  applyDetonation,
+  canBombsSavePlayer,
+  type BombType,
+  type BonusBomb,
+  type DetonationResult,
 };
 
 
@@ -41,6 +57,37 @@ export function cloneBoard(board: CellState[][]): CellState[][] {
   return board.map((row) => [...row]);
 }
 
+/**
+ * Selects an empty cell on the board for the bonus bomb block.
+ * Prioritizes cells with existing blocks in the same row or column to make
+ * clearing within the 3-piece turn fun and achievable.
+ */
+export function selectBonusBombCell(board: CellState[][], rng: Rng): { row: number; col: number } | null {
+  const candidates: { row: number; col: number; score: number }[] = [];
+
+  for (let r = 0; r < BLOCK_BLASTER_BOARD_SIZE; r++) {
+    for (let c = 0; c < BLOCK_BLASTER_BOARD_SIZE; c++) {
+      if (board[r]![c] === 0) {
+        let rowOccupied = 0;
+        let colOccupied = 0;
+        for (let i = 0; i < BLOCK_BLASTER_BOARD_SIZE; i++) {
+          if (board[r]![i] !== 0) rowOccupied++;
+          if (board[i]![c] !== 0) colOccupied++;
+        }
+        const score = Math.max(rowOccupied, colOccupied);
+        candidates.push({ row: r, col: c, score });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  const maxScore = Math.max(...candidates.map((c) => c.score));
+  const pool = maxScore > 0 ? candidates.filter((c) => c.score >= Math.max(1, maxScore - 1)) : candidates;
+  const idx = Math.floor(rng.next() * pool.length);
+  const chosen = pool[idx]!;
+  return { row: chosen.row, col: chosen.col };
+}
 /**
  * Generate a piece from a shape definition with a deterministic unique ID based on RNG.
  */
@@ -182,6 +229,7 @@ export function applyPlacement(
   targetRow: number,
   targetCol: number,
   currentComboStreak: number,
+  bonusBomb?: BonusBomb | null,
 ): PlacementResult {
   if (!canPlacePiece(board, piece, targetRow, targetCol)) {
     return {
@@ -273,6 +321,9 @@ export function applyPlacement(
     turnScore = placementScore + baseClear + comboBonus;
   }
 
+  const clearedBonusBomb =
+    Boolean(bonusBomb && (fullRows.includes(bonusBomb.row) || fullCols.includes(bonusBomb.col)));
+
   const clearEvent: ClearEvent | null =
     lineCount > 0
       ? {
@@ -280,9 +331,9 @@ export function applyPlacement(
           cols: fullCols,
           points: baseClear + comboBonus,
           combo: newComboStreak,
+          ...(clearedBonusBomb ? { claimedBomb: bonusBomb!.type } : {}),
         }
       : null;
-
   return {
     ok: true,
     newBoard: nextBoard,

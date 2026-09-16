@@ -79,12 +79,13 @@ describe('Puzzle Bubble registry and configuration', () => {
   });
 });
 
-describe('Block Blaster registry and configuration', () => {
-  it('registers Block Blaster as a concurrent board game without bots', () => {
+describe('Brick Blaster registry and configuration', () => {
+  it('registers Brick Blaster as a concurrent board game without bots', () => {
     const meta = GAME_REGISTRY['block-blaster'];
 
     expect(meta).toMatchObject({
       id: 'block-blaster',
+      title: 'Brick Blaster',
       kind: 'board',
       minPlayers: 1,
       maxPlayers: 8,

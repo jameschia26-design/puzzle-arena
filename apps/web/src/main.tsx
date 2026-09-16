@@ -52,6 +52,7 @@ function App() {
         {import.meta.env.DEV && <Route path="/dev/pacman" element={<PacmanHarness />} />}
         {import.meta.env.DEV && <Route path="/dev/bubble" element={<PuzzleBubbleHarness />} />}
         {import.meta.env.DEV && <Route path="/dev/block-blaster" element={<BlockBlasterHarness />} />}
+        {import.meta.env.DEV && <Route path="/dev/brick-blaster" element={<BlockBlasterHarness />} />}
         <Route path="*" element={<Landing />} />
       </Routes>
     </BrowserRouter>

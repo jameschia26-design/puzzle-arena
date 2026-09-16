@@ -9,6 +9,8 @@ import {
   generateBatch,
   instantiatePiece,
   BLOCK_SHAPES,
+  applyDetonation,
+  canBombsSavePlayer,
 } from './index.js';
 
 describe('block-blaster: board and placement', () => {
@@ -340,5 +342,218 @@ describe('block-blaster: starting templates & difficulty scales', () => {
     expect(r.state.config.startingLayout).toBe('bait');
     const occupied = r.state.players[0]!.board.flat().filter((c) => c !== 0);
     expect(occupied.length).toBeGreaterThan(0);
+  });
+});
+
+describe('brick-blaster: bonus bombs and detonation mechanics', () => {
+  it('spawns a bonus bomb block after 4 to 6 rounds', () => {
+    let s = blockBlaster.setup(['p1'], 42, { startingLayout: 'empty' });
+    let p = s.players[0]!;
+    expect(p.bombs).toEqual([]);
+    expect(p.bonusBomb).toBeNull();
+    expect(p.nextBonusBombRound).toBeGreaterThanOrEqual(4);
+    expect(p.nextBonusBombRound).toBeLessThanOrEqual(6);
+
+    // Simulate placing pieces until the bonus bomb round is reached
+    const targetRound = p.nextBonusBombRound;
+    for (let round = 0; round < targetRound; round++) {
+      // Place all 3 pieces in the tray
+      for (let slot = 0; slot < 3; slot++) {
+        p = s.players[0]!;
+        const piece = p.tray[slot];
+        if (!piece) continue;
+        // Clear board if getting crowded to keep simulation simple
+        p.board = createEmptyBoard();
+        const res = blockBlaster.reduce(s, 'p1', { type: 'place', pieceIndex: slot, row: 0, col: 0 });
+        expect(res.ok).toBe(true);
+        if (!res.ok) throw new Error(res.error);
+        s = res.state;
+      }
+    }
+
+    // After targetRound completed, a bonus bomb block must have spawned
+    p = s.players[0]!;
+    expect(p.roundsCompleted).toBe(targetRound);
+    expect(p.bonusBomb).not.toBeNull();
+    expect(['cluster', 'cross']).toContain(p.bonusBomb!.type);
+    // The cell on the board must contain the bonus bomb block
+    expect(p.board[p.bonusBomb!.row]![p.bonusBomb!.col]).not.toBe(0);
+  });
+
+  it('claims bomb when clearing bonus block within the same turn of 3 blocks', () => {
+    let s = blockBlaster.setup(['p1'], 123, { startingLayout: 'empty' });
+    let p = s.players[0]!;
+
+    // Manually set up a bonus bomb at row 2, col 2
+    p.bonusBomb = { row: 2, col: 2, type: 'cluster' };
+    p.board[2]![2] = '#f97316';
+
+    // Fill row 2 except col 0
+    for (let c = 1; c < 8; c++) {
+      p.board[2]![c] = '#38bdf8';
+    }
+
+    // Put a 1x1 dot in slot 0
+    const rng = mulberry32(1);
+    const dot = instantiatePiece(BLOCK_SHAPES.find((sh: { id: string }) => sh.id === 'dot_1x1')!, rng);
+    p.tray[0] = dot;
+
+    // Place dot at (2, 0) completing row 2
+    const res = blockBlaster.reduce(s, 'p1', { type: 'place', pieceIndex: 0, row: 2, col: 0 });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error(res.error);
+
+    const updatedP = res.state.players[0]!;
+    // The player must have claimed the cluster bomb
+    expect(updatedP.bombs).toEqual(['cluster']);
+    expect(updatedP.bonusBomb).toBeNull();
+  });
+
+  it('expires bonus bomb if not cleared within the same turn of 3 blocks', () => {
+    let s = blockBlaster.setup(['p1'], 999, { startingLayout: 'empty' });
+    let p = s.players[0]!;
+
+    // Place a bonus bomb at (7, 7)
+    p.bonusBomb = { row: 7, col: 7, type: 'cross' };
+    p.board[7]![7] = '#a855f7';
+
+    // Place 3 pieces in locations that do NOT clear row 7 or col 7
+    const rng = mulberry32(2);
+    const dot = instantiatePiece(BLOCK_SHAPES.find((sh: { id: string }) => sh.id === 'dot_1x1')!, rng);
+    p.tray = [dot, dot, dot];
+
+    // Place 1st dot at (0, 0)
+    let res = blockBlaster.reduce(s, 'p1', { type: 'place', pieceIndex: 0, row: 0, col: 0 });
+    expect(res.ok).toBe(true);
+    s = res.state;
+    expect(s.players[0]!.bonusBomb).not.toBeNull(); // still active
+
+    // Place 2nd dot at (0, 1)
+    res = blockBlaster.reduce(s, 'p1', { type: 'place', pieceIndex: 1, row: 0, col: 1 });
+    expect(res.ok).toBe(true);
+    s = res.state;
+    expect(s.players[0]!.bonusBomb).not.toBeNull(); // still active
+
+    // Place 3rd dot at (0, 2) - finishes turn
+    res = blockBlaster.reduce(s, 'p1', { type: 'place', pieceIndex: 2, row: 0, col: 2 });
+    expect(res.ok).toBe(true);
+    s = res.state;
+
+    // Turn ended without clearing (7, 7): bomb must expire!
+    expect(s.players[0]!.bonusBomb).toBeNull();
+    expect(s.players[0]!.bombs).toEqual([]);
+  });
+
+  it('cluster bomb destroys 3 by 3 blocks around epicenter', () => {
+    const board = createEmptyBoard();
+    // Fill a 5x5 region from (1, 1) to (5, 5)
+    for (let r = 1; r <= 5; r++) {
+      for (let c = 1; c <= 5; c++) {
+        board[r]![c] = '#22c55e';
+      }
+    }
+
+    // Detonate cluster bomb at (3, 3)
+    const det = applyDetonation(board, 'cluster', 3, 3);
+    expect(det.type).toBe('cluster');
+    expect(det.clearedCount).toBe(9); // all 3x3 cells (2..4, 2..4)
+    expect(det.points).toBe(9 * 10 + 25);
+
+    // Verify the 3x3 region is now 0
+    for (let r = 2; r <= 4; r++) {
+      for (let c = 2; c <= 4; c++) {
+        expect(det.newBoard[r]![c]).toBe(0);
+      }
+    }
+    // Cells outside 3x3 still intact
+    expect(det.newBoard[1]![1]).toBe('#22c55e');
+    expect(det.newBoard[5]![5]).toBe('#22c55e');
+  });
+
+  it('cross bomb destroys horizontal and vertical lines from epicenter', () => {
+    const board = createEmptyBoard();
+    // Fill row 3 and col 4
+    for (let c = 0; c < 8; c++) board[3]![c] = '#ef4444';
+    for (let r = 0; r < 8; r++) board[r]![4] = '#3b82f6';
+    // Also set cell (0, 0)
+    board[0]![0] = '#eab308';
+
+    // Detonate cross bomb at (3, 4)
+    const det = applyDetonation(board, 'cross', 3, 4);
+    expect(det.type).toBe('cross');
+    // 8 in row 3 + 7 others in col 4 = 15 cells cleared
+    expect(det.clearedCount).toBe(15);
+
+    // Entire row 3 and col 4 must be 0
+    for (let c = 0; c < 8; c++) expect(det.newBoard[3]![c]).toBe(0);
+    for (let r = 0; r < 8; r++) expect(det.newBoard[r]![4]).toBe(0);
+    // Cell (0, 0) untouched
+    expect(det.newBoard[0]![0]).toBe('#eab308');
+  });
+
+  it('prevents game over when player has available bombs that can clear space', () => {
+    const board = createEmptyBoard();
+    // Fill every cell on board except (0, 0)
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        board[r]![c] = '#3b82f6';
+      }
+    }
+    board[0]![0] = 0;
+
+    // Piece is 2x2 square (needs 2x2 space, only 1x1 is available)
+    const rng = mulberry32(10);
+    const piece2x2 = instantiatePiece(BLOCK_SHAPES.find((sh: { id: string }) => sh.id === 'square_2x2')!, rng);
+    const tray = [piece2x2, null, null];
+
+    // Without bombs -> Game Over!
+    expect(checkGameOver(board, tray, [])).toBe(true);
+
+    // With a cluster bomb -> NOT game over, because cluster bomb creates 3x3 space!
+    expect(checkGameOver(board, tray, ['cluster'])).toBe(false);
+    expect(canBombsSavePlayer(board, tray, ['cluster'])).toBe(true);
+
+    // With a cross bomb -> NOT game over, because cross bomb creates full row/col space!
+    expect(checkGameOver(board, tray, ['cross'])).toBe(false);
+    expect(canBombsSavePlayer(board, tray, ['cross'])).toBe(true);
+  });
+
+  it('executes useBomb action to unblock player and continue game', () => {
+    let s = blockBlaster.setup(['p1'], 777, { startingLayout: 'empty' });
+    let p = s.players[0]!;
+
+    // Fill entire board except cell (0, 0)
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        p.board[r]![c] = '#3b82f6';
+      }
+    }
+    p.board[0]![0] = 0;
+
+    // Tray has a 3x3 piece
+    const rng = mulberry32(5);
+    const piece3x3 = instantiatePiece(BLOCK_SHAPES.find((sh: { id: string }) => sh.id === 'square_3x3')!, rng);
+    p.tray = [piece3x3, null, null];
+
+    // Give player a cluster bomb
+    p.bombs = ['cluster'];
+
+    // Player should NOT be game over
+    expect(p.gameOver).toBe(false);
+
+    // Use bomb at (4, 4)
+    const res = blockBlaster.reduce(s, 'p1', { type: 'useBomb', bombIndex: 0, row: 4, col: 4 });
+    expect(res.ok).toBe(true);
+    if (!res.ok) throw new Error(res.error);
+
+    const updatedP = res.state.players[0]!;
+    expect(updatedP.bombs).toEqual([]);
+    expect(updatedP.gameOver).toBe(false);
+    // 3x3 space at (3..5, 3..5) is cleared
+    expect(canPlacePiece(updatedP.board, piece3x3, 3, 3)).toBe(true);
+
+    // Now placing the 3x3 piece succeeds!
+    const placeRes = blockBlaster.reduce(res.state, 'p1', { type: 'place', pieceIndex: 0, row: 3, col: 3 });
+    expect(placeRes.ok).toBe(true);
   });
 });

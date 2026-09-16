@@ -4,6 +4,9 @@ import type {
   LogEntry,
   BlockBlasterConfig,
   BlockBlasterAction,
+  BombType,
+  BonusBomb,
+  DetonationResult,
 } from '@puzzle-arena/shared';
 import type { BaseState } from '../engine.js';
 
@@ -12,6 +15,7 @@ export interface ClearEvent {
   cols: number[];
   points: number;
   combo: number;
+  claimedBomb?: BombType | undefined;
 }
 
 export interface BlockBlasterPlayerState {
@@ -26,11 +30,15 @@ export interface BlockBlasterPlayerState {
   piecesPlaced: number;
   gameOver: boolean;
   lastClear: ClearEvent | null;
+  lastDetonation: DetonationResult | null;
+  bombs: BombType[];
+  bonusBomb: BonusBomb | null;
+  roundsCompleted: number;
+  nextBonusBombRound: number;
   actionsSubmitted: number;
   actionsAccepted: number;
   penalties: number;
 }
-
 export type BlockBlasterPhase = 'playing' | 'game_over';
 
 export interface BlockBlasterState extends BaseState {
@@ -55,8 +63,10 @@ export interface BlockBlasterPublicPlayer {
   piecesPlaced: number;
   gameOver: boolean;
   lastClear: ClearEvent | null;
+  lastDetonation: DetonationResult | null;
+  bombs: BombType[];
+  bonusBomb: BonusBomb | null;
 }
-
 export interface BlockBlasterView {
   phase: BlockBlasterPhase;
   winner: string | null;

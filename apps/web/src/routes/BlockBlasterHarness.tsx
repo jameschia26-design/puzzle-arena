@@ -14,10 +14,10 @@ import {
 import { BlockBlasterBoard } from '../games/BlockBlasterBoard.js';
 
 /**
- * Dev proof surface for Block Blaster (like /dev/bubble, /dev/pacman):
+ * Dev proof surface for Brick Blaster (like /dev/bubble, /dev/pacman):
  * Drives the real engine locally without server roundtrips.
- * Used to verify drag-drop placement, ghost previews, line clearing particle FX,
- * combo multipliers, and audio pitch modulation.
+ * Used to verify drag-drop placement, bonus bomb blocks, cluster & cross bomb detonation FX,
+ * line clearing particle FX, combo multipliers, and audio.
  */
 export default function BlockBlasterHarness(): React.ReactElement {
   const [difficulty, setDifficulty] = React.useState<BlockBlasterDifficulty>('normal');
@@ -38,6 +38,7 @@ export default function BlockBlasterHarness(): React.ReactElement {
 
   React.useEffect(() => {
     (window as unknown as Record<string, unknown>).__blockblaster = state;
+    (window as unknown as Record<string, unknown>).__setBlockBlasterState = setState;
   }, [state]);
 
   const p = state.players[0]!;
@@ -47,10 +48,10 @@ export default function BlockBlasterHarness(): React.ReactElement {
       <div className="flex flex-wrap items-center justify-between gap-3 w-full max-w-4xl mb-2 pb-2 border-b border-pa-border">
         <div className="flex items-center gap-2">
           <span className="font-display text-sm font-bold text-pa-cyan">
-            BLOCK BLASTER HARNESS
+            BRICK BLASTER HARNESS
           </span>
           <span className="text-xs text-pa-ink-dim">
-            (Score: {p.score} | Combo: ×{p.comboStreak} | Lines: {p.linesCleared})
+            (Score: {p.score} | Combo: ×{p.comboStreak} | Lines: {p.linesCleared} | Bombs: {p.bombs.length})
           </span>
         </div>
 
@@ -91,6 +92,51 @@ export default function BlockBlasterHarness(): React.ReactElement {
             onClick={() => setState(blockBlaster.setup(['p1'], Date.now() & 0xffffffff, { difficulty, startingLayout: layout }))}
           >
             NEW GAME
+          </button>
+          <button
+            type="button"
+            title="Add a 3x3 Cluster Bomb to inventory"
+            className="border-2 border-orange-500 bg-orange-950/60 text-orange-300 px-2 py-1 text-xs font-display uppercase tracking-wider hover:bg-orange-900 cursor-pointer"
+            onClick={() => {
+              setState((prev) => {
+                const next = structuredClone(prev);
+                next.players[0]!.bombs.push('cluster');
+                return next;
+              });
+            }}
+          >
+            + 💣 CLUSTER
+          </button>
+
+          <button
+            type="button"
+            title="Add a Cross Bomb to inventory"
+            className="border-2 border-purple-500 bg-purple-950/60 text-purple-300 px-2 py-1 text-xs font-display uppercase tracking-wider hover:bg-purple-900 cursor-pointer"
+            onClick={() => {
+              setState((prev) => {
+                const next = structuredClone(prev);
+                next.players[0]!.bombs.push('cross');
+                return next;
+              });
+            }}
+          >
+            + ⚡ CROSS
+          </button>
+
+          <button
+            type="button"
+            title="Spawn a bonus bomb block on the board"
+            className="border-2 border-yellow-500 bg-yellow-950/60 text-yellow-300 px-2 py-1 text-xs font-display uppercase tracking-wider hover:bg-yellow-900 cursor-pointer"
+            onClick={() => {
+              setState((prev) => {
+                const next = structuredClone(prev);
+                next.players[0]!.bonusBomb = { row: 3, col: 3, type: 'cluster' };
+                next.players[0]!.board[3]![3] = '#f97316';
+                return next;
+              });
+            }}
+          >
+            + 🎁 BONUS BLOCK
           </button>
         </div>
       </div>

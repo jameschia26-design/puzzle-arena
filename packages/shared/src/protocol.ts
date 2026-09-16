@@ -221,6 +221,12 @@ export const blockBlasterActionSchema = z.discriminatedUnion('type', [
     col: z.number().int().min(0).max(7),
   }),
   z.object({
+    type: z.literal('useBomb'),
+    bombIndex: z.number().int().min(0),
+    row: z.number().int().min(0).max(7),
+    col: z.number().int().min(0).max(7),
+  }),
+  z.object({
     type: z.literal('restart'),
     difficulty: z.enum(BLOCK_BLASTER_DIFFICULTIES).optional(),
     startingLayout: z.enum(BLOCK_BLASTER_LAYOUTS).optional(),

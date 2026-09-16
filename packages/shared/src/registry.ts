@@ -452,14 +452,14 @@ export const GAME_REGISTRY: Record<GameId, GameMeta> = {
   },
   'block-blaster': {
     id: 'block-blaster',
-    title: 'Block Blaster',
+    title: 'Brick Blaster',
     kind: 'board',
     minPlayers: 1,
     maxPlayers: 8,
     defaultTimeLimitSec: 0,
     supportsBots: false,
     configSchema: blockBlasterConfigSchema,
-    blurb: 'Drop retro block shapes into the 8×8 grid, blast full rows and columns, chain combo streaks and chase high scores.',
+    blurb: 'Drop retro brick shapes into the 8×8 grid, blast full rows and columns, clear bonus bomb blocks and chain combo streaks.',
   },
 };
 

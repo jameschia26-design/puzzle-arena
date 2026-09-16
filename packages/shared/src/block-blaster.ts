@@ -305,7 +305,122 @@ export function hasAnyPlacement(board: CellState[][], piece: BlockPiece): boolea
   return false;
 }
 
-export function checkGameOver(board: CellState[][], tray: (BlockPiece | null)[]): boolean {
+export type BombType = 'cluster' | 'cross';
+
+export interface BonusBomb {
+  row: number;
+  col: number;
+  type: BombType;
+}
+
+export interface DetonationResult {
+  type: BombType;
+  row: number;
+  col: number;
+  newBoard: CellState[][];
+  clearedCells: { row: number; col: number }[];
+  clearedCount: number;
+  points: number;
+}
+
+export const BOMB_COLORS: Record<BombType, string> = {
+  cluster: '#f97316',
+  cross: '#a855f7',
+};
+
+export function getClusterBombCells(epicenterRow: number, epicenterCol: number): { row: number; col: number }[] {
+  const cells: { row: number; col: number }[] = [];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      const r = epicenterRow + dr;
+      const c = epicenterCol + dc;
+      if (r >= 0 && r < BLOCK_BLASTER_BOARD_SIZE && c >= 0 && c < BLOCK_BLASTER_BOARD_SIZE) {
+        cells.push({ row: r, col: c });
+      }
+    }
+  }
+  return cells;
+}
+
+export function getCrossBombCells(epicenterRow: number, epicenterCol: number): { row: number; col: number }[] {
+  const cells: { row: number; col: number }[] = [];
+  for (let c = 0; c < BLOCK_BLASTER_BOARD_SIZE; c++) {
+    cells.push({ row: epicenterRow, col: c });
+  }
+  for (let r = 0; r < BLOCK_BLASTER_BOARD_SIZE; r++) {
+    if (r !== epicenterRow) {
+      cells.push({ row: r, col: epicenterCol });
+    }
+  }
+  return cells;
+}
+
+export function applyDetonation(
+  board: CellState[][],
+  type: BombType,
+  row: number,
+  col: number,
+): DetonationResult {
+  const targetCells = type === 'cluster' ? getClusterBombCells(row, col) : getCrossBombCells(row, col);
+  const newBoard = board.map((r) => [...r]);
+  const clearedCells: { row: number; col: number }[] = [];
+  for (const { row: cr, col: cc } of targetCells) {
+    if (newBoard[cr]![cc] !== 0) {
+      clearedCells.push({ row: cr, col: cc });
+      newBoard[cr]![cc] = 0;
+    }
+  }
+  const clearedCount = clearedCells.length;
+  const points = clearedCount * 10 + 25;
+  return {
+    type,
+    row,
+    col,
+    newBoard,
+    clearedCells,
+    clearedCount,
+    points,
+  };
+}
+
+export function canBombsSavePlayer(
+  board: CellState[][],
+  tray: (BlockPiece | null)[],
+  bombs: BombType[],
+): boolean {
+  const remainingPieces = tray.filter((p): p is BlockPiece => p !== null);
+  if (remainingPieces.length === 0 || bombs.length === 0) return false;
+
+  const uniqueBombTypes = Array.from(new Set(bombs));
+
+  for (const bombType of uniqueBombTypes) {
+    for (let r = 0; r < BLOCK_BLASTER_BOARD_SIZE; r++) {
+      for (let c = 0; c < BLOCK_BLASTER_BOARD_SIZE; c++) {
+        const cells = bombType === 'cluster' ? getClusterBombCells(r, c) : getCrossBombCells(r, c);
+        const hasAnyOccupied = cells.some(({ row: cr, col: cc }) => board[cr]![cc] !== 0);
+        if (!hasAnyOccupied) continue;
+
+        const simBoard = board.map((rowArr) => [...rowArr]);
+        for (const { row: cr, col: cc } of cells) {
+          simBoard[cr]![cc] = 0;
+        }
+
+        for (const piece of remainingPieces) {
+          if (hasAnyPlacement(simBoard, piece)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+export function checkGameOver(
+  board: CellState[][],
+  tray: (BlockPiece | null)[],
+  bombs: BombType[] = [],
+): boolean {
   const remainingPieces = tray.filter((p): p is BlockPiece => p !== null);
   if (remainingPieces.length === 0) return false;
 
@@ -314,5 +429,10 @@ export function checkGameOver(board: CellState[][], tray: (BlockPiece | null)[])
       return false;
     }
   }
+
+  if (bombs.length > 0 && canBombsSavePlayer(board, tray, bombs)) {
+    return false;
+  }
+
   return true;
 }

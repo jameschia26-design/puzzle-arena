@@ -9,15 +9,19 @@ import {
   BLOCK_BLASTER_DIFFICULTIES,
   BLOCK_BLASTER_LAYOUTS,
   canPlacePiece,
+  hasAnyPlacement,
+  getClusterBombCells,
+  getCrossBombCells,
   type BlockPiece,
   type BlockBlasterDifficulty,
   type BlockBlasterLayout,
+  type BombType,
+  type DetonationResult,
 } from '@puzzle-arena/shared';
 import { PixelButton, PixelPanel } from '../ui/primitives.js';
 import { sfx, bgm } from '../ui/sound.js';
 import { useRoom } from '../net/socket.js';
-import { Flame, Trophy, RotateCcw, Zap, Sparkles, SlidersHorizontal } from 'lucide-react';
-
+import { Flame, Trophy, RotateCcw, Zap, Sparkles, SlidersHorizontal, Bomb, AlertTriangle } from 'lucide-react';
 interface Particle {
   x: number;
   y: number;
@@ -361,6 +365,40 @@ export function BlockBlasterBoard({
 
   // Brief red flash on the tray slot when a drop is rejected
   const [shakeTrayIdx, setShakeTrayIdx] = React.useState<number | null>(null);
+  // Bomb Inventory & Drag/Aim state
+  const [selectedBombIdx, setSelectedBombIdx] = React.useState<number | null>(null);
+  const [draggedBomb, setDraggedBomb] = React.useState<{ bombIndex: number; type: BombType } | null>(null);
+  const [bombDragTopLeft, setBombDragTopLeft] = React.useState<{ x: number; y: number } | null>(null);
+  const [bombHoverPos, setBombHoverPos] = React.useState<{ row: number; col: number } | null>(null);
+  const bombHoverPosRef = React.useRef(bombHoverPos);
+  bombHoverPosRef.current = bombHoverPos;
+
+  // Track exploding cells from bomb detonation for board white-flash effect
+  const [explodingCellKeys, setExplodingCellKeys] = React.useState<Set<string>>(new Set());
+  const prevDetonation = React.useRef<DetonationResult | null>(null);
+
+  // Check if player has no legal moves for tray blocks, but can continue with available bombs
+  const isStuckWithBombs = React.useMemo(() => {
+    if (!you || you.gameOver || you.bombs.length === 0) return false;
+    const remaining = you.tray.filter((p): p is BlockPiece => p !== null);
+    if (remaining.length === 0) return false;
+    return !remaining.some((p) => hasAnyPlacement(you.board, p));
+  }, [you]);
+
+  // Active bomb type (from dragging or selection) and aiming blast radius preview
+  const activeBombType = draggedBomb ? draggedBomb.type : selectedBombIdx !== null ? you?.bombs[selectedBombIdx] ?? null : null;
+  const bombBlastPreview = React.useMemo(() => {
+    if (!activeBombType || !bombHoverPos) return null;
+    const cells =
+      activeBombType === 'cluster'
+        ? getClusterBombCells(bombHoverPos.row, bombHoverPos.col)
+        : getCrossBombCells(bombHoverPos.row, bombHoverPos.col);
+    return {
+      type: activeBombType,
+      epicenter: bombHoverPos,
+      cells,
+    };
+  }, [activeBombType, bombHoverPos]);
 
   // Difficulty & Layout controls menu
   const [showConfigMenu, setShowConfigMenu] = React.useState(false);
@@ -436,8 +474,7 @@ export function BlockBlasterBoard({
             });
 
             const comboInfo = getComboTitle(combo, totalLines);
-            setFloatingAnnouncements((prev) => [
-              ...prev,
+            const announcements: FloatingText[] = [
               {
                 id: nextFloatId.current++,
                 text: comboInfo.title,
@@ -446,7 +483,20 @@ export function BlockBlasterBoard({
                 x: rect.width / 2,
                 y: rect.height / 2,
               },
-            ]);
+            ];
+
+            if (you.lastClear.claimedBomb) {
+              const bType = you.lastClear.claimedBomb;
+              announcements.push({
+                id: nextFloatId.current++,
+                text: bType === 'cluster' ? '💣 CLUSTER BOMB CLAIMED!' : '⚡ CROSS BOMB CLAIMED!',
+                subtext: 'DRAG FROM INVENTORY TO DETONATE',
+                color: bType === 'cluster' ? '#f97316' : '#a855f7',
+                x: rect.width / 2,
+                y: rect.height / 3,
+              });
+            }
+            setFloatingAnnouncements((prev) => [...prev, ...announcements]);
           }
 
           setTimeout(() => {
@@ -457,6 +507,110 @@ export function BlockBlasterBoard({
       }
     }
   }, [you?.piecesPlaced, you?.lastClear, you, measureGrid]);
+  // Watch for bomb detonation events to trigger explosion FX, audio & announcements
+  React.useEffect(() => {
+    if (!you?.lastDetonation || you.lastDetonation === prevDetonation.current) return;
+    prevDetonation.current = you.lastDetonation;
+    const det = you.lastDetonation;
+
+    sfx.bomb();
+
+    // Flash the cleared cells
+    const cellKeys = new Set(det.clearedCells.map((c) => `${c.row},${c.col}`));
+    setExplodingCellKeys(cellKeys);
+    const flashTimer = setTimeout(() => setExplodingCellKeys(new Set()), 320);
+
+    if (boardRef.current) {
+      const rect = boardRef.current.getBoundingClientRect();
+      const metrics = measureGrid();
+      const cw = metrics?.cellW ?? rect.width / BLOCK_BLASTER_BOARD_SIZE;
+      const ch = metrics?.cellH ?? rect.height / BLOCK_BLASTER_BOARD_SIZE;
+      const px = metrics?.pitchX ?? rect.width / BLOCK_BLASTER_BOARD_SIZE;
+      const py = metrics?.pitchY ?? rect.height / BLOCK_BLASTER_BOARD_SIZE;
+
+      const epicX = det.col * px + cw / 2;
+      const epicY = det.row * py + ch / 2;
+
+      if (det.type === 'cluster') {
+        // 55+ radial explosion particles (fire, amber, smoke)
+        for (let i = 0; i < 55; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2 + Math.random() * 6.5;
+          const colors = ['#f97316', '#ef4444', '#fbbf24', '#ffffff', '#78716c'];
+          const color = colors[Math.floor(Math.random() * colors.length)]!;
+          particlesRef.current.push({
+            x: epicX,
+            y: epicY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: 4 + Math.random() * 6,
+            color,
+            alpha: 1,
+            life: 0,
+            maxLife: 28 + Math.random() * 16,
+          });
+        }
+
+        setFloatingAnnouncements((prev) => [
+          ...prev,
+          {
+            id: nextFloatId.current++,
+            text: '💥 3×3 CLUSTER BLAST!',
+            subtext: `DESTROYED ${det.clearedCount} BRICKS (+${det.points} PTS)`,
+            color: '#f97316',
+            x: epicX,
+            y: epicY,
+          },
+        ]);
+      } else {
+        // Cross bomb: dual horizontal and vertical shockwave particle beams
+        for (let i = 0; i < 35; i++) {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const speed = 4 + Math.random() * 7;
+          particlesRef.current.push({
+            x: epicX,
+            y: epicY + (Math.random() - 0.5) * ch * 0.6,
+            vx: dir * speed,
+            vy: (Math.random() - 0.5) * 1.5,
+            size: 4 + Math.random() * 5,
+            color: Math.random() < 0.5 ? '#a855f7' : '#06b6d4',
+            alpha: 1,
+            life: 0,
+            maxLife: 24 + Math.random() * 12,
+          });
+        }
+        for (let i = 0; i < 35; i++) {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          const speed = 4 + Math.random() * 7;
+          particlesRef.current.push({
+            x: epicX + (Math.random() - 0.5) * cw * 0.6,
+            y: epicY,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: dir * speed,
+            size: 4 + Math.random() * 5,
+            color: Math.random() < 0.5 ? '#c084fc' : '#22d3ee',
+            alpha: 1,
+            life: 0,
+            maxLife: 24 + Math.random() * 12,
+          });
+        }
+
+        setFloatingAnnouncements((prev) => [
+          ...prev,
+          {
+            id: nextFloatId.current++,
+            text: '⚡ CROSS BEAM BLAST!',
+            subtext: `DESTROYED ${det.clearedCount} BRICKS (+${det.points} PTS)`,
+            color: '#a855f7',
+            x: epicX,
+            y: epicY,
+          },
+        ]);
+      }
+    }
+
+    return () => clearTimeout(flashTimer);
+  }, [you?.lastDetonation, measureGrid]);
 
   // Particle animation canvas loop
   React.useEffect(() => {
@@ -577,6 +731,111 @@ export function BlockBlasterBoard({
       window.removeEventListener('pointercancel', onWindowPointerUp);
     };
   }, [dragInfo, computeDragFrame]);
+  // Global window bomb drag event listeners
+  React.useEffect(() => {
+    if (!draggedBomb) return;
+
+    const onWindowBombMove = (e: PointerEvent) => {
+      setBombDragTopLeft({ x: e.clientX, y: e.clientY });
+      const metrics = measureGrid();
+      const boardRect = boardRef.current?.getBoundingClientRect();
+      if (!metrics || !boardRect) {
+        setBombHoverPos(null);
+        return;
+      }
+      const liftPx = metrics.pitchY * DRAG_LIFT_CELLS;
+      const targetY = e.clientY - liftPx;
+
+      if (
+        e.clientX >= boardRect.left &&
+        e.clientX <= boardRect.right &&
+        targetY >= boardRect.top &&
+        targetY <= boardRect.bottom
+      ) {
+        let col = Math.round((e.clientX - metrics.originX - metrics.cellW / 2) / metrics.pitchX);
+        let row = Math.round((targetY - metrics.originY - metrics.cellH / 2) / metrics.pitchY);
+        col = Math.max(0, Math.min(BLOCK_BLASTER_BOARD_SIZE - 1, col));
+        row = Math.max(0, Math.min(BLOCK_BLASTER_BOARD_SIZE - 1, row));
+        setBombHoverPos({ row, col });
+      } else {
+        setBombHoverPos(null);
+      }
+    };
+
+    const onWindowBombUp = (e: PointerEvent) => {
+      const start = dragStartRef.current;
+      const dist = start ? Math.hypot(e.clientX - start.x, e.clientY - start.y) : 100;
+      const currentHover = bombHoverPosRef.current;
+      const bIdx = draggedBomb.bombIndex;
+
+      if (dist < 8) {
+        // Tap in inventory toggles selection
+        setSelectedBombIdx((prev) => (prev === bIdx ? null : bIdx));
+        sfx.blip();
+      } else if (currentHover) {
+        // Dropped onto board: detonate!
+        onActionRef.current({
+          type: 'useBomb',
+          bombIndex: bIdx,
+          row: currentHover.row,
+          col: currentHover.col,
+        });
+        setSelectedBombIdx(null);
+      } else {
+        sfx.blockInvalid();
+      }
+
+      setDraggedBomb(null);
+      setBombHoverPos(null);
+      setBombDragTopLeft(null);
+      dragStartRef.current = null;
+    };
+
+    window.addEventListener('pointermove', onWindowBombMove);
+    window.addEventListener('pointerup', onWindowBombUp);
+    window.addEventListener('pointercancel', onWindowBombUp);
+
+    return () => {
+      window.removeEventListener('pointermove', onWindowBombMove);
+      window.removeEventListener('pointerup', onWindowBombUp);
+      window.removeEventListener('pointercancel', onWindowBombUp);
+    };
+  }, [draggedBomb, measureGrid]);
+
+  const handleBombPointerDown = (e: React.PointerEvent, idx: number) => {
+    if (paused || you?.gameOver) return;
+    const bombType = you?.bombs[idx];
+    if (!bombType) return;
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+
+    dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
+    setSelectedPieceIdx(null);
+    setDragInfo(null);
+    setDraggedBomb({ bombIndex: idx, type: bombType });
+    setBombDragTopLeft({ x: e.clientX, y: e.clientY });
+
+    const metrics = measureGrid();
+    const boardRect = boardRef.current?.getBoundingClientRect();
+    if (metrics && boardRect) {
+      const liftPx = metrics.pitchY * DRAG_LIFT_CELLS;
+      const targetY = e.clientY - liftPx;
+      if (
+        e.clientX >= boardRect.left &&
+        e.clientX <= boardRect.right &&
+        targetY >= boardRect.top &&
+        targetY <= boardRect.bottom
+      ) {
+        let col = Math.round((e.clientX - metrics.originX - metrics.cellW / 2) / metrics.pitchX);
+        let row = Math.round((targetY - metrics.originY - metrics.cellH / 2) / metrics.pitchY);
+        col = Math.max(0, Math.min(BLOCK_BLASTER_BOARD_SIZE - 1, col));
+        row = Math.max(0, Math.min(BLOCK_BLASTER_BOARD_SIZE - 1, row));
+        setBombHoverPos({ row, col });
+      }
+    }
+  };
 
   // Pointer down on a tray piece
   const handleTrayPiecePointerDown = (e: React.PointerEvent<HTMLDivElement>, idx: number) => {
@@ -616,9 +875,23 @@ export function BlockBlasterBoard({
     }
   };
 
-  // Hovering over board cells in Click-to-Place mode
+  // Hovering over board cells in Click-to-Place / Aim mode
   const handleBoardPointerMove = (e: React.PointerEvent) => {
-    if (dragInfo || selectedPieceIdx === null || !you) return;
+    if (dragInfo || draggedBomb || !you) return;
+
+    // Bomb aiming mode
+    if (selectedBombIdx !== null && you.bombs[selectedBombIdx]) {
+      const metrics = measureGrid();
+      if (!metrics) return;
+      let col = Math.round((e.clientX - metrics.originX) / metrics.pitchX);
+      let row = Math.round((e.clientY - metrics.originY) / metrics.pitchY);
+      col = Math.max(0, Math.min(BLOCK_BLASTER_BOARD_SIZE - 1, col));
+      row = Math.max(0, Math.min(BLOCK_BLASTER_BOARD_SIZE - 1, row));
+      setBombHoverPos({ row, col });
+      return;
+    }
+
+    if (selectedPieceIdx === null) return;
     const piece = you.tray[selectedPieceIdx];
     if (!piece) return;
     const metrics = measureGrid();
@@ -630,9 +903,24 @@ export function BlockBlasterBoard({
     setHoverPos({ row, col, valid: canPlacePiece(you.board, piece, row, col) });
   };
 
-  // Clicking a cell in Click-to-Place mode
+  // Clicking a cell in Click-to-Place / Aim mode
   const handleCellClick = (r: number, c: number) => {
-    if (paused || you?.gameOver || selectedPieceIdx === null || !you) return;
+    if (paused || you?.gameOver || !you) return;
+
+    // If a bomb is selected, click cell to detonate!
+    if (selectedBombIdx !== null && you.bombs[selectedBombIdx]) {
+      onActionRef.current({
+        type: 'useBomb',
+        bombIndex: selectedBombIdx,
+        row: r,
+        col: c,
+      });
+      setSelectedBombIdx(null);
+      setBombHoverPos(null);
+      return;
+    }
+
+    if (selectedPieceIdx === null) return;
     const piece = you.tray[selectedPieceIdx];
     if (!piece) return;
 
@@ -655,11 +943,20 @@ export function BlockBlasterBoard({
         const idx = Number(e.key) - 1;
         if (currentYou?.tray[idx]) {
           setSelectedPieceIdx((prev) => (prev === idx ? null : idx));
+          setSelectedBombIdx(null);
+          sfx.blip();
+        }
+      } else if (e.key === 'b' || e.key === 'B' || e.key === '4') {
+        if (currentYou?.bombs && currentYou.bombs.length > 0) {
+          setSelectedBombIdx((prev) => (prev === 0 ? null : 0));
+          setSelectedPieceIdx(null);
           sfx.blip();
         }
       } else if (e.key === 'Escape') {
         setSelectedPieceIdx(null);
+        setSelectedBombIdx(null);
         setHoverPos(null);
+        setBombHoverPos(null);
       } else if ((e.key === 'Enter' || e.key === ' ') && selectedPieceIdx !== null) {
         e.preventDefault();
         if (hoverPosRef.current?.valid) {
@@ -758,6 +1055,9 @@ export function BlockBlasterBoard({
       startingLayout: lay ?? activeLayout,
     });
     setSelectedPieceIdx(null);
+    setSelectedBombIdx(null);
+    setDraggedBomb(null);
+    setBombHoverPos(null);
     setHoverPos(null);
     setShowConfigMenu(false);
   };
@@ -768,11 +1068,16 @@ export function BlockBlasterBoard({
     : isLandscape
       ? 'relative grid grid-cols-[auto_220px] items-start gap-x-4'
       : 'relative flex flex-col items-center';
-  const trayClass = isDesktop
-    ? 'flex flex-col items-center gap-3 col-start-2 row-start-1'
+  const sideColumnClass = isDesktop
+    ? 'flex flex-col items-center gap-3 col-start-2 row-start-1 w-[170px]'
     : isLandscape
-      ? 'grid grid-cols-3 items-center justify-items-center gap-2 col-start-2 row-start-1'
-      : 'grid grid-cols-3 items-center justify-items-center gap-3 sm:gap-6 mt-4 w-full min-w-0';
+      ? 'flex flex-col items-center gap-2 col-start-2 row-start-1 w-[220px]'
+      : 'flex flex-col items-center gap-2 mt-3 w-full min-w-0';
+  const trayClass = isDesktop
+    ? 'flex flex-col items-center gap-3 w-full'
+    : isLandscape
+      ? 'grid grid-cols-3 items-center justify-items-center gap-2 w-full'
+      : 'grid grid-cols-3 items-center justify-items-center gap-3 sm:gap-6 w-full min-w-0';
   const hintClass = isSideTray ? 'flex items-center justify-center gap-2 mt-3 col-span-2 row-start-2' : 'flex items-center gap-2 mt-2';
   const traySlotSizeClass = isLandscape ? 'max-w-[64px]' : 'max-w-28';
 
@@ -910,6 +1215,16 @@ export function BlockBlasterBoard({
       <div className={`flex flex-col lg:flex-row items-center lg:items-start justify-center gap-4 w-full ${isDesktop ? 'overflow-visible' : ''}`}>
         {/* Main 8x8 Board Container */}
         <div className={boardColumnClass}>
+          {/* No space for blocks warning banner */}
+          {isStuckWithBombs && (
+            <div className="w-full col-span-full mb-2 p-2 bg-gradient-to-r from-red-950 via-amber-950 to-red-950 border-2 border-amber-400 rounded-sm pa-shadow flex items-center justify-center gap-2 animate-pulse z-20">
+              <AlertTriangle size={18} className="text-amber-400 shrink-0 animate-bounce" />
+              <span className="font-display text-[10px] sm:text-xs font-black text-amber-300 uppercase tracking-wider text-center">
+                NO SPACE FOR BRICKS! DETONATE A BOMB TO CLEAR ROOM!
+              </span>
+            </div>
+          )}
+
           <div
             className="relative bg-slate-950 border-4 border-pa-border pa-shadow rounded-sm p-2 sm:p-2.5"
             style={{
@@ -922,7 +1237,8 @@ export function BlockBlasterBoard({
               ref={boardRef}
               onPointerMove={handleBoardPointerMove}
               onPointerLeave={() => {
-                if (dragInfo === null && selectedPieceIdx !== null) setHoverPos(null);
+                if (dragInfo === null && draggedBomb === null && selectedPieceIdx !== null) setHoverPos(null);
+                if (draggedBomb === null && selectedBombIdx !== null) setBombHoverPos(null);
               }}
               className="relative grid grid-cols-8 grid-rows-8 gap-1 w-full h-full"
               style={{ touchAction: 'none' }}
@@ -932,6 +1248,13 @@ export function BlockBlasterBoard({
                 Array.from({ length: BLOCK_BLASTER_BOARD_SIZE }).map((_, c) => {
                   const cellVal = you?.board[r]?.[c] ?? 0;
                   const isOccupied = cellVal !== 0;
+
+                  // Bonus bomb block detection
+                  const isBonusBomb = you?.bonusBomb && you.bonusBomb.row === r && you.bonusBomb.col === c;
+                  const bonusBombType = isBonusBomb ? you.bonusBomb!.type : null;
+
+                  // Bomb detonation explosion flash
+                  const isExploding = explodingCellKeys.has(`${r},${c}`);
 
                   // Line clearing highlight cue - only for a legal placement
                   const isRowGlowing = lineCompletionPreview?.fullRows.includes(r);
@@ -953,22 +1276,51 @@ export function BlockBlasterBoard({
                         (isRowGlowing || isColGlowing) && !isOccupied
                           ? 'ring-2 ring-yellow-400 bg-yellow-400/30 animate-pulse'
                           : ''
-                      } ${isBlasting ? 'scale-75 opacity-40 brightness-150' : ''}`}
+                      } ${isBlasting ? 'scale-75 opacity-40 brightness-150' : ''} ${
+                        isExploding ? 'scale-125 brightness-200 bg-white shadow-[0_0_16px_white] z-20 transition-transform duration-75' : ''
+                      }`}
                       style={{
-                        backgroundColor: isOccupied ? (cellVal as string) : undefined,
+                        backgroundColor: isExploding
+                          ? '#ffffff'
+                          : isOccupied
+                            ? (cellVal as string)
+                            : undefined,
                         boxShadow: isOccupied
                           ? 'inset 2px 2px 0px rgba(255,255,255,0.45), inset -2px -2px 0px rgba(0,0,0,0.5)'
                           : undefined,
                       }}
                     >
-                      {isOccupied && (
+                      {/* Occupied block bevel highlight */}
+                      {isOccupied && !isBonusBomb && !isExploding && (
                         <div className="absolute top-0.5 left-0.5 w-1.5 h-1.5 bg-white/40 rounded-xs pointer-events-none" />
+                      )}
+
+                      {/* Bonus Bomb Block on Board */}
+                      {isBonusBomb && (
+                        <div
+                          className={`absolute inset-0 z-10 flex flex-col items-center justify-center rounded-xs ring-2 overflow-hidden select-none pointer-events-none ${
+                            bonusBombType === 'cluster'
+                              ? 'ring-orange-400 bg-orange-600/50 shadow-[0_0_14px_rgba(249,115,22,0.9)] animate-pulse'
+                              : 'ring-purple-400 bg-purple-600/50 shadow-[0_0_14px_rgba(168,85,247,0.9)] animate-pulse'
+                          }`}
+                        >
+                          <div className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-yellow-300 animate-ping pointer-events-none" />
+                          <span className="text-sm sm:text-base drop-shadow-lg leading-none">
+                            {bonusBombType === 'cluster' ? '💣' : '⚡'}
+                          </span>
+                          <span
+                            className={`text-[7px] sm:text-[8px] font-display font-black leading-none uppercase tracking-tighter ${
+                              bonusBombType === 'cluster' ? 'text-amber-200' : 'text-fuchsia-200'
+                            }`}
+                          >
+                            {bonusBombType === 'cluster' ? '3×3' : 'CROSS'}
+                          </span>
+                        </div>
                       )}
                     </div>
                   );
                 }),
               )}
-
               {/* Snapped piece shadow - drawn ABOVE occupied cells so a
                   collision never hides the exact cells the player needs to
                   see. Always visible while a piece is over the board.
@@ -1010,6 +1362,70 @@ export function BlockBlasterBoard({
                       );
                     }),
                   )}
+                </div>
+              )}
+              {/* Bomb Radius Aiming Shadow */}
+              {bombBlastPreview && gridMetrics && (
+                <div className="absolute inset-0 pointer-events-none z-[16]">
+                  {bombBlastPreview.cells.map(({ row: br, col: bc }) => {
+                    const isEpicenter = br === bombBlastPreview.epicenter.row && bc === bombBlastPreview.epicenter.col;
+                    const isCluster = bombBlastPreview.type === 'cluster';
+                    return (
+                      <div
+                        key={`bomb-shadow-${br}-${bc}`}
+                        className={`absolute rounded-xs transition-all duration-75 flex items-center justify-center ${
+                          isEpicenter ? 'animate-pulse' : ''
+                        }`}
+                        style={{
+                          left: bc * gridMetrics.pitchX,
+                          top: br * gridMetrics.pitchY,
+                          width: gridMetrics.cellW,
+                          height: gridMetrics.cellH,
+                          backgroundColor: isCluster
+                            ? isEpicenter
+                              ? 'rgba(249, 115, 22, 0.7)'
+                              : 'rgba(249, 115, 22, 0.38)'
+                            : isEpicenter
+                              ? 'rgba(168, 85, 247, 0.7)'
+                              : 'rgba(168, 85, 247, 0.38)',
+                          border: isCluster
+                            ? isEpicenter
+                              ? '2px solid #ea580c'
+                              : '1.5px dashed rgba(249, 115, 22, 0.85)'
+                            : isEpicenter
+                              ? '2px solid #9333ea'
+                              : '1.5px dashed rgba(168, 85, 247, 0.85)',
+                          boxShadow: isCluster
+                            ? '0 0 12px rgba(249, 115, 22, 0.55)'
+                            : '0 0 12px rgba(168, 85, 247, 0.55)',
+                        }}
+                      >
+                        {isEpicenter && (
+                          <div className="flex items-center justify-center text-white drop-shadow font-black text-xs sm:text-sm">
+                            {isCluster ? '💥' : '⚡'}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {/* Floating Reticle Badge above epicenter */}
+                  <div
+                    className="absolute transform -translate-x-1/2 -translate-y-full pointer-events-none z-20 flex flex-col items-center pb-1.5"
+                    style={{
+                      left: bombBlastPreview.epicenter.col * gridMetrics.pitchX + gridMetrics.cellW / 2,
+                      top: bombBlastPreview.epicenter.row * gridMetrics.pitchY,
+                    }}
+                  >
+                    <span
+                      className={`font-display text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border shadow-lg whitespace-nowrap ${
+                        bombBlastPreview.type === 'cluster'
+                          ? 'bg-orange-950 text-orange-200 border-orange-400'
+                          : 'bg-purple-950 text-purple-200 border-purple-400'
+                      }`}
+                    >
+                      {bombBlastPreview.type === 'cluster' ? '💥 3×3 Cluster Bomb' : '⚡ Cross Blast (+)'}
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -1070,72 +1486,162 @@ export function BlockBlasterBoard({
           </div>
 
           {/* Three-slot piece tray */}
-          <div ref={trayRef} className={trayClass}>
-            {you?.tray.map((piece, idx) => {
-              const isSelected = selectedPieceIdx === idx;
-              const isDraggingThis = dragInfo?.pieceIndex === idx;
-              const previewCellSize = piece
-                ? `clamp(10px, min(calc((100cqw - ${(piece.width - 1) * 2}px) / ${piece.width}), calc((100cqw - ${(piece.height - 1) * 2}px) / ${piece.height})), 20px)`
-                : null;
-              return (
-                <div
-                  key={piece?.id ?? `empty-${idx}`}
-                  onPointerDown={(e) => handleTrayPiecePointerDown(e, idx)}
-                  onContextMenu={(e) => e.preventDefault()}
-                  className={`relative flex aspect-square w-full ${traySlotSizeClass} min-w-0 shrink-0 items-center justify-center bg-pa-surface border-2 rounded-sm pa-shadow cursor-grab active:cursor-grabbing transition-transform select-none touch-none ${
-                    isSelected ? 'border-pa-cyan ring-4 ring-pa-cyan/60 scale-105 shadow-[0_0_12px_rgba(34,211,238,0.5)]' : 'border-pa-border'
-                  } ${you.gameOver ? 'border-red-500 ring-2 ring-red-500/80 animate-pulse' : ''} ${
-                    isDraggingThis ? 'opacity-20' : 'hover:border-pa-cyan/70'
-                  } ${shakeTrayIdx === idx ? 'pa-shake border-red-500' : ''}`}
-                  style={{ containerType: 'inline-size', touchAction: 'none' }}
-                >
-                  {piece ? (
-                    <div
-                      data-piece-grid
-                      className="grid gap-0.5"
-                      style={{
-                        '--block-preview-cell': previewCellSize!,
-                        gridTemplateRows: `repeat(${piece.height}, var(--block-preview-cell))`,
-                        gridTemplateColumns: `repeat(${piece.width}, var(--block-preview-cell))`,
-                      } as React.CSSProperties}
-                    >
-                      {piece.shape.map((row, r) =>
-                        row.map((val, c) => (
-                          <div
-                            key={`${r}-${c}`}
-                            className="rounded-xs"
-                            style={{
-                              width: 'var(--block-preview-cell)',
-                              height: 'var(--block-preview-cell)',
-                              backgroundColor: val === 1 ? piece.color : 'transparent',
-                              boxShadow:
-                                val === 1
-                                  ? 'inset 1px 1px 0px rgba(255,255,255,0.45), inset -1px -1px 0px rgba(0,0,0,0.45)'
-                                  : undefined,
-                            }}
-                          />
-                        )),
-                      )}
-                    </div>
-                  ) : (
-                    <span className="font-display text-[9px] text-pa-ink-dim/40 uppercase">Empty</span>
-                  )}
-                  {isSelected && (
-                    <span className="absolute -bottom-2 text-[8px] font-display bg-pa-cyan text-black px-1 rounded uppercase font-bold tracking-tight">
-                      Selected
+          {/* Side column containing Bomb Arsenal Dock and Piece Tray */}
+          <div ref={trayRef} className={sideColumnClass}>
+            {/* Bomb Arsenal Inventory Dock */}
+            {you && you.bombs.length > 0 && (
+              <div
+                className={`w-full p-2 bg-slate-950/95 border-2 rounded-sm pa-shadow transition-all ${
+                  isStuckWithBombs
+                    ? 'border-amber-400 ring-4 ring-amber-500/60 shadow-[0_0_16px_rgba(251,191,36,0.6)] animate-pulse'
+                    : 'border-pa-border'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1">
+                    <Bomb size={12} className={isStuckWithBombs ? 'text-amber-400 animate-bounce' : 'text-pa-cyan'} />
+                    <span className="font-display text-[9px] uppercase tracking-wider font-bold text-pa-ink">
+                      BOMBS ({you.bombs.length})
                     </span>
-                  )}
+                  </div>
+                  <span className="font-display text-[8px] text-pa-ink-dim uppercase">
+                    {isStuckWithBombs ? 'DETONATE NOW' : 'Drag or tap'}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
 
-          <div ref={hintRef} className={hintClass}>
-            <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim/70">
-              Drag piece to grid, tap to select, or press 1 / 2 / 3
-            </span>
-          </div>
-        </div>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                  {you.bombs.map((bType, bIdx) => {
+                    const isSelected = selectedBombIdx === bIdx;
+                    const isDragging = draggedBomb?.bombIndex === bIdx;
+                    const isCluster = bType === 'cluster';
+
+                    return (
+                      <div
+                        key={`bomb-slot-${bIdx}-${bType}`}
+                        onPointerDown={(e) => handleBombPointerDown(e, bIdx)}
+                        onClick={() => {
+                          setSelectedBombIdx((prev) => (prev === bIdx ? null : bIdx));
+                          setSelectedPieceIdx(null);
+                          sfx.blip();
+                        }}
+                        className={`relative flex-1 min-w-[72px] flex items-center gap-1.5 p-1.5 rounded border-2 cursor-grab active:cursor-grabbing transition-all select-none touch-none ${
+                          isCluster
+                            ? isSelected
+                              ? 'bg-orange-950 border-orange-400 ring-2 ring-orange-500/80 scale-105 shadow-[0_0_10px_rgba(249,115,22,0.6)]'
+                              : 'bg-orange-950/40 border-orange-800/80 hover:border-orange-500'
+                            : isSelected
+                              ? 'bg-purple-950 border-purple-400 ring-2 ring-purple-500/80 scale-105 shadow-[0_0_10px_rgba(168,85,247,0.6)]'
+                              : 'bg-purple-950/40 border-purple-800/80 hover:border-purple-500'
+                        } ${isDragging ? 'opacity-30' : ''}`}
+                      >
+                        <div
+                          className={`w-6 h-6 rounded flex items-center justify-center text-sm border shrink-0 ${
+                            isCluster
+                              ? 'bg-orange-900/60 border-orange-700 text-orange-300'
+                              : 'bg-purple-900/60 border-purple-700 text-purple-300'
+                          }`}
+                        >
+                          {isCluster ? '💣' : '⚡'}
+                        </div>
+                        <div className="flex flex-col text-left leading-none min-w-0">
+                          <span className="font-display text-[8px] font-bold uppercase text-white truncate">
+                            {isCluster ? '3×3 Cluster' : 'Cross (+)'}
+                          </span>
+                          <span
+                            className={`font-display text-[7px] font-medium truncate ${
+                              isCluster ? 'text-orange-300' : 'text-purple-300'
+                            }`}
+                          >
+                            {isCluster ? 'Area Blast' : 'Row & Col'}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <span className="absolute -top-1.5 -right-1 text-[6px] font-display bg-pa-cyan text-black px-1 rounded uppercase font-bold tracking-tight">
+                            AIM
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Three-slot piece tray */}
+            <div className={trayClass}>
+              {you?.tray.map((piece, idx) => {
+                const isSelected = selectedPieceIdx === idx;
+                const isDraggingThis = dragInfo?.pieceIndex === idx;
+                const previewCellSize = piece
+                  ? `clamp(10px, min(calc((100cqw - ${(piece.width - 1) * 2}px) / ${piece.width}), calc((100cqw - ${(piece.height - 1) * 2}px) / ${piece.height})), 20px)`
+                  : null;
+                return (
+                  <div
+                    key={piece?.id ?? `empty-${idx}`}
+                    onPointerDown={(e) => handleTrayPiecePointerDown(e, idx)}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className={`relative flex aspect-square w-full ${traySlotSizeClass} min-w-0 shrink-0 items-center justify-center bg-pa-surface border-2 rounded-sm pa-shadow cursor-grab active:cursor-grabbing transition-transform select-none touch-none ${
+                      isSelected ? 'border-pa-cyan ring-4 ring-pa-cyan/60 scale-105 shadow-[0_0_12px_rgba(34,211,238,0.5)]' : 'border-pa-border'
+                    } ${you.gameOver ? 'border-red-500 ring-2 ring-red-500/80 animate-pulse' : ''} ${
+                      isDraggingThis ? 'opacity-20' : 'hover:border-pa-cyan/70'
+                    } ${shakeTrayIdx === idx ? 'pa-shake border-red-500' : ''} ${
+                      isStuckWithBombs ? 'opacity-40 grayscale pointer-events-none' : ''
+                    }`}
+                    style={{ containerType: 'inline-size', touchAction: 'none' }}
+                  >
+                    {piece ? (
+                      <div
+                        data-piece-grid
+                        className="grid gap-0.5"
+                        style={{
+                          '--block-preview-cell': previewCellSize!,
+                          gridTemplateRows: `repeat(${piece.height}, var(--block-preview-cell))`,
+                          gridTemplateColumns: `repeat(${piece.width}, var(--block-preview-cell))`,
+                        } as React.CSSProperties}
+                      >
+                        {piece.shape.map((row, r) =>
+                          row.map((val, c) => (
+                            <div
+                              key={`${r}-${c}`}
+                              className="rounded-xs"
+                              style={{
+                                width: 'var(--block-preview-cell)',
+                                 height: 'var(--block-preview-cell)',
+                                 backgroundColor: val === 1 ? piece.color : 'transparent',
+                                 boxShadow:
+                                   val === 1
+                                     ? 'inset 1px 1px 0px rgba(255,255,255,0.45), inset -1px -1px 0px rgba(0,0,0,0.45)'
+                                     : undefined,
+                              }}
+                            />
+                          )),
+                         )}
+                       </div>
+                     ) : (
+                       <span className="font-display text-[9px] text-pa-ink-dim/40 uppercase">Empty</span>
+                     )}
+                     {isSelected && (
+                       <span className="absolute -bottom-2 text-[8px] font-display bg-pa-cyan text-black px-1 rounded uppercase font-bold tracking-tight">
+                         Selected
+                       </span>
+                     )}
+                     {isStuckWithBombs && piece && (
+                       <span className="absolute inset-0 flex items-center justify-center bg-black/60 font-display text-[8px] text-amber-400 font-bold uppercase tracking-tight">
+                         BLOCKED
+                       </span>
+                     )}
+                   </div>
+                 );
+               })}
+             </div>
+           </div>
+ 
+           <div ref={hintRef} className={hintClass}>
+             <span className="font-display text-[9px] uppercase tracking-wider text-pa-ink-dim/70">
+               Drag piece to grid, tap to select, or press 1 / 2 / 3 (B for Bomb)
+             </span>
+           </div>
+         </div>
 
         {/* Multiplayer Opponent Spectator Boards */}
         {view.players.length > 1 && (
@@ -1165,28 +1671,41 @@ export function BlockBlasterBoard({
                         {Array.from({ length: BLOCK_BLASTER_BOARD_SIZE }).map((_, mr) =>
                           Array.from({ length: BLOCK_BLASTER_BOARD_SIZE }).map((_, mc) => {
                             const val = opponent.board[mr]?.[mc] ?? 0;
+                            const isOpponentBomb = opponent.bonusBomb && opponent.bonusBomb.row === mr && opponent.bonusBomb.col === mc;
                             return (
                               <div
                                 key={`m-${mr}-${mc}`}
-                                className="rounded-2xs"
+                                className={`rounded-2xs ${isOpponentBomb ? 'animate-pulse ring-1 ring-amber-300' : ''}`}
                                 style={{
-                                  backgroundColor: val !== 0 ? (val as string) : 'transparent',
+                                  backgroundColor: isOpponentBomb
+                                    ? opponent.bonusBomb!.type === 'cluster'
+                                      ? '#f97316'
+                                      : '#a855f7'
+                                    : val !== 0
+                                      ? (val as string)
+                                      : 'transparent',
                                 }}
                               />
                             );
                           }),
                         )}
                       </div>
-
-                      <div className="flex items-center justify-between w-full mt-1.5">
-                        <span className="font-display text-[9px] font-bold text-pa-cyan">
+                      <div className="flex items-center justify-between w-full mt-1.5 gap-1">
+                        <span className="font-display text-[9px] font-bold text-pa-cyan truncate">
                           {opponent.score} pts
                         </span>
-                        {opponent.comboStreak > 1 && (
-                          <span className="font-display text-[8px] font-bold text-orange-400">
-                            ×{opponent.comboStreak}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {opponent.bombs && opponent.bombs.length > 0 && (
+                            <span className="font-display text-[8px] font-bold text-amber-400 flex items-center gap-0.5">
+                              💣×{opponent.bombs.length}
+                            </span>
+                          )}
+                          {opponent.comboStreak > 1 && (
+                            <span className="font-display text-[8px] font-bold text-orange-400">
+                              ×{opponent.comboStreak}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1243,6 +1762,31 @@ export function BlockBlasterBoard({
                 />
               )),
             )}
+          </div>
+        </div>
+      )}
+      {/* Floating dragged bomb icon */}
+      {draggedBomb !== null && bombDragTopLeft && !bombHoverPos && (
+        <div
+          className="fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2"
+          style={{
+            left: `${bombDragTopLeft.x}px`,
+            top: `${bombDragTopLeft.y}px`,
+          }}
+        >
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border-2 pa-shadow shadow-2xl ${
+              draggedBomb.type === 'cluster'
+                ? 'bg-orange-950/95 border-orange-400 text-orange-200 ring-4 ring-orange-500/50'
+                : 'bg-purple-950/95 border-purple-400 text-purple-200 ring-4 ring-purple-500/50'
+            }`}
+          >
+            <span className="text-xl animate-bounce">
+              {draggedBomb.type === 'cluster' ? '💣' : '⚡'}
+            </span>
+            <span className="font-display text-xs font-bold uppercase tracking-wider">
+              {draggedBomb.type === 'cluster' ? '3×3 Cluster' : 'Cross Blast'}
+            </span>
           </div>
         </div>
       )}
