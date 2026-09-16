@@ -376,7 +376,8 @@ export function BlockBlasterBoard({
   // Track exploding cells from bomb detonation for board white-flash effect
   const [explodingCellKeys, setExplodingCellKeys] = React.useState<Set<string>>(new Set());
   const prevDetonation = React.useRef<DetonationResult | null>(null);
-
+  const prevBombsDetonated = React.useRef(you?.bombsDetonated ?? 0);
+  const hasShownBombInstruction = React.useRef(false);
   // Check if player has no legal moves for tray blocks, but can continue with available bombs
   const isStuckWithBombs = React.useMemo(() => {
     if (!you || you.gameOver || you.bombs.length === 0) return false;
@@ -487,10 +488,13 @@ export function BlockBlasterBoard({
 
             if (you.lastClear.claimedBomb) {
               const bType = you.lastClear.claimedBomb;
+              const isFirstTime = !hasShownBombInstruction.current;
+              hasShownBombInstruction.current = true;
+
               announcements.push({
                 id: nextFloatId.current++,
                 text: bType === 'cluster' ? '💣 CLUSTER BOMB CLAIMED!' : '⚡ CROSS BOMB CLAIMED!',
-                subtext: 'DRAG FROM INVENTORY TO DETONATE',
+                subtext: isFirstTime ? 'DRAG FROM INVENTORY TO DETONATE' : undefined,
                 color: bType === 'cluster' ? '#f97316' : '#a855f7',
                 x: rect.width / 2,
                 y: rect.height / 3,
@@ -509,10 +513,11 @@ export function BlockBlasterBoard({
   }, [you?.piecesPlaced, you?.lastClear, you, measureGrid]);
   // Watch for bomb detonation events to trigger explosion FX, audio & announcements
   React.useEffect(() => {
-    if (!you?.lastDetonation || you.lastDetonation === prevDetonation.current) return;
+    if (!you?.lastDetonation) return;
+    if (you.bombsDetonated <= prevBombsDetonated.current) return;
+    prevBombsDetonated.current = you.bombsDetonated;
     prevDetonation.current = you.lastDetonation;
     const det = you.lastDetonation;
-
     sfx.bomb();
 
     // Flash the cleared cells
@@ -1059,6 +1064,7 @@ export function BlockBlasterBoard({
     setDraggedBomb(null);
     setBombHoverPos(null);
     setHoverPos(null);
+    prevBombsDetonated.current = 0;
     setShowConfigMenu(false);
   };
 

@@ -549,11 +549,18 @@ describe('brick-blaster: bonus bombs and detonation mechanics', () => {
     const updatedP = res.state.players[0]!;
     expect(updatedP.bombs).toEqual([]);
     expect(updatedP.gameOver).toBe(false);
+    expect(updatedP.bombsDetonated).toBe(1);
+    expect(updatedP.lastDetonation).not.toBeNull();
     // 3x3 space at (3..5, 3..5) is cleared
     expect(canPlacePiece(updatedP.board, piece3x3, 3, 3)).toBe(true);
 
     // Now placing the 3x3 piece succeeds!
     const placeRes = blockBlaster.reduce(res.state, 'p1', { type: 'place', pieceIndex: 0, row: 3, col: 3 });
     expect(placeRes.ok).toBe(true);
+    if (!placeRes.ok) throw new Error(placeRes.error);
+    const postPlaceP = placeRes.state.players[0]!;
+    // bombsDetonated must remain 1, and lastDetonation must be reset to null
+    expect(postPlaceP.bombsDetonated).toBe(1);
+    expect(postPlaceP.lastDetonation).toBeNull();
   });
 });

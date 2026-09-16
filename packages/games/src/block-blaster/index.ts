@@ -54,6 +54,7 @@ function toPublic(p: BlockBlasterPlayerState): BlockBlasterPublicPlayer {
     comboStreak: p.comboStreak,
     linesCleared: p.linesCleared,
     piecesPlaced: p.piecesPlaced,
+    bombsDetonated: p.bombsDetonated,
     gameOver: p.gameOver,
     lastClear: p.lastClear,
     lastDetonation: p.lastDetonation,
@@ -78,6 +79,7 @@ function setup(playerIds: string[], seed: number, rawConfig: unknown): BlockBlas
       comboStreak: 0,
       linesCleared: 0,
       piecesPlaced: 0,
+      bombsDetonated: 0,
       gameOver: false,
       lastClear: null,
       lastDetonation: null,
@@ -131,6 +133,7 @@ function reduce(
     p.comboStreak = 0;
     p.linesCleared = 0;
     p.piecesPlaced = 0;
+    p.bombsDetonated = 0;
     p.gameOver = false;
     p.lastClear = null;
     p.lastDetonation = null;
@@ -184,7 +187,7 @@ function reduce(
     p.comboStreak = result.newComboStreak;
     p.piecesPlaced++;
     p.lastClear = result.clearEvent;
-
+    p.lastDetonation = null;
     if (result.clearEvent) {
       const lines = result.clearEvent.rows.length + result.clearEvent.cols.length;
       p.linesCleared += lines;
@@ -294,9 +297,9 @@ function reduce(
     if (p.score > p.highScore) {
       p.highScore = p.score;
     }
+    p.bombsDetonated++;
     p.lastDetonation = detonation;
     p.actionsAccepted++;
-
     const bombLabel = bombType === 'cluster' ? 'Cluster Bomb (3×3)' : 'Cross Bomb (+)';
     logs.push(
       makeLog(

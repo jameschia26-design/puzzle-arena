@@ -28,6 +28,7 @@ export interface BlockBlasterPlayerState {
   comboStreak: number;
   linesCleared: number;
   piecesPlaced: number;
+  bombsDetonated: number;
   gameOver: boolean;
   lastClear: ClearEvent | null;
   lastDetonation: DetonationResult | null;
@@ -61,6 +62,7 @@ export interface BlockBlasterPublicPlayer {
   comboStreak: number;
   linesCleared: number;
   piecesPlaced: number;
+  bombsDetonated: number;
   gameOver: boolean;
   lastClear: ClearEvent | null;
   lastDetonation: DetonationResult | null;
