@@ -366,12 +366,27 @@ export function BlockBlasterBoard({
   // Brief red flash on the tray slot when a drop is rejected
   const [shakeTrayIdx, setShakeTrayIdx] = React.useState<number | null>(null);
   // Bomb Inventory & Drag/Aim state
-  const [selectedBombIdx, setSelectedBombIdx] = React.useState<number | null>(null);
-  const [draggedBomb, setDraggedBomb] = React.useState<{ bombIndex: number; type: BombType } | null>(null);
+  const [selectedBombType, setSelectedBombType] = React.useState<BombType | null>(null);
+  const [draggedBomb, setDraggedBomb] = React.useState<{ type: BombType } | null>(null);
   const [bombDragTopLeft, setBombDragTopLeft] = React.useState<{ x: number; y: number } | null>(null);
   const [bombHoverPos, setBombHoverPos] = React.useState<{ row: number; col: number } | null>(null);
   const bombHoverPosRef = React.useRef(bombHoverPos);
   bombHoverPosRef.current = bombHoverPos;
+
+  // Stack same bomb types together into at most 2 entries (cluster and cross) with counts
+  const stackedBombs = React.useMemo<{ type: BombType; count: number }[]>(() => {
+    if (!you?.bombs || you.bombs.length === 0) return [];
+    let clusterCount = 0;
+    let crossCount = 0;
+    for (const b of you.bombs) {
+      if (b === 'cluster') clusterCount++;
+      else if (b === 'cross') crossCount++;
+    }
+    const list: { type: BombType; count: number }[] = [];
+    if (clusterCount > 0) list.push({ type: 'cluster', count: clusterCount });
+    if (crossCount > 0) list.push({ type: 'cross', count: crossCount });
+    return list;
+  }, [you?.bombs]);
 
   // Track exploding cells from bomb detonation for board white-flash effect
   const [explodingCellKeys, setExplodingCellKeys] = React.useState<Set<string>>(new Set());
@@ -387,7 +402,11 @@ export function BlockBlasterBoard({
   }, [you]);
 
   // Active bomb type (from dragging or selection) and aiming blast radius preview
-  const activeBombType = draggedBomb ? draggedBomb.type : selectedBombIdx !== null ? you?.bombs[selectedBombIdx] ?? null : null;
+  const activeBombType = draggedBomb
+    ? draggedBomb.type
+    : selectedBombType !== null && you?.bombs.includes(selectedBombType)
+      ? selectedBombType
+      : null;
   const bombBlastPreview = React.useMemo(() => {
     if (!activeBombType || !bombHoverPos) return null;
     const cells =
@@ -771,21 +790,23 @@ export function BlockBlasterBoard({
       const start = dragStartRef.current;
       const dist = start ? Math.hypot(e.clientX - start.x, e.clientY - start.y) : 100;
       const currentHover = bombHoverPosRef.current;
-      const bIdx = draggedBomb.bombIndex;
+      const bombType = draggedBomb.type;
 
       if (dist < 8) {
         // Tap in inventory toggles selection
-        setSelectedBombIdx((prev) => (prev === bIdx ? null : bIdx));
+        setSelectedBombType((prev) => (prev === bombType ? null : bombType));
         sfx.blip();
       } else if (currentHover) {
-        // Dropped onto board: detonate!
-        onActionRef.current({
-          type: 'useBomb',
-          bombIndex: bIdx,
-          row: currentHover.row,
-          col: currentHover.col,
-        });
-        setSelectedBombIdx(null);
+        const bombIndex = youRef.current?.bombs.indexOf(bombType) ?? -1;
+        if (bombIndex !== -1) {
+          onActionRef.current({
+            type: 'useBomb',
+            bombIndex,
+            row: currentHover.row,
+            col: currentHover.col,
+          });
+        }
+        setSelectedBombType(null);
       } else {
         sfx.blockInvalid();
       }
@@ -807,10 +828,9 @@ export function BlockBlasterBoard({
     };
   }, [draggedBomb, measureGrid]);
 
-  const handleBombPointerDown = (e: React.PointerEvent, idx: number) => {
+  const handleBombPointerDown = (e: React.PointerEvent, type: BombType) => {
     if (paused || you?.gameOver) return;
-    const bombType = you?.bombs[idx];
-    if (!bombType) return;
+    if (!you?.bombs.includes(type)) return;
     e.preventDefault();
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -819,7 +839,7 @@ export function BlockBlasterBoard({
     dragStartRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
     setSelectedPieceIdx(null);
     setDragInfo(null);
-    setDraggedBomb({ bombIndex: idx, type: bombType });
+    setDraggedBomb({ type });
     setBombDragTopLeft({ x: e.clientX, y: e.clientY });
 
     const metrics = measureGrid();
@@ -885,7 +905,7 @@ export function BlockBlasterBoard({
     if (dragInfo || draggedBomb || !you) return;
 
     // Bomb aiming mode
-    if (selectedBombIdx !== null && you.bombs[selectedBombIdx]) {
+    if (selectedBombType !== null && you.bombs.includes(selectedBombType)) {
       const metrics = measureGrid();
       if (!metrics) return;
       let col = Math.round((e.clientX - metrics.originX) / metrics.pitchX);
@@ -913,14 +933,17 @@ export function BlockBlasterBoard({
     if (paused || you?.gameOver || !you) return;
 
     // If a bomb is selected, click cell to detonate!
-    if (selectedBombIdx !== null && you.bombs[selectedBombIdx]) {
-      onActionRef.current({
-        type: 'useBomb',
-        bombIndex: selectedBombIdx,
-        row: r,
-        col: c,
-      });
-      setSelectedBombIdx(null);
+    if (selectedBombType !== null && you.bombs.includes(selectedBombType)) {
+      const bombIndex = you.bombs.indexOf(selectedBombType);
+      if (bombIndex !== -1) {
+        onActionRef.current({
+          type: 'useBomb',
+          bombIndex,
+          row: r,
+          col: c,
+        });
+      }
+      setSelectedBombType(null);
       setBombHoverPos(null);
       return;
     }
@@ -938,7 +961,6 @@ export function BlockBlasterBoard({
       sfx.blockInvalid();
     }
   };
-
   // Keyboard controls for full accessibility
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -948,18 +970,25 @@ export function BlockBlasterBoard({
         const idx = Number(e.key) - 1;
         if (currentYou?.tray[idx]) {
           setSelectedPieceIdx((prev) => (prev === idx ? null : idx));
-          setSelectedBombIdx(null);
+          setSelectedBombType(null);
           sfx.blip();
         }
       } else if (e.key === 'b' || e.key === 'B' || e.key === '4') {
         if (currentYou?.bombs && currentYou.bombs.length > 0) {
-          setSelectedBombIdx((prev) => (prev === 0 ? null : 0));
+          const firstType = currentYou.bombs.includes('cluster') ? 'cluster' : currentYou.bombs[0]!;
+          setSelectedBombType((prev) => (prev === firstType ? null : firstType));
+          setSelectedPieceIdx(null);
+          sfx.blip();
+        }
+      } else if (e.key === '5' || e.key === 'c' || e.key === 'C') {
+        if (currentYou?.bombs && currentYou.bombs.includes('cross')) {
+          setSelectedBombType((prev) => (prev === 'cross' ? null : 'cross'));
           setSelectedPieceIdx(null);
           sfx.blip();
         }
       } else if (e.key === 'Escape') {
         setSelectedPieceIdx(null);
-        setSelectedBombIdx(null);
+        setSelectedBombType(null);
         setHoverPos(null);
         setBombHoverPos(null);
       } else if ((e.key === 'Enter' || e.key === ' ') && selectedPieceIdx !== null) {
@@ -1060,7 +1089,7 @@ export function BlockBlasterBoard({
       startingLayout: lay ?? activeLayout,
     });
     setSelectedPieceIdx(null);
-    setSelectedBombIdx(null);
+    setSelectedBombType(null);
     setDraggedBomb(null);
     setBombHoverPos(null);
     setHoverPos(null);
@@ -1244,7 +1273,7 @@ export function BlockBlasterBoard({
               onPointerMove={handleBoardPointerMove}
               onPointerLeave={() => {
                 if (dragInfo === null && draggedBomb === null && selectedPieceIdx !== null) setHoverPos(null);
-                if (draggedBomb === null && selectedBombIdx !== null) setBombHoverPos(null);
+                if (draggedBomb === null && selectedBombType !== null) setBombHoverPos(null);
               }}
               className="relative grid grid-cols-8 grid-rows-8 gap-1 w-full h-full"
               style={{ touchAction: 'none' }}
@@ -1515,54 +1544,67 @@ export function BlockBlasterBoard({
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-                  {you.bombs.map((bType, bIdx) => {
-                    const isSelected = selectedBombIdx === bIdx;
-                    const isDragging = draggedBomb?.bombIndex === bIdx;
-                    const isCluster = bType === 'cluster';
+                <div className={`grid gap-1.5 w-full ${stackedBombs.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {stackedBombs.map((stack) => {
+                    const isSelected = selectedBombType === stack.type;
+                    const isDragging = draggedBomb?.type === stack.type;
+                    const isCluster = stack.type === 'cluster';
 
                     return (
                       <div
-                        key={`bomb-slot-${bIdx}-${bType}`}
-                        onPointerDown={(e) => handleBombPointerDown(e, bIdx)}
+                        key={`bomb-stack-${stack.type}`}
+                        onPointerDown={(e) => handleBombPointerDown(e, stack.type)}
                         onClick={() => {
-                          setSelectedBombIdx((prev) => (prev === bIdx ? null : bIdx));
+                          setSelectedBombType((prev) => (prev === stack.type ? null : stack.type));
                           setSelectedPieceIdx(null);
                           sfx.blip();
                         }}
-                        className={`relative flex-1 min-w-[72px] flex items-center gap-1.5 p-1.5 rounded border-2 cursor-grab active:cursor-grabbing transition-all select-none touch-none ${
+                        className={`relative flex items-center justify-between gap-1 px-2 py-1.5 rounded border-2 cursor-grab active:cursor-grabbing transition-all select-none touch-none min-w-0 ${
                           isCluster
                             ? isSelected
-                              ? 'bg-orange-950 border-orange-400 ring-2 ring-orange-500/80 scale-105 shadow-[0_0_10px_rgba(249,115,22,0.6)]'
+                              ? 'bg-orange-950 border-orange-400 ring-2 ring-orange-500/80 scale-[1.02] shadow-[0_0_10px_rgba(249,115,22,0.6)]'
                               : 'bg-orange-950/40 border-orange-800/80 hover:border-orange-500'
                             : isSelected
-                              ? 'bg-purple-950 border-purple-400 ring-2 ring-purple-500/80 scale-105 shadow-[0_0_10px_rgba(168,85,247,0.6)]'
+                              ? 'bg-purple-950 border-purple-400 ring-2 ring-purple-500/80 scale-[1.02] shadow-[0_0_10px_rgba(168,85,247,0.6)]'
                               : 'bg-purple-950/40 border-purple-800/80 hover:border-purple-500'
                         } ${isDragging ? 'opacity-30' : ''}`}
                       >
-                        <div
-                          className={`w-6 h-6 rounded flex items-center justify-center text-sm border shrink-0 ${
-                            isCluster
-                              ? 'bg-orange-900/60 border-orange-700 text-orange-300'
-                              : 'bg-purple-900/60 border-purple-700 text-purple-300'
-                          }`}
-                        >
-                          {isCluster ? '💣' : '⚡'}
-                        </div>
-                        <div className="flex flex-col text-left leading-none min-w-0">
-                          <span className="font-display text-[8px] font-bold uppercase text-white truncate">
-                            {isCluster ? '3×3 Cluster' : 'Cross (+)'}
-                          </span>
-                          <span
-                            className={`font-display text-[7px] font-medium truncate ${
-                              isCluster ? 'text-orange-300' : 'text-purple-300'
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div
+                            className={`w-6 h-6 rounded flex items-center justify-center text-sm border shrink-0 ${
+                              isCluster
+                                ? 'bg-orange-900/60 border-orange-700 text-orange-300'
+                                : 'bg-purple-900/60 border-purple-700 text-purple-300'
                             }`}
                           >
-                            {isCluster ? 'Area Blast' : 'Row & Col'}
-                          </span>
+                            {isCluster ? '💣' : '⚡'}
+                          </div>
+                          <div className="flex flex-col text-left leading-none min-w-0 truncate">
+                            <span className="font-display text-[8px] sm:text-[9px] font-bold uppercase text-white truncate">
+                              {isCluster ? 'Cluster' : 'Cross'}
+                            </span>
+                            <span
+                              className={`font-display text-[7px] font-medium truncate mt-0.5 ${
+                                isCluster ? 'text-orange-300' : 'text-purple-300'
+                              }`}
+                            >
+                              {isCluster ? '3×3 Area' : 'Row & Col'}
+                            </span>
+                          </div>
                         </div>
+
+                        {/* Small number at the corner showing stacked count */}
+                        {stack.count > 1 && (
+                          <span
+                            title={`${stack.count} available`}
+                            className="absolute -top-1.5 -right-1.5 min-w-[17px] h-[17px] px-1 flex items-center justify-center font-display text-[9px] font-black bg-amber-400 text-slate-950 border-2 border-slate-950 rounded-full shadow-md leading-none z-10"
+                          >
+                            {stack.count}
+                          </span>
+                        )}
+
                         {isSelected && (
-                          <span className="absolute -top-1.5 -right-1 text-[6px] font-display bg-pa-cyan text-black px-1 rounded uppercase font-bold tracking-tight">
+                          <span className="absolute -bottom-1.5 left-1/2 transform -translate-x-1/2 text-[6px] font-display bg-pa-cyan text-black px-1 rounded uppercase font-bold tracking-tight shadow">
                             AIM
                           </span>
                         )}
