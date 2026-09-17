@@ -283,7 +283,69 @@ export function BlockBlasterBoard({
   const [gridMetrics, setGridMetrics] = React.useState<GridMetrics | null>(null);
   React.useLayoutEffect(() => {
     setGridMetrics(measureGrid());
-  }, [measureGrid, boardPixelSize]);
+  }, [measureGrid, boardPixelSize, paused]);
+
+  // Handle pause / resume and screen visibility changes
+  React.useEffect(() => {
+    if (paused) {
+      // While paused, reset any in-flight dragging or aiming gesture so it doesn't get stuck
+      setDragInfo(null);
+      setDraggedBomb(null);
+      setHoverPos(null);
+      setBombHoverPos(null);
+      setDragTopLeft(null);
+      setBombDragTopLeft(null);
+      dragStartRef.current = null;
+    } else {
+      // Upon resuming, force-refresh grid measurements so drag positions align accurately
+      const refresh = () => setGridMetrics(measureGrid());
+      refresh();
+      const raf = requestAnimationFrame(refresh);
+      const timer = setTimeout(refresh, 100);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(timer);
+      };
+    }
+  }, [paused, measureGrid]);
+
+  // Handle window blur, focus, and visibilitychange (switching tabs, lock screen, etc.)
+  React.useEffect(() => {
+    const handleLeave = () => {
+      setDragInfo(null);
+      setDraggedBomb(null);
+      setHoverPos(null);
+      setBombHoverPos(null);
+      setDragTopLeft(null);
+      setBombDragTopLeft(null);
+      dragStartRef.current = null;
+    };
+
+    const handleReturn = () => {
+      const refresh = () => setGridMetrics(measureGrid());
+      refresh();
+      requestAnimationFrame(refresh);
+      setTimeout(refresh, 100);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        handleLeave();
+      } else {
+        handleReturn();
+      }
+    };
+
+    window.addEventListener('blur', handleLeave);
+    window.addEventListener('focus', handleReturn);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('blur', handleLeave);
+      window.removeEventListener('focus', handleReturn);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [measureGrid]);
   const fallbackCell = boardPixelSize / BLOCK_BLASTER_BOARD_SIZE;
   const cellMetrics: GridMetrics =
     gridMetrics ?? {

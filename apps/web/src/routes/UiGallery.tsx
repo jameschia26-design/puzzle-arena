@@ -17,6 +17,7 @@ import { CodeInput, Countdown, PlayerChip, SeatAvatar } from '../ui/game-bits.js
 import { CrtToggle } from '../ui/crt.js';
 import { SEAT_COLORS } from '../ui/seat.js';
 import { MastermindBoard, MastermindSecretReveal } from '../games/MastermindBoard.js';
+import { SudokuBoard } from '../games/SudokuBoard.js';
 
 /**
  * Every primitive in every variant and state on one page — the visual proof
@@ -237,6 +238,12 @@ export default function UiGallery(): React.ReactElement {
           </div>
         </div>
       </Section>
+
+      <Section title="Sudoku Board (Bold 3×3 Boundaries)">
+        <div className="flex flex-col items-center">
+          <SudokuDemo />
+        </div>
+      </Section>
     </main>
   );
 }
@@ -286,6 +293,34 @@ function MastermindDemo(): React.ReactElement {
           exhausted: b.guesses.length + 1 >= 10 && !solved,
         }));
         return { code, exact, color, tries: board.guesses.length + 1, solved, exhausted: false };
+      }}
+    />
+  );
+}
+
+function SudokuDemo(): React.ReactElement {
+  const [board, setBoard] = React.useState<number[]>([
+    5, 3, 0, 0, 7, 0, 0, 0, 0,
+    6, 0, 0, 1, 9, 5, 0, 0, 0,
+    0, 9, 8, 0, 0, 0, 0, 6, 0,
+    8, 0, 0, 0, 6, 0, 0, 0, 3,
+    4, 0, 0, 8, 0, 3, 0, 0, 1,
+    7, 0, 0, 0, 2, 0, 0, 0, 6,
+    0, 6, 0, 0, 0, 0, 2, 8, 0,
+    0, 0, 0, 4, 1, 9, 0, 0, 5,
+    0, 0, 0, 0, 8, 0, 0, 7, 9,
+  ]);
+
+  return (
+    <SudokuBoard
+      givens={[...board]}
+      board={board}
+      onCommit={(r, c, val) => {
+        setBoard((prev) => {
+          const next = [...prev];
+          next[r * 9 + c] = val;
+          return next;
+        });
       }}
     />
   );

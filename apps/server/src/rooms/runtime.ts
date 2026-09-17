@@ -425,6 +425,7 @@ export class LiveRoom {
     this.pushLog('Game resumed');
     this.io?.to(this.id).emit(EV.roomResumed, { paused: false, endsAt: this.endsAt, turnEndsAt: this.turnEndsAt });
     this.broadcastSnapshot();
+    if (this.kind === 'board') this.broadcastGameState();
   }
 
   async restart(): Promise<void> {

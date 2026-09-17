@@ -223,7 +223,7 @@ export function SudokuBoard({
         tabIndex={0}
         onKeyDown={onKeyDown}
         aria-label="Sudoku grid"
-        className="grid grid-cols-9 border-2 border-pa-ink bg-pa-bg w-full max-w-[min(92vw,560px)] aspect-square outline-none no-select touch-none"
+        className="grid grid-cols-9 border-2 sm:border-4 border-pa-ink bg-pa-bg w-full max-w-[min(92vw,560px)] aspect-square outline-none no-select touch-none shadow-md"
         onContextMenu={(e) => e.preventDefault()}
       >
         {Array.from({ length: 81 }, (_, i) => {
@@ -248,8 +248,11 @@ export function SudokuBoard({
               onContextMenu={(e) => e.preventDefault()}
               className={cn(
                 'relative flex items-center justify-center border border-pa-border/60 cursor-pointer no-select',
-                // Heavier lines on the 3x3 box seams.
-                row % 3 === 0 && row !== 0 && 'border-t-2 border-t-pa-ink',
+                // Bold inner boundaries for the 3x3 blocks
+                (col === 2 || col === 5) && 'border-r-2 sm:border-r-[3px] border-r-pa-ink',
+                (col === 3 || col === 6) && 'border-l-2 sm:border-l-[3px] border-l-pa-ink',
+                (row === 2 || row === 5) && 'border-b-2 sm:border-b-[3px] border-b-pa-ink',
+                (row === 3 || row === 6) && 'border-t-2 sm:border-t-[3px] border-t-pa-ink',
                 isCursor && 'bg-pa-surface-2',
                 sameValue && 'bg-pa-surface',
                 'text-pa-ink',
