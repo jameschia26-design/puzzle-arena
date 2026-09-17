@@ -218,14 +218,15 @@ export function SudokuBoard({
         </p>
       )}
 
-      <div
-        role="grid"
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        aria-label="Sudoku grid"
-        className="grid grid-cols-9 border-2 sm:border-4 border-pa-ink bg-pa-bg w-full max-w-[min(92vw,560px)] aspect-square outline-none no-select touch-none shadow-md"
-        onContextMenu={(e) => e.preventDefault()}
-      >
+      <div className="relative w-full max-w-[min(92vw,560px)] aspect-square">
+        <div
+          role="grid"
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          aria-label="Sudoku grid"
+          className="grid grid-cols-9 border-2 sm:border-4 border-pa-ink bg-pa-bg w-full h-full outline-none no-select touch-none shadow-md overflow-hidden"
+          onContextMenu={(e) => e.preventDefault()}
+        >
         {Array.from({ length: 81 }, (_, i) => {
           const row = Math.floor(i / 9);
           const col = i % 9;
@@ -248,11 +249,6 @@ export function SudokuBoard({
               onContextMenu={(e) => e.preventDefault()}
               className={cn(
                 'relative flex items-center justify-center border border-pa-border/60 cursor-pointer no-select',
-                // Bold inner boundaries for the 3x3 blocks
-                (col === 2 || col === 5) && 'border-r-2 sm:border-r-[3px] border-r-pa-ink',
-                (col === 3 || col === 6) && 'border-l-2 sm:border-l-[3px] border-l-pa-ink',
-                (row === 2 || row === 5) && 'border-b-2 sm:border-b-[3px] border-b-pa-ink',
-                (row === 3 || row === 6) && 'border-t-2 sm:border-t-[3px] border-t-pa-ink',
                 isCursor && 'bg-pa-surface-2',
                 sameValue && 'bg-pa-surface',
                 'text-pa-ink',
@@ -316,6 +312,29 @@ export function SudokuBoard({
             </button>
           );
         })}
+        </div>
+
+        {/* Continuous Bold 3x3 Block Boundaries: 2 Vertical and 2 Horizontal */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-0 bottom-0 w-[3px] sm:w-[4px] bg-pa-ink z-20"
+          style={{ left: 'calc(100% * 3 / 9 - 1.5px)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute top-0 bottom-0 w-[3px] sm:w-[4px] bg-pa-ink z-20"
+          style={{ left: 'calc(100% * 6 / 9 - 1.5px)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 right-0 h-[3px] sm:h-[4px] bg-pa-ink z-20"
+          style={{ top: 'calc(100% * 3 / 9 - 1.5px)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 right-0 h-[3px] sm:h-[4px] bg-pa-ink z-20"
+          style={{ top: 'calc(100% * 6 / 9 - 1.5px)' }}
+        />
       </div>
 
       {/*
