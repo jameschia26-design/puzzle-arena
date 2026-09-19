@@ -122,6 +122,32 @@ export function attachSocket(app: FastifyInstance): IOServer {
             (guestId ? room.playerByGuest(guestId) : undefined) ??
             (claimHost ? room.players.find((p) => p.isHost && !p.left) : undefined);
 
+          // The room owner opening their own lobby from another device/tab
+          // (e.g. "Open as host instead") may already hold a non-host guest
+          // seat. Upgrade that seat to host in place instead of leaving them
+          // stuck as a guest with no Start button and no way to upgrade.
+          // (Deleting or re-inserting the row is impossible: (room_id,
+          // guest_id) has a unique index, so an UPDATE is the only move.)
+          if (claimHost && player && !player.isHost && room.status === 'lobby') {
+            const hostSeat = room.players.find((p) => p.isHost && !p.left);
+            if (!hostSeat || !hostSeat.connected) {
+              if (hostSeat && hostSeat.id !== player.id) {
+                hostSeat.left = true;
+                await db
+                  .update(roomPlayers)
+                  .set({ leftAt: new Date() })
+                  .where(eq(roomPlayers.id, hostSeat.id));
+              }
+              player.isHost = true;
+              player.seat = 0;
+              await db
+                .update(roomPlayers)
+                .set({ isHost: true, seat: 0 })
+                .where(eq(roomPlayers.id, player.id));
+              room.broadcastPlayers();
+            }
+          }
+
           // If cookie/guestId changed on reload or reconnection during an active game,
           // reclaim the player's existing disconnected seat by displayName match.
           if (!player && room.status !== 'lobby') {
