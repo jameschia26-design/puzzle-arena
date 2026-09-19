@@ -238,6 +238,12 @@ export function SudokuBoard({
           const conflicted = conflicts.has(i);
           const wrong = wrongCells?.has(i);
           const sameValue = value !== 0 && value === selectedValue && !isCursor;
+          // 3x3 block boundaries: a real (thick) border on the cell that
+          // starts each inner box, so it participates in layout instead of
+          // painting an overlay on top of pencil marks sitting near the
+          // cell edge.
+          const boldLeft = col === 3 || col === 6;
+          const boldTop = row === 3 || row === 6;
 
           return (
             <button
@@ -254,6 +260,8 @@ export function SudokuBoard({
                 'text-pa-ink',
                 conflicted && 'text-pa-danger',
                 wrong && 'outline outline-2 outline-pa-danger -outline-offset-2',
+                boldLeft && 'border-l-[3px]! sm:border-l-[4px]! border-l-pa-ink!',
+                boldTop && 'border-t-[3px]! sm:border-t-[4px]! border-t-pa-ink!',
               )}
               style={{ fontFamily: 'var(--font-body)', fontWeight: 600 }}
             >
@@ -313,28 +321,6 @@ export function SudokuBoard({
           );
         })}
         </div>
-
-        {/* Continuous Bold 3x3 Block Boundaries: 2 Vertical and 2 Horizontal */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-0 bottom-0 w-[3px] sm:w-[4px] bg-pa-ink z-20"
-          style={{ left: 'calc(100% * 3 / 9 - 1.5px)' }}
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute top-0 bottom-0 w-[3px] sm:w-[4px] bg-pa-ink z-20"
-          style={{ left: 'calc(100% * 6 / 9 - 1.5px)' }}
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 right-0 h-[3px] sm:h-[4px] bg-pa-ink z-20"
-          style={{ top: 'calc(100% * 3 / 9 - 1.5px)' }}
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 right-0 h-[3px] sm:h-[4px] bg-pa-ink z-20"
-          style={{ top: 'calc(100% * 6 / 9 - 1.5px)' }}
-        />
       </div>
 
       {/*
